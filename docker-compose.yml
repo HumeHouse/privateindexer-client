@@ -1,0 +1,51 @@
+networks:
+  privateindexer-net:
+    name: privateindexer-net
+    driver: bridge
+services:
+  client:
+    image: privateindexer-client:latest
+    container_name: privateindexer-client
+    restart: unless-stopped
+    environment:
+      MOVIE_DIR: /path/to/movies
+      MOVIE_EXTENSIONS: mp4,mkv,m4v,avi
+      SCANNER_THREADS: 8
+      SCAN_INTERVAL: 15
+      API_KEY: keyhere
+      QBIT_HOST: privateindexer-qbittorrent:8080
+      QBIT_USERNAME: admin
+      QBIT_PASSWORD: password
+    volumes:
+      - /path/to/client/data:/app/data
+      - /path/to/movies:/path/to/movies
+    networks:
+      - privateindexer-net
+    logging:
+      options:
+        max-size: 10m
+        max-file: 5
+    build:
+      context: .
+      network: host
+
+  #  optional dedicated qbitorrent client
+  qbittorrent:
+    image: lscr.io/linuxserver/qbittorrent:latest
+    container_name: privateindexer-qbittorrent
+    restart: unless-stopped
+    environment:
+      PUID: 1000
+      PGID: 1000
+      TZ: America/Chicago
+      WEBUI_PORT: 8080
+      TORRENTING_PORT: 6881
+    volumes:
+      - /path/to/qbittorrent/config:/config
+      - /path/to/movies:/path/to/movies
+    networks:
+      - privateindexer-net
+    ports:
+      - "8080:8080"
+      - "6881:6881"
+      - "6881:6881/udp"
