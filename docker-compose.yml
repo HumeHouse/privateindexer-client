@@ -4,7 +4,7 @@ networks:
     driver: bridge
 services:
   client:
-    image: privateindexer-client:latest
+    image: ghcr.io/humehouse/privateindexer-client:latest
     container_name: privateindexer-client
     restart: unless-stopped
     environment:

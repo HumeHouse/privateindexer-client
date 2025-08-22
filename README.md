@@ -10,6 +10,9 @@ Optionally, you can also run a dedicated qBittorrent client alongside it if you 
 
 Simply run the following command in the directory with the `Dockerfile` and your image will be built
 
+You can also use the hosted pre-built image on at `ghcr.io/humehouse/privateindexer-client:latest`
+(See https://github.com/HumeHouse/privateindexer-client/releases for all tags)
+
 ```bash
 docker compose build
 ```
@@ -109,7 +112,7 @@ networks:
     driver: bridge
 services:
   client:
-    image: privateindexer-client:latest
+    image: ghcr.io/humehouse/privateindexer-client:latest
     container_name: privateindexer-client
     restart: unless-stopped
     environment:
