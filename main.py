@@ -83,51 +83,57 @@ def qbit_get_torrents() -> list:
         return []
 
 
-def qbit_add_torrent(torrent_metadata: dict, torrents_on_qbit: list = None):
+def qbit_add_torrents(torrents_to_add: list[dict], torrents_on_qbit: list = None):
     """
-    Add a torrent file to qBittorrent API
-    Checks if the torrent v1/v2 hash already exists on the client to prevent duplication
-    Adds the tracker's announce URL with the current user's API key to the torrent's announce-list before adding
+    Add multiple torrent files to qBittorrent API in one request
+    Deduplicates against existing torrents by v1/v2 hash
+    Adds tracker announce URL with the user's API key before uploading
     """
     torrents_on_qbit = torrents_on_qbit or qbit_get_torrents()
 
-    existing_v1_hashes = [t["infohash_v1"].lower() for t in torrents_on_qbit if "infohash_v1" in t]
-    existing_v2_hashes = [t["infohash_v2"].lower() for t in torrents_on_qbit if "infohash_v2" in t]
+    v1_hashes = {t["infohash_v1"].lower() for t in torrents_on_qbit if "infohash_v1" in t}
+    v2_hashes = {t["infohash_v2"].lower() for t in torrents_on_qbit if "infohash_v2" in t}
 
-    if torrent_metadata["hash_v1"].lower() in existing_v1_hashes or torrent_metadata["hash_v2"].lower() in existing_v2_hashes:
+    # filter out already existing torrents
+    torrents_to_add = [tm for tm in torrents_to_add if tm["hash_v1"].lower() not in v1_hashes and tm["hash_v2"].lower() not in v2_hashes]
+
+    if not torrents_to_add:
         return
 
-    torrent_path = os.path.join(TORRENTS_DIR, f"{torrent_metadata['name']}.torrent")
+    added = 0
+    for torrent_metadata in torrents_to_add:
+        torrent_path = os.path.join(TORRENTS_DIR, f"{torrent_metadata['name']}.torrent")
+        try:
+            # use libtorrent to decode the bytes from file
+            with open(torrent_path, "rb") as f:
+                torrent_data = lt.bdecode(f.read())
 
-    try:
-        # use libtorrent to decode the bytes from file
-        with open(torrent_path, "rb") as f:
-            torrent_data = lt.bdecode(f.read())
+            # add tracker announce URL to the list of trackers
+            torrent_data[b"announce"] = f"{ANNOUNCE_TRACKER_URL}?apikey={API_KEY}".encode()
+            if b"announce-list" in torrent_data:
+                torrent_data[b"announce-list"] = [[torrent_data[b"announce"]]]
 
-        # add tracker announce URL to the list of trackers
-        torrent_data[b"announce"] = f"{ANNOUNCE_TRACKER_URL}?apikey={API_KEY}".encode()
-        if b"announce-list" in torrent_data:
-            torrent_data[b"announce-list"] = [[torrent_data[b"announce"]]]
+            # use libtorrent to reencode the file back into bytes
+            modified_torrent_bytes = lt.bencode(torrent_data)
 
-        # use libtorrent to reencode the file back into bytes
-        modified_torrent_bytes = lt.bencode(torrent_data)
+            files = [("torrents", (os.path.basename(torrent_path), modified_torrent_bytes))]
+            data = {
+                "savepath": os.path.dirname(torrent_metadata["path"]),
+                "skip_checking": "false",
+                "paused": "false",
+            }
 
-    except Exception as e:
-        logger.error(f"[QBIT] Failed to add tracker URL to torrent '{torrent_metadata['name']}': {e}")
-        return
+            # try to send the torrent file to the qBittorrent client for seeding
+            add_response = qbit_request("post", "/torrents/add", data=data, files=files)
+            if add_response.status_code == 200:
+                added += 1
+            else:
+                logger.error(f"[QBIT] Failed to add torrent {torrent_metadata['name']}: {add_response.status_code} {add_response.text}")
 
-    files = {"torrents": (os.path.basename(torrent_path), modified_torrent_bytes)}
-    data = {"savepath": os.path.dirname(torrent_metadata["path"]), "skip_checking": "false", "paused": "false"}
+        except Exception as e:
+            logger.error(f"[QBIT] Error preparing/adding torrent '{torrent_metadata['name']}': {e}")
 
-    # try to send the torrent file to the qBittorrent client for seeding
-    try:
-        add_response = qbit_request("post", "/torrents/add", data=data, files=files)
-        if add_response.status_code == 200:
-            logger.info(f"[QBIT] Added torrent '{torrent_metadata['name']}' to client")
-        else:
-            logger.error(f"[QBIT] Failed to add torrent '{torrent_metadata['name']}' to client: {add_response.status_code}")
-    except Exception as e:
-        logger.error(f"[QBIT] Failed to add torrent '{torrent_metadata['name']}' to client: {e}")
+    logger.info(f"[QBIT] Added {added}/{len(torrents_to_add)} torrents to client")
 
 
 async def load_torrents_threadsafe():
@@ -304,39 +310,44 @@ async def scan_media_library():
     if len(futures) > 0:
         logger.info(f"[SCAN] Queued {len(futures)} torrents for creation")
 
+    # get current list of torrents on qBittorrent
+    qbit_existing = qbit_get_torrents()
+
     # collect the workers as they finish and process their output
     for future in asyncio.as_completed(futures):
         try:
-            new_torrent = await future
-            if new_torrent:
+            torrent_metadata = await future
+            if torrent_metadata:
                 created_files += 1
-                torrent_file = os.path.join(TORRENTS_DIR, f"{new_torrent['name']}.torrent")
+                torrent_file = os.path.join(TORRENTS_DIR, f"{torrent_metadata['name']}.torrent")
 
                 # attempt to send torrent file to indexer server
-                if not new_torrent["uploaded"]:
-                    if send_torrent_to_indexer(torrent_file, new_torrent):
-                        new_torrent["uploaded"] = True
+                if not torrent_metadata["uploaded"]:
+                    if send_torrent_to_indexer(torrent_file, torrent_metadata):
+                        torrent_metadata["uploaded"] = True
 
-                torrents_by_path[new_torrent["path"]] = new_torrent
+                torrents_by_path[torrent_metadata["path"]] = torrent_metadata
                 await save_torrents_threadsafe(list(torrents_by_path.values()))
 
-                logger.info(f"[SCAN] Created or updated torrent: {new_torrent["name"]}")
+                # attempt to add the torrent to qBittorrent right away for immediate seeding
+                qbit_add_torrents([torrent_metadata], qbit_existing)
+
+                logger.info(f"[SCAN] Created or updated torrent: {torrent_metadata["name"]}")
         except Exception as e:
             logger.error(f"[SCAN] Error in torrent post-torrent-creation process: {e}")
 
     torrents = list(torrents_by_path.values())
-    torrents_on_qbit = qbit_get_torrents()
 
     # here we check to make sure the media files for a torrent still exist on the disk, otherwise remove the torrent from the local database ONLY
     still_existing = []
     for torrent in torrents:
         if os.path.exists(torrent["path"]):
             still_existing.append(torrent)
-
-            # attempt to add any missing files to the qBittorrent client for seeding
-            qbit_add_torrent(torrent, torrents_on_qbit)
         else:
             logger.info(f"[SCAN] Media files missing for '{torrent["name"]}', removed it from database")
+
+    # attempt to add any missing files to the qBittorrent client for seeding
+    qbit_add_torrents(still_existing)
 
     await save_torrents_threadsafe(still_existing)
 
