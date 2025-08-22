@@ -11,6 +11,8 @@ import libtorrent as lt
 import requests
 from requests import Response
 
+APP_VERSION = "1.0.1"
+
 TORRENTS_FILE = "/app/data/torrents.json"
 TORRENTS_DIR = "/app/data/torrents"
 
@@ -378,7 +380,7 @@ async def periodic_scan():
 
 
 # ---- General Setup ----
-logger.info("[APP] Loading PrivateIndexer client")
+logger.info(f"[APP] Loading PrivateIndexer client v{APP_VERSION}")
 
 # check if the torrent storage directory exists, otherwise create it
 if os.path.exists(TORRENTS_DIR):
