@@ -11,7 +11,7 @@ import libtorrent as lt
 import requests
 from requests import Response
 
-APP_VERSION = "1.0.1"
+APP_VERSION = "1.0.2"
 
 TORRENTS_FILE = "/app/data/torrents.json"
 TORRENTS_DIR = "/app/data/torrents"
