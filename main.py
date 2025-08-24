@@ -20,8 +20,6 @@ CATEGORY_PATHS = {}
 INDEXER_API_URL = "https://indexer.humehouse.com"
 ANNOUNCE_TRACKER_URL = "https://tracker.humehouse.com/announce"
 
-signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))
-
 # set up pretty terminal logging with custom format
 formatter = logging.Formatter("[%(asctime)s] %(levelname)s: %(message)s", datefmt="%Y-%m-%d %H:%M:%S")
 console_handler = logging.StreamHandler(sys.stdout)
@@ -352,6 +350,14 @@ async def periodic_torrent_status():
         await asyncio.sleep(5)
 
 
+def shutdown_handler(signum):
+    """
+    Handle a shutdown command from outside the container
+    """
+    logger.info(f"[APP] Caught signal {signum}, shutting down PrivateIndexer")
+    sys.exit(0)
+
+
 # ---- General Setup ----
 logger.info(f"[APP] Loading PrivateIndexer client v{APP_VERSION}")
 
@@ -424,5 +430,8 @@ if __name__ == "__main__":
         await asyncio.gather(scan_task, status_task)
         return None
 
+
+    signal.signal(signal.SIGTERM, shutdown_handler)
+    signal.signal(signal.SIGINT, shutdown_handler)
 
     asyncio.run(main())
