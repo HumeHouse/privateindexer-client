@@ -10,7 +10,7 @@ from concurrent.futures import ProcessPoolExecutor
 import libtorrent as lt
 import requests
 
-APP_VERSION = "1.0.2"
+APP_VERSION = "1.1.0"
 
 TORRENTS_FILE = "/app/data/torrents.json"
 TORRENTS_DIR = "/app/data/torrents"
