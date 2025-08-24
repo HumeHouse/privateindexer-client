@@ -9,7 +9,6 @@ from concurrent.futures import ProcessPoolExecutor
 
 import libtorrent as lt
 import requests
-from requests import Response
 
 APP_VERSION = "1.0.2"
 
@@ -33,107 +32,48 @@ logger.setLevel(logging.INFO)
 logger.addHandler(console_handler)
 logger.propagate = False
 
-# init the qbit web session
-qbit_session = requests.Session()
-
 
 # ---- Utilities ----
-def qbit_login() -> bool:
+def get_seeding_torrents() -> list:
     """
-    Log into qBittorrent using username and password
+    Return the list of all torrents currently added to the libtorrent session
     """
-    login_data = {"username": QBIT_USERNAME, "password": QBIT_PASSWORD}
-    login_response = qbit_request("post", "/auth/login", data=login_data)
-
-    if login_response.text == "Ok.":
-        return True
-
-    raise Exception("qBitorrent credentials incorrect")
+    return libtorrent_session.get_torrents()
 
 
-def qbit_request(method, endpoint, attempt: int = 0, **kwargs) -> Response:
+def seed_torrents(torrents_to_add: list[dict]):
     """
-    Send a request to the qBittorrent API using the web session
-    Will attempt to make 3 attempts to reauthenticate with API before giving up
+    Add multiple torrent files to libtorrent session for seeding
+    Ensures torrent file exists before adding
     """
-    request_url = f"http://{QBIT_HOST}/api/v2" + endpoint
-
-    response = qbit_session.request(method, request_url, **kwargs)
-
-    if response.status_code == 403 and attempt <= 3:
-        qbit_login()
-        return qbit_request(method, endpoint, attempt=attempt + 1, **kwargs)
-
-    return response
-
-
-def qbit_get_torrents() -> list:
-    """
-    Request a list of all torrents from the qBittorrent API
-    """
-    try:
-        torrent_response = qbit_request("get", "/torrents/info")
-        if torrent_response.status_code == 200:
-            return torrent_response.json()
-        else:
-            logger.error(f"[QBIT] Failed to fetch torrents: {torrent_response.status_code}")
-            return []
-    except Exception as e:
-        logger.error(f"[QBIT] Exception fetching torrents: {e}")
-        return []
-
-
-def qbit_add_torrents(torrents_to_add: list[dict], torrents_on_qbit: list = None):
-    """
-    Add multiple torrent files to qBittorrent API in one request
-    Deduplicates against existing torrents by v1/v2 hash
-    Adds tracker announce URL with the user's API key before uploading
-    """
-    torrents_on_qbit = torrents_on_qbit or qbit_get_torrents()
-
-    v1_hashes = {t["infohash_v1"].lower() for t in torrents_on_qbit if "infohash_v1" in t}
-    v2_hashes = {t["infohash_v2"].lower() for t in torrents_on_qbit if "infohash_v2" in t}
-
-    # filter out already existing torrents
-    torrents_to_add = [tm for tm in torrents_to_add if tm["hash_v1"].lower() not in v1_hashes and tm["hash_v2"].lower() not in v2_hashes]
-
-    if not torrents_to_add:
-        return
-
     added = 0
     for torrent_metadata in torrents_to_add:
         torrent_path = os.path.join(TORRENTS_DIR, f"{torrent_metadata['name']}.torrent")
+        if not os.path.exists(torrent_path):
+            logger.error(f"[SEEDER] Torrent file not found: {torrent_path}")
+            continue
+
         try:
-            # use libtorrent to decode the bytes from file
-            with open(torrent_path, "rb") as f:
-                torrent_data = lt.bdecode(f.read())
+            # skip torrent if libtorrent session is already seeding it
+            info_hash = lt.sha1_hash(bytes.fromhex(torrent_metadata["hash_v1"]))
+            existing = libtorrent_session.find_torrent(info_hash)
+            if existing.is_valid():
+                continue
 
-            # add tracker announce URL to the list of trackers
-            torrent_data[b"announce"] = f"{ANNOUNCE_TRACKER_URL}?apikey={API_KEY}".encode()
-            if b"announce-list" in torrent_data:
-                torrent_data[b"announce-list"] = [[torrent_data[b"announce"]]]
+            # add the tracker URL and set parameters for seeding
+            info = lt.torrent_info(torrent_path)
+            info.add_tracker(f"{ANNOUNCE_TRACKER_URL}?apikey={API_KEY}")
 
-            # use libtorrent to reencode the file back into bytes
-            modified_torrent_bytes = lt.bencode(torrent_data)
+            flags = lt.torrent_flags.default_flags | lt.torrent_flags.seed_mode
+            params = {"ti": info, "save_path": os.path.dirname(torrent_metadata["path"]), "flags": flags}
 
-            files = [("torrents", (os.path.basename(torrent_path), modified_torrent_bytes))]
-            data = {
-                "savepath": os.path.dirname(torrent_metadata["path"]),
-                "skip_checking": "false",
-                "paused": "false",
-            }
-
-            # try to send the torrent file to the qBittorrent client for seeding
-            add_response = qbit_request("post", "/torrents/add", data=data, files=files)
-            if add_response.status_code == 200:
-                added += 1
-            else:
-                logger.error(f"[QBIT] Failed to add torrent {torrent_metadata['name']}: {add_response.status_code} {add_response.text}")
-
+            # add to the libtorrent session
+            libtorrent_session.add_torrent(params)
+            added += 1
         except Exception as e:
-            logger.error(f"[QBIT] Error preparing/adding torrent '{torrent_metadata['name']}': {e}")
-
-    logger.info(f"[QBIT] Added {added}/{len(torrents_to_add)} torrents to client")
+            logger.error(f"[SEEDER] Failed to add {torrent_metadata["name"]}: {e}")
+    if added > 0:
+        logger.info(f"[SEEDER] Added {added} torrents to seed client")
 
 
 async def load_torrents_threadsafe():
@@ -274,7 +214,7 @@ async def scan_media_library():
     Will walk over all defined category paths, each single file gets turned into a single torrent file
     Will ignore existing and correctly uploaded torrent files
     Torrent creation is batched into a multi-threaded executor, number of threads defined by user
-    Will attempt to use send_torrent_to_indexer() and qbit_get_torrents() for each torrent if conditions are met
+    Will attempt to use send_torrent_to_indexer() and seed_torrents() for each torrent if conditions are met
     """
     torrents = await load_torrents_threadsafe()
     torrents_by_path = {t["path"]: t for t in torrents}
@@ -292,6 +232,7 @@ async def scan_media_library():
             for f in files:
                 total_files += 1
 
+                # skip files that have non-whitelisted extensions
                 file_path = os.path.join(root, f)
                 extension = os.path.splitext(os.path.basename(file_path))[1].replace(".", "")
                 if extension not in MOVIE_EXTENSIONS:
@@ -310,9 +251,6 @@ async def scan_media_library():
     if len(futures) > 0:
         logger.info(f"[SCAN] Queued {len(futures)} torrents for creation")
 
-    # get current list of torrents on qBittorrent
-    qbit_existing = qbit_get_torrents()
-
     # collect the workers as they finish and process their output
     for future in asyncio.as_completed(futures):
         try:
@@ -329,8 +267,8 @@ async def scan_media_library():
                 torrents_by_path[torrent_metadata["path"]] = torrent_metadata
                 await save_torrents_threadsafe(list(torrents_by_path.values()))
 
-                # attempt to add the torrent to qBittorrent right away for immediate seeding
-                qbit_add_torrents([torrent_metadata], qbit_existing)
+                # attempt to add the torrent to the libtorrent session right away for immediate seeding
+                seed_torrents([torrent_metadata])
 
                 logger.info(f"[SCAN] Created or updated torrent: {torrent_metadata["name"]}")
         except Exception as e:
@@ -346,8 +284,8 @@ async def scan_media_library():
         else:
             logger.info(f"[SCAN] Media files missing for '{torrent["name"]}', removed it from database")
 
-    # attempt to add any missing files to the qBittorrent client for seeding
-    qbit_add_torrents(still_existing)
+    # attempt to add any missing files to the libtorrent session for seeding
+    seed_torrents(still_existing)
 
     await save_torrents_threadsafe(still_existing)
 
@@ -388,6 +326,30 @@ async def periodic_scan():
         except Exception as e:
             logger.error(f"[SCAN] Error during periodic scan: {e}")
         await asyncio.sleep(SCAN_INTERVAL)
+
+
+async def periodic_torrent_status():
+    """
+    Periodically check torrent status and log peer connections/disconnections
+    and status changes every 5 seconds.
+    """
+    while True:
+        try:
+            # poll torrent statuses
+            torrents = libtorrent_session.get_torrents()
+            for t in torrents:
+                status = t.status()
+                name = status.name
+                new_state = str(status.state)
+
+                # detect non seeding torrents and report
+                if new_state != "seeding":
+                    logger.info(f"[STATUS] Torrent '{name}' is not seeding (currently in {new_state})")
+
+        except Exception as e:
+            logger.error(f"[STATUS] Error in torrent status loop: {e}")
+
+        await asyncio.sleep(5)
 
 
 # ---- General Setup ----
@@ -432,16 +394,18 @@ except Exception as e:
     logger.error(f"[APP] Failed to validate API key: {e}")
     exit(1)
 
-# try to authenticate with the qBittorrent API, otherwise fail
-QBIT_HOST = os.getenv("QBIT_HOST")
-QBIT_USERNAME = os.getenv("QBIT_USERNAME")
-QBIT_PASSWORD = os.getenv("QBIT_PASSWORD")
-try:
-    qbit_login()
-    logger.info(f"[APP] qBittorrent connection is working")
-except Exception as e:
-    logger.error(f"[APP] qBittorrent connection failed: {e}")
-    exit(1)
+TORRENTING_PORT = int(os.getenv("TORRENTING_PORT", "6881"))
+
+# init the libtorrent client session
+settings = {"listen_interfaces": f"0.0.0.0:{TORRENTING_PORT}",  # listen on all IPv4 interfaces
+            "active_downloads": 0,  # disable downloads
+            "active_seeds": -1,  # allow unlimited seeds
+            "enable_dht": False, "enable_lsd": False, "enable_upnp": False,  # disable non-private torrent features
+            "out_enc_policy": 0,  # force encrypted outgoing connections
+            "in_enc_policy": 0,  # force encrypted incoming connections
+            "validate_https_trackers": False,  # necessary because of OPENSSL stuff
+            }
+libtorrent_session = lt.session(settings)
 
 # initialize the threadsafe file lock for the JSON database
 torrents_lock = asyncio.Lock()
@@ -453,7 +417,11 @@ if __name__ == "__main__":
 
         # send the scan task to the asyncio scheduler
         scan_task = asyncio.create_task(periodic_scan())
-        await asyncio.gather(scan_task)
+
+        # send the torrent status task to the asyncio scheduler
+        status_task = asyncio.create_task(periodic_torrent_status())
+
+        await asyncio.gather(scan_task, status_task)
         return None
 
 
