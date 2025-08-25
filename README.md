@@ -49,7 +49,8 @@ Use the provided `docker-compose.yml` and adjust paths and environment variables
 
 ### 4. Port forwarding
 
----
+Map the same port you're using **INSIDE** the container to the port **OUTSIDE** the container on the host
+Otherwise the client will start advertising a different port than it's actually reachable on.
 
 ### 6. Start Client
 
@@ -105,6 +106,7 @@ services:
       - privateindexer-net
     ports:
       - "6881:6881"
+      - "6881:6881/udp"
     logging:
       options:
         max-size: 10m
