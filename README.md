@@ -27,16 +27,14 @@ Use the provided `docker-compose.yml` and adjust paths and environment variables
 
 ### 2. Configure Environment Variables
 
-| Variable           | Default Value     | Description                                                                                                      | Example              |
-|--------------------|-------------------|------------------------------------------------------------------------------------------------------------------|----------------------|
-| `MOVIE_DIR`        | *None (required)* | Path inside the container to your movie media library. (Make sure to mount it to the host somewhere - step 3.)   | `/data/media/movies` |
-| `MOVIE_EXTENSIONS` | `mp4,mkv,m4v,avi` | File extensions (comma-separated) to whitelist for torrent creation during scans.                                |                      |
-| `SCANNER_THREADS`  | `8`               | Number of async threads for scanning media. Recommend matching CPU cores.                                        |                      |
-| `SCAN_INTERVAL`    | `15`              | Minutes between media library scans.                                                                             |                      |
-| `API_KEY`          | *None (required)* | Your assigned API key (contact David if you don’t have one).                                                     | `abcdef123456`       |
-| `TORRENTING_PORT`  | `6881`            | Port accepting connections from other torrent clients. (Make sure to bind this to host and forward in router)    |                      |
-
----
+| Variable           | Default Value     | Description                                                                                                    | Example              |
+|--------------------|-------------------|----------------------------------------------------------------------------------------------------------------|----------------------|
+| `MOVIE_DIR`        | *None (required)* | Path inside the container to your movie media library. (Make sure to mount it to the host somewhere - step 3.) | `/data/media/movies` |
+| `MOVIE_EXTENSIONS` | `mp4,mkv,m4v,avi` | File extensions (comma-separated) to whitelist for torrent creation during scans.                              |                      |
+| `SCANNER_THREADS`  | `8`               | Number of async threads for scanning media. Recommend matching CPU cores.                                      |                      |
+| `SCAN_INTERVAL`    | `15`              | Minutes between media library scans.                                                                           |                      |
+| `API_KEY`          | *None (required)* | Your assigned API key (contact David if you don’t have one).                                                   | `abcdef123456`       |
+| `TORRENTING_PORT`  | `6881`            | Port accepting connections from other torrent clients. (Make sure to bind this to host and forward in router)  |                      |
 
 ### 3. Configure Volumes
 
@@ -44,8 +42,6 @@ Use the provided `docker-compose.yml` and adjust paths and environment variables
 |--------------------|:-------------------------------------------------------------------------------------------------------|---------------------------------------------------|
 | `/app/data`        | Persistent storage inside the app for storing torrent files (.torrent) and torrent metadata for cache. | `/humehouse/privateindexer/client/data:/app/data` |
 | *Depends on setup* | Movie library location. Path **inside** container MUST match `MOVIE_DIR` environment variable.         | `/data/media/movies:/data/media/movies`           |
-
----
 
 ### 4. Port forwarding
 
