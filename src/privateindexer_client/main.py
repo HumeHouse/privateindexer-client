@@ -6,7 +6,7 @@ import requests
 from fastapi import FastAPI
 
 from privateindexer_client.core import torrent_client, scan
-from privateindexer_client.core.config import TORRENTS_DIR, SCAN_INTERVAL, SCANNER_THREADS, MOVIE_DIR, CATEGORY_PATHS, INDEXER_API_URL, API_KEY
+from privateindexer_client.core.config import TORRENTS_DIR, SCAN_INTERVAL, SCANNER_THREADS, MOVIE_DIR, CATEGORY_PATHS, INDEXER_API_URL, API_KEY, TORRENTING_PORT
 from privateindexer_client.core.logger import log
 
 APP_VERSION = "1.1.0"
@@ -54,6 +54,7 @@ async def lifespan(_: FastAPI):
         log.error(f"[APP] Failed to validate API key: {e}")
         exit(1)
 
+    log.info(f"[APP] Creating libtorrent session, listening on port {TORRENTING_PORT}")
     # init the libtorrent client session
     torrent_client.create_libtorrent_session()
 
@@ -66,7 +67,7 @@ async def lifespan(_: FastAPI):
 
     yield
 
-    log.info(f"[APP] Shutting down PrivateIndexer")
+    log.info(f"[APP] Shutting down PrivateIndexer client")
 
 
 app = FastAPI(lifespan=lifespan)
