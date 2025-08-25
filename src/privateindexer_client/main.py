@@ -14,7 +14,7 @@ APP_VERSION = "1.1.0"
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
-    log.info(f"[APP] Loading PrivateIndexer client v{APP_VERSION}")
+    log.info(f"[APP] Starting PrivateIndexer client v{APP_VERSION}")
 
     # check if the torrent storage directory exists, otherwise create it
     if os.path.exists(TORRENTS_DIR):
@@ -58,7 +58,8 @@ async def lifespan(_: FastAPI):
     # init the libtorrent client session
     torrent_client.create_libtorrent_session()
 
-    log.info("[APP] Starting PrivateIndexer scan task")
+    log.info("[APP] Starting periodic tasks")
+
     # send the scan task to the asyncio scheduler
     asyncio.create_task(scan.periodic_scan_task())
 
