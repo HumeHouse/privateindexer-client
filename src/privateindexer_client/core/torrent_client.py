@@ -32,16 +32,16 @@ def get_seeding_torrents() -> list:
     return libtorrent_session.get_torrents()
 
 
-def seed_torrents(torrents_to_add: list[dict]):
+def add_torrents(torrents_to_add: list[dict], force_seed_mode: bool = False):
     """
-    Add multiple torrent files to libtorrent session for seeding
+    Add multiple torrent files to libtorrent session
     Ensures torrent file exists before adding
     """
     added = 0
     for torrent_metadata in torrents_to_add:
         torrent_path = os.path.join(TORRENTS_DIR, f"{torrent_metadata['name']}.torrent")
         if not os.path.exists(torrent_path):
-            log.error(f"[SEEDER] Torrent file not found: {torrent_path}")
+            log.error(f"[TORCLIENT] Torrent file not found: {torrent_path}")
             continue
 
         try:
@@ -55,16 +55,19 @@ def seed_torrents(torrents_to_add: list[dict]):
             info = lt.torrent_info(torrent_path)
             info.add_tracker(f"{ANNOUNCE_TRACKER_URL}?apikey={API_KEY}")
 
-            flags = lt.torrent_flags.default_flags | lt.torrent_flags.seed_mode
-            params = {"ti": info, "save_path": os.path.dirname(torrent_metadata["path"]), "flags": flags}
+            params = {"ti": info, "save_path": os.path.dirname(torrent_metadata["path"])}
+
+            if force_seed_mode:
+                flags = lt.torrent_flags.default_flags | lt.torrent_flags.seed_mode
+                params["flags"] = flags
 
             # add to the libtorrent session
             libtorrent_session.add_torrent(params)
             added += 1
         except Exception as e:
-            log.error(f"[SEEDER] Failed to add {torrent_metadata["name"]}: {e}")
+            log.error(f"[TORCLIENT] Failed to add {torrent_metadata["name"]}: {e}")
     if added > 0:
-        log.info(f"[SEEDER] Added {added} torrents to seed client")
+        log.info(f"[TORCLIENT] Added {added} torrents to seed client")
 
 
 async def periodic_torrent_status_task():

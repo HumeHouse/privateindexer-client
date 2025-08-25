@@ -70,7 +70,7 @@ async def scan_media_library():
                 await database.save_torrents_threadsafe(list(torrents_by_path.values()))
 
                 # attempt to add the torrent to the libtorrent session right away for immediate seeding
-                torrent_client.seed_torrents([torrent_metadata])
+                torrent_client.add_torrents([torrent_metadata], True)
 
                 log.info(f"[SCAN] Created or updated torrent: {torrent_metadata["name"]}")
         except Exception as e:
@@ -87,7 +87,7 @@ async def scan_media_library():
             log.info(f"[SCAN] Media files missing for '{torrent["name"]}', removed it from database")
 
     # attempt to add any missing files to the libtorrent session for seeding
-    torrent_client.seed_torrents(still_existing)
+    torrent_client.add_torrents(still_existing, True)
 
     await database.save_torrents_threadsafe(still_existing)
 
