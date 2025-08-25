@@ -67,7 +67,7 @@ def seed_torrents(torrents_to_add: list[dict]):
         log.info(f"[SEEDER] Added {added} torrents to seed client")
 
 
-async def periodic_torrent_status():
+async def periodic_torrent_status_task():
     """
     Periodically check torrent status and log peer connections/disconnections
     and status changes every 5 seconds.

@@ -60,10 +60,10 @@ async def lifespan(_: FastAPI):
 
     log.info("[APP] Starting PrivateIndexer scan task")
     # send the scan task to the asyncio scheduler
-    asyncio.create_task(scan.periodic_scan())
+    asyncio.create_task(scan.periodic_scan_task())
 
     # send the torrent status task to the asyncio scheduler
-    asyncio.create_task(torrent_client.periodic_torrent_status())
+    asyncio.create_task(torrent_client.periodic_torrent_status_task())
 
     yield
 
