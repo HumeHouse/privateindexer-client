@@ -71,21 +71,18 @@ def add_torrents(torrents_to_add: list[dict], force_seed_mode: bool = False):
 
 async def periodic_torrent_status_task():
     """
-    Periodically check torrent status and log peer connections/disconnections
+    Periodically check torrent status and validate error status
     and status changes every 5 seconds.
     """
     while True:
         try:
-            # poll torrent statuses
             torrents = libtorrent_session.get_torrents()
             for t in torrents:
                 status = t.status()
-                name = status.name
-                new_state = str(status.state)
 
-                # detect non seeding torrents and report
-                if new_state != "seeding":
-                    log.info(f"[STATUS] Torrent '{name}' is not seeding (currently in {new_state})")
+                name = status.name
+                if status.errc and status.errc.value() != 0:
+                    log.error(f"[STATUS] Torrent '{name}' is in error state")
 
         except Exception as e:
             log.error(f"[STATUS] Error in torrent status loop: {e}")
