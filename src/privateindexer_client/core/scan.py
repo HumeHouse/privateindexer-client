@@ -83,7 +83,8 @@ async def scan_media_library():
         if os.path.exists(torrent["path"]):
             still_existing.append(torrent)
         else:
-            log.info(f"[SCAN] Media files missing for '{torrent["name"]}', removed it from database")
+            log.info(f"[SCAN] Media files missing for '{torrent["name"]}', removed it from database and torrent client")
+            await torrent_client.remove_torrent_by_hash(torrent.get("hash_v2"))
 
     # attempt to add any missing files to the libtorrent session for seeding
     torrent_client.add_torrents_for_seeding(still_existing)
