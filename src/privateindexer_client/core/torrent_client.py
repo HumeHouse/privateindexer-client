@@ -47,30 +47,24 @@ def add_torrent_for_download(torrent_file: str, save_path: str) -> bool:
     try:
         # skip torrent if torrent already exists in libtorrent session
         info = lt.torrent_info(torrent_file)
+        torrent_name = info.name()
         existing = libtorrent_session.find_torrent(info.info_hash())
         if existing.is_valid():
-            log.warning(f"[TORCLIENT] Torrent already exists on client: {torrent_file}")
+            log.warning(f"[TORCLIENT] Torrent already exists on client: {torrent_name}")
             return False
+
+        # save torrent metadata to a torrent file in the torrents directory
+        torrent_file_out = os.path.join(TORRENTS_DIR, f"{torrent_name}.torrent")
+        try:
+            shutil.move(torrent_file, torrent_file_out)
+            log.info(f"[TORCLIENT] Saved torrent file for {torrent_name}")
+        except Exception as e:
+            log.error(f"[TORCLIENT] Failed to save torrent file for {torrent_name}: {e}")
 
         params = {"ti": info, "save_path": save_path}
 
-        # add to the libtorrent session and trigger a resume data save
+        # add to the libtorrent session
         torrent_handle = libtorrent_session.add_torrent(params)
-
-        status = torrent_handle.status()
-        infohash_v1 = status.info_hashes.v1.to_bytes().hex() if status.info_hashes.has_v1() else None
-        infohash_v2 = status.info_hashes.v2.to_bytes().hex() if status.info_hashes.has_v2() else None
-        # try using the v1 otherwise fall back to v2
-        torrent_hash = infohash_v1 or infohash_v2
-
-        # save torrent metadata to a torrent file in the fastresume data directory
-        torrent_file_out = os.path.join(TORRENTS_DIR, f"{torrent_hash}.torrent")
-        try:
-            shutil.move(torrent_file, torrent_file_out)
-            log.info(f"[TORCLIENT] Saved torrent file for {torrent_hash}")
-        except Exception as e:
-            log.error(f"[TORCLIENT] Failed to save torrent file for {torrent_hash}: {e}")
-
         # trigger a fastresume save task
         torrent_handle.save_resume_data()
     except Exception as e:
