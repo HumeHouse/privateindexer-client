@@ -82,7 +82,52 @@
 </head>
 <body class="bg-body">
 <div id="main-container" class="container-fluid d-flex flex-column g-0">
-    <h3 class="px-3">PrivateIndexer Dashboard</h3>
+    <div class="d-flex justify-content-between align-items-center my-1">
+        <h3 class="ms-2">PrivateIndexer Dashboard</h3>
+
+        <!-- Client-visible stats -->
+        <div id="client-stats" class="d-flex gap-3 align-items-center my-2">
+            <div class="text-center">
+                <small class="text-muted d-block">Client Torrents</small>
+            </div>
+            <div class="text-center text-success">
+                <span class="fw-bold" id="client-seeding">0</span><br><small>Uploading</small>
+            </div>
+            <div class="text-center text-info">
+                <span class="fw-bold" id="client-leeching">0</span><br><small>Downloading</small>
+            </div>
+            <div class="text-center">
+                <span class="fw-bold" id="client-total">0</span><br><small>Total</small>
+            </div>
+            <div class="text-center">
+                <span class="fw-bold" id="client-peers">0</span><br><small>Peers</small>
+            </div>
+        </div>
+
+        <!-- Global user stats -->
+        <div id="user-stats" class="d-flex gap-3 align-items-center me-2">
+            <div class="text-center">
+                <small class="text-muted d-block">PrivateIndexer Server Stats</small>
+            </div>
+            <div class="text-center text-info">
+                <span class="fw-bold" id="torrents-added">0</span><br><small>Uploaded</small>
+            </div>
+            <div class="text-center text-success">
+                <span class="fw-bold" id="currently-seeding">0</span><br><small>S</small>
+            </div>
+            <div class="text-center text-danger">
+                <span class="fw-bold" id="currently-leeching">0</span><br><small>L</small>
+            </div>
+            <div class="text-center">
+                <span class="fw-bold" id="peers-total">0</span><br><small>Swarm</small>
+            </div>
+            <div class="text-center">
+                <span class="fw-bold" id="grabs-total">0</span><br><small>Grabs</small>
+            </div>
+        </div>
+    </div>
+
+
     <div id="torrents-table-container" class="table-responsive flex-grow-1">
         <table class="table table-striped table-bordered table-hover">
             <thead>
@@ -154,9 +199,9 @@
 <script>
     let selectedTorrentId = null;
 
-    $(document).ready(() => fetchTorrents());
     $(document).ready(() => {
         fetchTorrents();
+        updateUserStats();
         $('#filter-name').on('input', applyNameFilter);
     });
 
@@ -170,17 +215,6 @@
         });
     }
 
-    function fetchTorrents() {
-        fetch("/dashboard/torrents")
-            .then(r => r.json())
-            .then(data => {
-                renderTable(data);
-                if (selectedTorrentId) {
-                    const updatedTorrent = data.find(t => t["infohash_v1"] === selectedTorrentId);
-                    if (updatedTorrent) populateInfoPanel(updatedTorrent);
-                }
-            })
-            .catch(e => console.error("Error fetching torrents:", e));
     async function fetchTorrents() {
         try {
             const r = await fetch("/dashboard/torrents");
@@ -193,11 +227,45 @@
                 const updatedTorrent = data.find(t => t["infohash_v1"] === selectedTorrentId);
                 if (updatedTorrent) populateInfoPanel(updatedTorrent);
             }
+
+            // update client-visible stats
+            updateClientStats(data);
+
         } catch (e) {
             console.error("Error fetching torrents:", e);
         }
 
         setTimeout(fetchTorrents, 5000);
+    }
+
+    function updateClientStats(torrents) {
+        let seeding = 0, leeching = 0, totalPeers = 0;
+
+        torrents.forEach(torrent => {
+            if (torrent.state === "seeding" || torrent.state === "uploading") seeding++;
+            if (torrent.state === "downloading" || torrent.state === "metaDL") leeching++;
+            totalPeers += (torrent["num_seeds"] || 0) + (torrent["num_leechs"] || 0);
+        });
+
+        $("#client-seeding").text(seeding);
+        $("#client-leeching").text(leeching);
+        $("#client-total").text(torrents.length);
+        $("#client-peers").text(totalPeers);
+    }
+
+    async function updateUserStats() {
+        fetch("/dashboard/user")
+            .then(r => r.json())
+            .then(data => {
+                $("#torrents-added").text(data["torrents_added_total"]);
+                $("#currently-seeding").text(data["currently_seeding"]);
+                $("#currently-leeching").text(data["currently_leeching"]);
+                $("#peers-total").text(data["peers_on_user_torrents"]);
+                $("#grabs-total").text(data["grabs_total"]);
+            })
+            .catch(e => console.error("Error fetching user stats:", e));
+
+        setTimeout(updateUserStats, 10000);
     }
 
     function formatBytes(bytes) {

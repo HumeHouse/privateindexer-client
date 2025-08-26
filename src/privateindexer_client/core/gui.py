@@ -1,5 +1,5 @@
 from fastapi import Request, APIRouter
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 
 from privateindexer_client.core import torrent_client, utils
@@ -19,3 +19,11 @@ async def dashboard_torrents():
     if not torrents:
         return JSONResponse({"error": "Failed to get torrents"}, status_code=500)
     return [utils.map_torrent_to_qbit(torrent) for torrent in torrents]
+
+
+@router.get("/dashboard/user")
+async def dashboard_user_stats():
+    user_data = await utils.fetch_indexer_user_data()
+    if not user_data:
+        return JSONResponse({"error": "Failed to fetch user stats"}, status_code=500)
+    return user_data

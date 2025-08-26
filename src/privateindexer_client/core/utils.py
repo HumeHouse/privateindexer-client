@@ -21,6 +21,20 @@ def detect_category(file_path: str) -> int:
     return 0
 
 
+async def fetch_indexer_user_data():
+    """
+    Request the current user's indexer statistics for use in the GUI
+    """
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.get(INDEXER_API_URL + "/user/stats", params={"apikey": API_KEY})
+            response.raise_for_status()
+            return response.json()
+    except Exception as e:
+        log.error(f"[INDEXER] Failed to fetch user stats: {e}")
+        return None
+
+
 async def send_torrent_to_indexer(metadata):
     """
     Attempt to upload the torrent file along with its metadata to the PrivateIndexer server
