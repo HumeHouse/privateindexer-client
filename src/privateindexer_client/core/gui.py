@@ -16,4 +16,6 @@ async def dashboard(request: Request):
 @router.get("/dashboard/torrents")
 async def dashboard_torrents():
     torrents = torrent_client.get_all_torrents()
+    if not torrents:
+        return JSONResponse({"error": "Failed to get torrents"}, status_code=500)
     return [utils.map_torrent_to_qbit(torrent) for torrent in torrents]
