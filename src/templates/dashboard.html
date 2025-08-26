@@ -157,8 +157,6 @@
         </table>
     </div>
 
-    <div id="resize-handle"></div>
-
     <div id="info-panel" class="bg-dark text-white border-top">
         <ul class="nav nav-tabs p-2" id="sidebarTabs" role="tablist">
             <li class="nav-item" role="presentation">
@@ -314,8 +312,8 @@
                     </div>
                 </td>
                 <td class="${rowClass}">${torrent["state"]}</td>
-                <td>${torrent["num_seeds"]}</td>
-                <td>${torrent["num_leechs"]}</td>
+                <td>${torrent["num_seeds"]} (${torrent["num_complete"]})</td>
+                <td>${torrent["num_leechs"]} (${torrent["num_incomplete"]})</td>
                 <td>${formatSpeed(torrent["dlspeed"])}</td>
                 <td>${formatSpeed(torrent["upspeed"])}</td>
                 <td>${formatTime(torrent["eta"])}</td>
