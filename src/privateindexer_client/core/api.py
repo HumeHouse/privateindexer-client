@@ -175,9 +175,10 @@ async def add_torrent(
     """
     Mimics qBittorrent endpoint /api/v2/torrents/add
     Accepts a file upload or a URL and adds it to the torrent client
-    Also accepts an optional form parameter query
+    Also accepts an optional form parameter query category
     The client will try to put the download in the directory for that category
     qBittorrent technically allows multiple URLs or files, but we don't
+    Only torrents created from PrivateIndexer are allowed
     """
     log.info(f"[API] New torrent requested ({request.headers.get("user-agent")})")
 

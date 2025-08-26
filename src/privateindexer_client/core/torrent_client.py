@@ -139,7 +139,7 @@ async def save_fastresume_to_disk(alert: lt.save_resume_data_alert):
         log.error(f"[FASTRESUME] Failed to save fastresume data: {e}")
         return
 
-    log.info(f"[FASTRESUME] Saved fastresume data for hash: {torrent_hash}")
+    log.debug(f"[FASTRESUME] Saved fastresume data for hash: {torrent_hash}")
 
 
 async def load_fastresume_data():
