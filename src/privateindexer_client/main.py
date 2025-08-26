@@ -6,7 +6,7 @@ import httpx
 from fastapi import FastAPI
 
 from privateindexer_client.core import torrent_client, scan, api, gui
-from privateindexer_client.core.config import TORRENTS_DIR, SCAN_INTERVAL, SCANNER_THREADS, MOVIE_DIR, CATEGORY_PATHS, INDEXER_API_URL, API_KEY, TORRENTING_PORT, \
+from privateindexer_client.core.config import TORRENTS_DIR, SCAN_INTERVAL, SCANNER_THREADS, MOVIE_DIR, TORZNAB_CATEGORY_PATHS, INDEXER_API_URL, API_KEY, TORRENTING_PORT, \
     DOWNLOADS_DIR, FASTRESUME_DIR
 from privateindexer_client.core.logger import log
 
@@ -39,7 +39,7 @@ async def lifespan(_: FastAPI):
             log.error(f"[APP] Movies directory doesn't exist: {MOVIE_DIR}")
             exit(1)
         log.info(f"[APP] Using movies directory: {MOVIE_DIR}")
-        CATEGORY_PATHS["movies"] = {"id": 1000, "path": MOVIE_DIR}
+        TORZNAB_CATEGORY_PATHS["movies"] = {"id": 1000, "path": MOVIE_DIR}
 
     # try to authenticate with the API to validate the API key, otherwise fail
     try:

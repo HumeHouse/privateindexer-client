@@ -7,15 +7,15 @@ import time
 import httpx
 import libtorrent as lt
 
-from privateindexer_client.core.config import CATEGORY_PATHS, API_KEY, INDEXER_API_URL, TORRENTS_DIR
+from privateindexer_client.core.config import TORZNAB_CATEGORY_PATHS, API_KEY, INDEXER_API_URL, TORRENTS_DIR
 from privateindexer_client.core.logger import log
 
 
-def detect_category(file_path: str) -> int:
+def detect_torznab_category(file_path: str) -> int:
     """
-    Tries to match the file's path with the known category directories and returns its ID
+    Tries to match the file's path with the known torznab category directories and returns its ID
     """
-    for name, cat_info in CATEGORY_PATHS.items():
+    for name, cat_info in TORZNAB_CATEGORY_PATHS.items():
         if file_path.startswith(cat_info["path"]):
             return cat_info["id"]
     return 0
@@ -116,7 +116,7 @@ def create_torrent(media_file_path: str):
         return None
 
     size = os.path.getsize(media_file_path)
-    category_id = detect_category(media_file_path)
+    category_id = detect_torznab_category(media_file_path)
 
     return {"name": torrent_name, "size": size, "path": media_file_path, "uploaded": False, "files": 1, "category": category_id, "hash_v1": torrent_hash_v1,
             "hash_v2": torrent_hash_v2}

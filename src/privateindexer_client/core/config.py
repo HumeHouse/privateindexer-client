@@ -13,7 +13,7 @@ DOWNLOADS_DIR = os.getenv("DOWNLOADS_DIR")
 
 CONFIG_FILE = "/app/data/config.json"
 
-CATEGORY_PATHS = {}
+TORZNAB_CATEGORY_PATHS = {}
 
 INDEXER_API_URL = "https://indexer.humehouse.com"
 ANNOUNCE_TRACKER_URL = "https://tracker.humehouse.com/announce"

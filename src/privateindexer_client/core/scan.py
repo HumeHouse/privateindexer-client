@@ -4,7 +4,7 @@ import os
 from concurrent.futures import ProcessPoolExecutor
 
 from privateindexer_client.core import torrent_client, database, utils
-from privateindexer_client.core.config import TORRENTS_DIR, SCAN_INTERVAL, SCANNER_THREADS, CATEGORY_PATHS, MOVIE_EXTENSIONS
+from privateindexer_client.core.config import TORRENTS_DIR, SCAN_INTERVAL, SCANNER_THREADS, TORZNAB_CATEGORY_PATHS, MOVIE_EXTENSIONS
 from privateindexer_client.core.logger import log
 
 EXECUTOR = ProcessPoolExecutor(max_workers=SCANNER_THREADS)
@@ -29,7 +29,7 @@ async def scan_media_library():
     futures = []
 
     # loop through all files in the media directories
-    for category_key, cat_info in CATEGORY_PATHS.items():
+    for category_key, cat_info in TORZNAB_CATEGORY_PATHS.items():
         for root, _, files in os.walk(cat_info["path"]):
             for f in files:
                 total_files += 1
