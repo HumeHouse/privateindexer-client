@@ -4,8 +4,8 @@ import os
 import secrets
 import time
 
+import httpx
 import libtorrent as lt
-import requests
 
 from privateindexer_client.core.config import CATEGORY_PATHS, API_KEY, INDEXER_API_URL, TORRENTS_DIR
 from privateindexer_client.core.logger import log
@@ -21,11 +21,12 @@ def detect_category(file_path: str) -> int:
     return 0
 
 
-def send_torrent_to_indexer(torrent_file, metadata):
+async def send_torrent_to_indexer(metadata):
     """
     Attempt to upload the torrent file along with its metadata to the PrivateIndexer server
     Will mark a file as uploaded in the database if the server API returns a 409 status code
     """
+    torrent_file = os.path.join(TORRENTS_DIR, f"{metadata["name"]}.torrent")
     try:
         with open(torrent_file, "rb") as f:
             # build the request with all the necessary torrent metadata required by indexer
@@ -34,18 +35,20 @@ def send_torrent_to_indexer(torrent_file, metadata):
                 {"name": metadata["name"], "size": metadata["size"], "category": metadata["category"], "hash_v1": metadata.get("hash_v1"),
                  "hash_v2": metadata.get("hash_v2"), "files": metadata["files"]})}
 
-            response = requests.post(f"{INDEXER_API_URL}/create", data=data, files=files)
+            async with httpx.AsyncClient() as client:
+                response = await client.post(INDEXER_API_URL + "/create", data=data, files=files)
+                response.raise_for_status()
 
-            # based on the response from API, we will know status of upload
-            if response.status_code == 200:
-                log.info(f"[INDEXER] Successfully sent '{metadata["name"]}' to indexer")
-                return True
-            elif response.status_code == 409:
-                log.info(f"[INDEXER] Torrent {metadata.get('name')} already exists on indexer, marking as uploaded")
-                return True
-            else:
-                log.error(f"[INDEXER] Failed to send '{metadata["name"]}' to indexer, will retry later: {response.status_code}")
-                return False
+                # based on the response from API, we will know status of upload
+                if response.status_code == 200:
+                    log.info(f"[INDEXER] Successfully sent '{metadata["name"]}' to indexer")
+                    return True
+                elif response.status_code == 409:
+                    log.info(f"[INDEXER] Torrent {metadata.get('name')} already exists on indexer, marking as uploaded")
+                    return True
+                else:
+                    log.error(f"[INDEXER] Failed to send '{metadata["name"]}' to indexer, will retry later: {response.status_code}")
+                    return False
     except Exception as e:
         log.error(f"[INDEXER] Exception while sending '{metadata["name"]}' to indexer, will retry later: {e}")
         return False

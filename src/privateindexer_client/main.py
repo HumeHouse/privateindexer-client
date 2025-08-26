@@ -2,12 +2,12 @@ import asyncio
 import os
 from contextlib import asynccontextmanager
 
-import requests
+import httpx
 from fastapi import FastAPI
 
 from privateindexer_client.core import torrent_client, scan, api, gui
 from privateindexer_client.core.config import TORRENTS_DIR, SCAN_INTERVAL, SCANNER_THREADS, MOVIE_DIR, CATEGORY_PATHS, INDEXER_API_URL, API_KEY, TORRENTING_PORT, \
-    DOWNLOADS_DIR
+    DOWNLOADS_DIR, FASTRESUME_DIR
 from privateindexer_client.core.logger import log
 
 APP_VERSION = "1.2.0"
@@ -47,17 +47,18 @@ async def lifespan(_: FastAPI):
     try:
         status_code = None
         while status_code not in (403, 200):
-            indexer_response = requests.get(f"{INDEXER_API_URL}/user?apikey={API_KEY}&v={APP_VERSION}")
-            status_code = indexer_response.status_code
-            if status_code == 200:
-                TORRENT_SIGNER = indexer_response.text
-                log.info(f"[APP] Connected to PrivateIndexer server as '{TORRENT_SIGNER}'")
-            elif status_code == 403:
-                log.error(f"[APP] API key rejected by PrivateIndexer server")
-                exit(1)
-            else:
-                log.error(f"[APP] PrivateIndexer server unavailable, trying again in 30 seconds")
-                await asyncio.sleep(30)
+            async with httpx.AsyncClient() as client:
+                indexer_response = await client.get(INDEXER_API_URL + "/user", params={"apikey": API_KEY, "v": APP_VERSION})
+                status_code = indexer_response.status_code
+                if status_code == 200:
+                    TORRENT_SIGNER = indexer_response.text
+                    log.info(f"[APP] Connected to PrivateIndexer server as '{TORRENT_SIGNER}'")
+                elif status_code == 403:
+                    log.error(f"[APP] API key rejected by PrivateIndexer server")
+                    exit(1)
+                else:
+                    log.error(f"[APP] PrivateIndexer server unavailable, trying again in 30 seconds")
+                    await asyncio.sleep(30)
     except Exception as e:
         log.error(f"[APP] Failed to validate API key: {e}")
         exit(1)

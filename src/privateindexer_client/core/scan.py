@@ -59,11 +59,10 @@ async def scan_media_library():
             torrent_metadata = await future
             if torrent_metadata:
                 created_files += 1
-                torrent_file = os.path.join(TORRENTS_DIR, f"{torrent_metadata['name']}.torrent")
 
                 # attempt to send torrent file to indexer server
                 if not torrent_metadata["uploaded"]:
-                    if utils.send_torrent_to_indexer(torrent_file, torrent_metadata):
+                    if await utils.send_torrent_to_indexer(torrent_metadata):
                         torrent_metadata["uploaded"] = True
 
                 torrents_by_path[torrent_metadata["path"]] = torrent_metadata
@@ -116,13 +115,21 @@ async def periodic_scan_task():
             updated = False
             # attempt to resend all failed uploads to indexer server
             for torrent in torrents:
-                if not torrent.get("uploaded", False):
-                    torrent_file = os.path.join(TORRENTS_DIR, f"{torrent['name']}.torrent")
-                    if os.path.exists(torrent_file):
-                        log.info(f"[INDEXER] Attempting to resend torrent to indexer: '{torrent['name']}'")
-                        if utils.send_torrent_to_indexer(torrent_file, torrent):
-                            torrent["uploaded"] = True
-                            updated = True
+                if torrent.get("uploaded"):
+                    continue
+
+                torrent_file = os.path.join(TORRENTS_DIR, f"{torrent["name"]}.torrent")
+                if os.path.exists(torrent_file):
+                    log.info(f"[SCAN] Attempting to resend torrent to indexer: '{torrent["name"]}'")
+                    if await utils.send_torrent_to_indexer(torrent):
+                        torrent["uploaded"] = True
+                        updated = True
+
+                # torrent file is missing, remove the entry from database so it can be regenerated on next scan
+                else:
+                    torrents.pop(torrent)
+                    updated = True
+                    log.warning(f"[SCAN] Torrent file doesn't exist, removed from database: '{torrent_file}'")
             if updated:
                 await database.save_torrents_threadsafe(torrents)
         except Exception as e:
