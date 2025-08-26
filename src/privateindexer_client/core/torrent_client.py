@@ -118,7 +118,14 @@ def add_torrents_for_seeding(torrents_to_add: list[dict]):
         log.info(f"[TORCLIENT] Added {added} torrent(s) to libtorrent client")
 
 
-async def save_fastresume_to_disk(alert: lt.save_resume_data_alert):
+async def remove_torrent_by_hash(torrent_hash: str):
+    info_hash = lt.sha1_hash(bytes.fromhex(torrent_hash))
+    existing = libtorrent_session.find_torrent(info_hash)
+    if existing.is_valid():
+        libtorrent_session.remove_torrent(existing)
+
+
+async def save_fastresume_to_disk(alert: lt.save_resume_data_alert) -> str | None:
     """
     Takes the alert from libtorrent and processes the fastresume data into a file on the disk
     """
@@ -137,9 +144,10 @@ async def save_fastresume_to_disk(alert: lt.save_resume_data_alert):
             f.write(lt.bencode(alert.resume_data))
     except Exception as e:
         log.error(f"[FASTRESUME] Failed to save fastresume data: {e}")
-        return
+        return None
 
     log.debug(f"[FASTRESUME] Saved fastresume data for hash: {torrent_hash}")
+    return torrent_hash
 
 
 async def load_fastresume_data():
@@ -176,12 +184,14 @@ async def load_fastresume_data():
             log.error(f"[FASTRESUME] Failed to read fastresume data for hash: {base}: {e}")
 
 
-def save_all_fastresume_data():
+async def save_all_fastresume_data():
     """
-    Immediately schedules a save of fastresume data for all torrens in the session
+    Immediately schedules a save of fastresume data for all torrents in the session
+    This function waits for all alerts to clear before finishing
     """
     try:
         torrents = libtorrent_session.get_torrents()
+        hashes_to_await = set()
         for torrent in torrents:
             try:
                 status = torrent.status()
@@ -189,8 +199,23 @@ def save_all_fastresume_data():
                 # only save fastresume data for torrents that are downloading
                 if status.state == lt.torrent_status.downloading:
                     torrent.save_resume_data()
+                    infohash_v1 = status.info_hashes.v1.to_bytes().hex() if status.info_hashes.has_v1() else None
+                    infohash_v2 = status.info_hashes.v2.to_bytes().hex() if status.info_hashes.has_v2() else None
+                    # try using the v1 otherwise fall back to v2
+                    torrent_hash = infohash_v1 or infohash_v2
+                    hashes_to_await.add(torrent_hash)
             except Exception as e:
                 log.error(f"[FASTRESUME] Error saving fastresume data for torrent: {e}")
+        while len(hashes_to_await) > 0:
+            alerts = libtorrent_session.pop_alerts()
+            for alert in alerts:
+
+                # process fastresume alerts
+                if isinstance(alert, lt.save_resume_data_alert):
+
+                    torrent_hash = await save_fastresume_to_disk(alert)
+                    if torrent_hash:
+                        hashes_to_await.remove(torrent_hash)
 
     except Exception as e:
         log.error(f"[FASTRESUME] Error saving fastresume data for all torrents: {e}")

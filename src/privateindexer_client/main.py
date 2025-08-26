@@ -95,7 +95,7 @@ async def lifespan(_: FastAPI):
     alerts_task.cancel()
 
     log.info(f"[APP] Saving fastresume data")
-    torrent_client.save_all_fastresume_data()
+    await torrent_client.save_all_fastresume_data()
 
     log.info(f"[APP] Shutdown complete")
 
