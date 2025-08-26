@@ -178,6 +178,7 @@ async def periodic_torrent_status_task():
     """
     Periodically check torrent status and validate error status every 5 seconds.
     """
+    log.info("[STATUS] Task loop started")
     while True:
         try:
             torrents = libtorrent_session.get_torrents()

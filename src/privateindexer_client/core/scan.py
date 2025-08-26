@@ -38,7 +38,7 @@ async def scan_media_library():
                 file_path = os.path.join(root, f)
                 extension = os.path.splitext(os.path.basename(file_path))[1].replace(".", "")
                 if extension not in MOVIE_EXTENSIONS:
-                    log.info(f"[SCAN] Skipping file with {extension} extension")
+                    log.debug(f"[SCAN] Skipping file with {extension} extension")
                     continue
 
                 # ignore the media file if it has already been uploaded according to the database
@@ -100,6 +100,7 @@ async def periodic_scan_task():
     Wraps scan_media_library() asynchronously and periodically scans media libraries defined by user
     Will also attempt to resend failed uploads torrents to the PrivateIndexer server after each scan
     """
+    log.info("[SCAN] Task loop started")
     while True:
         try:
             log.info("[SCAN] Running media library scan")
