@@ -1,5 +1,8 @@
+import hashlib
 import json
 import os
+import secrets
+import time
 
 import libtorrent as lt
 import requests
@@ -111,3 +114,156 @@ def create_torrent_threadsafe(file_path: str):
     except Exception as e:
         log.error(f"[TORRENT] Failed to create torrent for '{file_path}': {e}")
         return None
+
+
+def generate_sid(api_key: str) -> str:
+    """
+    Generate a simple session ID based on the user's API key
+    """
+    nonce = secrets.token_hex(16)
+    raw = f"{api_key}:{nonce}:{time.time()}"
+    return hashlib.sha256(raw.encode()).hexdigest()
+
+
+def calc_eta(status: lt.torrent_status) -> int:
+    """
+    Calculate an eta based on torrent status (partially matched to how qBittorrent source does it)
+    """
+    if status.download_rate > 0 and status.total_wanted > 0:
+        remaining = status.total_wanted - status.total_wanted_done
+        return int(remaining / status.download_rate)
+    return 8640000  # qBittorrent uses 100 days as "infinite ETA"
+
+
+def safe_ratio(status: lt.torrent_status) -> float:
+    if status.total_payload_download > 0:
+        return status.total_payload_upload / status.total_payload_download
+    return 0.0
+
+
+def map_state(status: lt.torrent_status) -> str:
+    """
+    Map libtorrent state to qBittorrent string
+    """
+    if status.errc and status.errc.value() != 0:
+        return "error"
+    mapping = {lt.torrent_status.checking_files: "checkingDL", lt.torrent_status.downloading_metadata: "metaDL", lt.torrent_status.downloading: "downloading",
+               lt.torrent_status.finished: "stalledUP", lt.torrent_status.seeding: "uploading", lt.torrent_status.checking_resume_data: "checkingResumeData", }
+    return mapping.get(status.state, "unknown")
+
+
+def format_peer_flags(peer: lt.peer_info):
+    """
+    Convert a libtorrent peer_info.flags + peer_info.source into a qBittorrent-style string
+    https://web.archive.org/web/20141111072948/http://www.utorrent.com/help/faq/misc#faq13
+    """
+    flags = []
+
+    # downloading states
+    if peer.flags & peer.interesting:
+        if peer.flags & peer.choked:
+            flags.append("d")  # interested, but peer choked us
+        else:
+            flags.append("D")  # actively downloading
+
+    # uploading states
+    if peer.flags & peer.remote_interested:
+        if peer.flags & peer.remote_choked:
+            flags.append("u")  # they want, but we choke
+        else:
+            flags.append("U")  # uploading to them
+
+    # optimistic unchoke
+    if peer.flags & peer.optimistic_unchoke:
+        flags.append("O")
+
+    # snubbed
+    if peer.flags & peer.snubbed:
+        flags.append("S")
+
+    # incoming connection
+    if peer.flags & peer.local_connection:
+        flags.append("I")
+
+    # unchoked by peer but we're not interested
+    if not (peer.flags & peer.interesting) and not (peer.flags & peer.choked):
+        flags.append("K")
+
+    # we unchoked them but they’re not interested
+    if not (peer.flags & peer.remote_interested) and not (peer.flags & peer.remote_choked):
+        flags.append("?")
+
+    # peer sources
+    if peer.source & peer.pex:
+        flags.append("X")
+    if peer.source & peer.dht:
+        flags.append("H")
+
+    # encrypted
+    if peer.flags & peer.rc4_encrypted:
+        flags.append("E")
+    elif peer.flags & peer.plaintext_encrypted:
+        flags.append("e")
+
+    # # uTP
+    # if peer.flags & peer.utp_socket:
+    #     flags.append("P")
+
+    # local peer
+    if peer.flags & peer.i2p_socket:
+        flags.append("L")
+
+    return "".join(flags)
+
+
+def map_torrent_to_qbit(torrent: lt.torrent_handle) -> dict:
+    """
+    Convert a libtorrent.torrent_status object into a qBittorrent-compatible dict
+    Most of this is default or general taken from the qBittorrent API docs
+    Many of the keys were removed because they weren't required by the apps
+    """
+    status = torrent.status()
+
+    # here we have to normalize the infohashes because they are raw bytes out of the status
+    infohash_v1 = status.info_hashes.v1.to_bytes().hex() if status.info_hashes.has_v1() else None
+    infohash_v2 = (status.info_hashes.v2.to_bytes().hex()) if status.info_hashes.has_v2() else None
+    # qBittorrent "hash" field is always the v1 hash if available, otherwise fall back to v2
+    torrent_hash = infohash_v1 or infohash_v2
+
+    mapped = {"added_on": int(status.added_time or 0), "amount_left": int(status.total_wanted - status.total_wanted_done), "availability": status.distributed_copies,
+              "completed": int(status.total_done), "completion_on": int(status.completed_time or -1), "content_path": os.path.join(status.save_path, status.name),
+              "dlspeed": status.download_rate, "download_path": status.save_path, "downloaded": status.all_time_download,
+              "downloaded_session": status.total_payload_download, "eta": calc_eta(status), "has_metadata": status.has_metadata, "hash": torrent_hash,
+              "infohash_v1": infohash_v1 or "", "infohash_v2": infohash_v2 or "", "name": status.name, "num_complete": status.num_complete,
+              "num_incomplete": status.num_incomplete, "num_leechs": max(0, status.num_peers - status.num_seeds), "num_seeds": status.num_seeds,
+              "progress": round(status.progress, 3), "ratio": safe_ratio(status), "ratio_limit": -1, "reannounce": int(status.next_announce.total_seconds()),
+              "save_path": status.save_path, "seeding_time": int(status.seeding_duration.total_seconds()), "seeding_time_limit": -1,
+              "seen_complete": int(status.last_seen_complete or -1), "seq_dl": bool(status.flags & lt.torrent_flags.sequential_download), "size": status.total_wanted,
+              "state": map_state(status), "time_active": int(status.active_duration.total_seconds()), "total_size": status.total, "tracker": status.current_tracker,
+              "trackers_count": 1 if status.current_tracker else 0, "uploaded": status.all_time_upload, "uploaded_session": status.total_payload_upload,
+              "upspeed": status.upload_rate, }
+
+    peers_list = []
+    for p in torrent.get_peer_info():
+        peers_list.append({
+            "ip": p.ip[0],
+            "port": p.ip[1],
+            "client": p.client.decode("utf-8", errors="ignore") if isinstance(p.client, bytes) else str(p.client),
+            "flags": format_peer_flags(p),
+            "up_speed": p.up_speed,
+            "down_speed": p.down_speed,
+            "progress": p.progress,
+        })
+    mapped["peers"] = peers_list
+
+    trackers_list = []
+    for t in torrent.trackers():
+        trackers_list.append({
+            "url": t["url"],
+            "verified": t["verified"],
+            "next_announce": t.get("next_announce"),
+            "min_announce": t.get("min_announce")
+        })
+    mapped["trackers"] = trackers_list
+
+    return mapped

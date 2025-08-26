@@ -32,7 +32,36 @@ def get_all_torrents() -> list:
     return libtorrent_session.get_torrents()
 
 
-def add_torrents(torrents_to_add: list[dict], force_seed_mode: bool = False):
+def add_torrent_for_download(torrent_file: str, save_path: str) -> bool:
+    """
+    Adds a single torrent file to libtorrent session
+    """
+    if not os.path.exists(torrent_file):
+        log.error(f"[TORCLIENT] Torrent file not found: {torrent_file}")
+        return False
+
+    # attempt to add the torrent to the client
+    try:
+        # skip torrent if torrent already exists in libtorrent session
+        info = lt.torrent_info(torrent_file)
+        existing = libtorrent_session.find_torrent(info.info_hash())
+        if existing.is_valid():
+            log.warning(f"[TORCLIENT] Torrent already exists on client: {torrent_file}")
+            return False
+
+        params = {"ti": info, "save_path": save_path}
+
+        # add to the libtorrent session
+        libtorrent_session.add_torrent(params)
+    except Exception as e:
+        log.error(f"[TORCLIENT] Failed to add new torrent: {e}")
+        return False
+
+    log.info(f"[TORCLIENT] Added new torrent to libtorrent client: {torrent_file}")
+    return True
+
+
+def add_torrents_for_seeding(torrents_to_add: list[dict]):
     """
     Add multiple torrent files to libtorrent session
     Ensures torrent file exists before adding
