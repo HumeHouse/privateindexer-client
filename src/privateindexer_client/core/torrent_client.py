@@ -15,7 +15,7 @@ def create_libtorrent_session():
     """
     global libtorrent_session
     settings = {"listen_interfaces": f"0.0.0.0:{TORRENTING_PORT}",  # listen on all IPv4 interfaces
-                "active_downloads": 0,  # disable downloads
+                "active_downloads": -1,  # allow unlimited downloads
                 "active_seeds": -1,  # allow unlimited seeds
                 "enable_dht": False, "enable_lsd": False, "enable_upnp": False,  # disable non-private torrent features
                 "out_enc_policy": 0,  # force encrypted outgoing connections
