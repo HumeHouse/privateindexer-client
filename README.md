@@ -96,6 +96,7 @@ services:
     image: ghcr.io/humehouse/privateindexer-client:latest
     container_name: privateindexer-client
     restart: unless-stopped
+    stop_grace_period: 1m # this may be necessary if you are downloading tons of torrents - the save task during shutdown can be heavy
     environment:
       MOVIE_DIR: /data/media/movies
       MOVIE_EXTENSIONS: mp4,mkv,m4v,avi

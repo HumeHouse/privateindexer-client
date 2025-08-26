@@ -174,6 +174,26 @@ async def load_fastresume_data():
             log.error(f"[FASTRESUME] Failed to read fastresume data for hash: {base}: {e}")
 
 
+def save_all_fastresume_data():
+    """
+    Immediately schedules a save of fastresume data for all torrens in the session
+    """
+    try:
+        torrents = libtorrent_session.get_torrents()
+        for torrent in torrents:
+            try:
+                status = torrent.status()
+
+                # only save fastresume data for torrents that are downloading
+                if status.state == lt.torrent_status.downloading:
+                    torrent.save_resume_data()
+            except Exception as e:
+                log.error(f"[FASTRESUME] Error saving fastresume data for torrent: {e}")
+
+    except Exception as e:
+        log.error(f"[FASTRESUME] Error saving fastresume data for all torrents: {e}")
+
+
 async def periodic_torrent_status_task():
     """
     Periodically check torrent status and validate error status every 5 seconds.

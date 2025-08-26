@@ -71,22 +71,33 @@ async def lifespan(_: FastAPI):
     log.info("[APP] Starting periodic tasks")
 
     # send the scan task to the asyncio scheduler
-    asyncio.create_task(scan.periodic_scan_task())
+    scan_task = asyncio.create_task(scan.periodic_scan_task())
 
     # send the torrent status task to the asyncio scheduler
-    asyncio.create_task(torrent_client.periodic_torrent_status_task())
+    status_task = asyncio.create_task(torrent_client.periodic_torrent_status_task())
 
     # send the torrent fastresume task to the asyncio scheduler
-    asyncio.create_task(torrent_client.periodic_fastresume_task())
+    fastresume_task = asyncio.create_task(torrent_client.periodic_fastresume_task())
 
     # send the torrent alerts task to the asyncio scheduler
-    asyncio.create_task(torrent_client.periodic_alerts_task())
+    alerts_task = asyncio.create_task(torrent_client.periodic_alerts_task())
 
     log.info(f"[APP] API server started on 0.0.0.0:80")
 
     yield
 
     log.info(f"[APP] Shutting down PrivateIndexer client")
+
+    log.info(f"[APP] Stopping tasks")
+    scan_task.cancel()
+    status_task.cancel()
+    fastresume_task.cancel()
+    alerts_task.cancel()
+
+    log.info(f"[APP] Saving fastresume data")
+    torrent_client.save_all_fastresume_data()
+
+    log.info(f"[APP] Shutdown complete")
 
 
 app = FastAPI(lifespan=lifespan)
