@@ -23,6 +23,13 @@ async def lifespan(_: FastAPI):
         log.info(f"[APP] Creating torrents directory: {TORRENTS_DIR}")
         os.makedirs(TORRENTS_DIR)
 
+    # check if the downloads directory exists, otherwise fail
+    if os.path.exists(DOWNLOADS_DIR):
+        log.info(f"[APP] Downloads directory: {DOWNLOADS_DIR}")
+    else:
+        log.error(f"[APP] Downloads directory doesn't exist or not accessible: {DOWNLOADS_DIR}")
+        exit(1)
+
     # create the multi-thread executor with user-defined number of threads
     log.info(f"[APP] Scan interval: {SCAN_INTERVAL} seconds")
     log.info(f"[APP] Scanner threads: {SCANNER_THREADS}")
@@ -65,6 +72,8 @@ async def lifespan(_: FastAPI):
 
     # send the torrent status task to the asyncio scheduler
     asyncio.create_task(torrent_client.periodic_torrent_status_task())
+
+    log.info(f"[APP] API server started on 0.0.0.0:80")
 
     yield
 
