@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html lang="en" data-bs-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <title>PrivateIndexer Dashboard</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.7/dist/css/bootstrap.min.css"
+          integrity="sha256-zRgmWB5PK4CvTx4FiXsxbHaYRBBjz/rvu97sOC7kzXI=" crossorigin="anonymous">
+    <style>
+        html, body {
+            height: 100%;
+            margin: 0;
+        }
+
+        #main-container {
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+        }
+
+        #torrents-table-container {
+            flex-grow: 1;
+        }
+
+        #info-panel {
+            min-height: 32%;
+            max-height: 32%;
+            resize: vertical;
+        }
+
+        #info-panel .nav-tabs {
+            position: sticky;
+            top: 0;
+            background-color: #212529;
+            z-index: 10;
+        }
+
+        #info-panel .tab-content {
+            max-height: calc(50vh - 50px);
+        }
+
+        .state-downloading {
+            background-color: rgba(0, 123, 255, 0.1) !important;
+            color: #007bff !important;
+        }
+
+        .state-uploading {
+            background-color: rgba(40, 167, 69, 0.1) !important;
+            color: #28a745 !important;
+        }
+
+        .state-stalledUP {
+            background-color: rgba(255, 193, 7, 0.1) !important;
+            color: #856404 !important;
+        }
+
+        .state-checkingDL, .state-checkingResumeData {
+            background-color: rgba(23, 162, 184, 0.1) !important;
+            color: #17a2b8 !important;
+        }
+
+        .state-error {
+            background-color: rgba(220, 53, 69, 0.1) !important;
+            color: #dc3545 !important;
+        }
+
+        .state-metaDL {
+            background-color: rgba(108, 117, 125, 0.1) !important;
+            color: #6c757d !important;
+        }
+
+        .state-unknown {
+            background-color: rgba(108, 117, 125, 0.05) !important;
+            color: #6c757d !important;
+        }
+
+        .selected-row,
+        .selected-row td {
+            background-color: rgba(0, 123, 255, 0.15) !important;
+            color: #abd6ff !important;
+        }
+    </style>
+</head>
+<body class="bg-body">
+<div id="main-container" class="container-fluid d-flex flex-column g-0">
+    <h3 class="px-3">PrivateIndexer Dashboard</h3>
+    <div id="torrents-table-container" class="table-responsive flex-grow-1">
+        <table class="table table-striped table-bordered table-hover">
+            <thead>
+            <tr>
+                <th>Name</th>
+                <th>Size</th>
+                <th>Progress</th>
+                <th>Status</th>
+                <th>Seeds</th>
+                <th>Peers</th>
+                <th>Download Speed</th>
+                <th>Upload Speed</th>
+                <th>ETA</th>
+                <th>Ratio</th>
+                <th>Added On</th>
+            </tr>
+            </thead>
+            <tbody id="torrents-container">
+            <tr>
+                <td colspan="11" class="text-center">Loading...</td>
+            </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <div id="resize-handle"></div>
+
+    <div id="info-panel" class="bg-dark text-white border-top">
+        <ul class="nav nav-tabs p-2" id="sidebarTabs" role="tablist">
+            <li class="nav-item" role="presentation">
+                <button class="nav-link active" id="general-tab" data-bs-toggle="tab" data-bs-target="#tab-general"
+                        type="button">General
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="tracker-tab" data-bs-toggle="tab" data-bs-target="#tab-tracker"
+                        type="button">Trackers
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="peers-tab" data-bs-toggle="tab" data-bs-target="#tab-peers" type="button">
+                    Peers
+                </button>
+            </li>
+        </ul>
+        <div class="tab-content mt-2 p-2">
+            <div class="tab-pane fade show active" id="tab-general" role="tabpanel">
+                <div id="general-content" class="overflow-auto">Select a torrent to view details</div>
+            </div>
+            <div class="tab-pane fade" id="tab-tracker" role="tabpanel">
+                <div id="tracker-content" class="overflow-auto">Select a torrent to view tracker info</div>
+            </div>
+            <div class="tab-pane fade" id="tab-peers" role="tabpanel">
+                <div id="peers-content" class="overflow-auto">Select a torrent to view peers</div>
+            </div>
+        </div>
+    </div>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/jquery@3.7.1/dist/jquery.min.js"
+        integrity="sha256-/JqT3SQfawRcv/BIHPThkBvs0OEvtFFmqPF/lYI/Cxo=" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/popper.js@1.16.1/dist/umd/popper.min.js"
+        integrity="sha256-/ijcOLwFf26xEYAjW75FizKVo5tnTYiQddPZoLUHHZ8=" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.7/dist/js/bootstrap.min.js"
+        integrity="sha256-lel57Jim1/CW4I1iEkaHexK/J9h/ZRneeORKiQuNOIg=" crossorigin="anonymous"></script>
+<script>
+    let selectedTorrentId = null;
+
+    $(document).ready(() => fetchTorrents());
+
+    function fetchTorrents() {
+        fetch("/dashboard/torrents")
+            .then(r => r.json())
+            .then(data => {
+                renderTable(data);
+                if (selectedTorrentId) {
+                    const updatedTorrent = data.find(t => t["infohash_v1"] === selectedTorrentId);
+                    if (updatedTorrent) populateInfoPanel(updatedTorrent);
+                }
+            })
+            .catch(e => console.error("Error fetching torrents:", e));
+
+        setTimeout(fetchTorrents, 5000);
+    }
+
+    function formatBytes(bytes) {
+        if (!bytes || bytes <= 0) return "0 B";
+        const units = ["B", "KiB", "MiB", "GiB", "TiB"];
+        const i = Math.floor(Math.log(bytes) / Math.log(1024));
+        return (bytes / Math.pow(1024, i)).toFixed(1) + " " + units[i];
+    }
+
+    function formatSpeed(bytesPerSec) {
+        return formatBytes(bytesPerSec) + "/s";
+    }
+
+    function formatTime(seconds) {
+        if (seconds < 0 || seconds === 8640000) return "∞";
+        const h = Math.floor(seconds / 3600), m = Math.floor((seconds % 3600) / 60), s = Math.floor(seconds % 60);
+        return [h, m, s].map(v => String(v).padStart(2, '0')).join(":");
+    }
+
+    function renderTable(torrents) {
+        const $tbody = $("#torrents-container");
+        $tbody.empty();
+        if (!torrents || torrents.length === 0) {
+            $tbody.append(`<tr><td colspan="11" class="text-center">No torrents</td></tr>`);
+            return;
+        }
+
+        torrents.forEach(torrent => {
+            const rowClass = "state-" + torrent["state"];
+            const progress = (torrent["progress"] * 100).toFixed(1);
+
+            const selectedClass = torrent["infohash_v1"] === selectedTorrentId ? "selected-row" : "";
+
+            const row = `<tr class="${selectedClass}" data-infohash="${torrent["infohash_v1"]}">
+            <td>${torrent["name"]}</td>
+            <td>${formatBytes(torrent["size"])}</td>
+            <td>
+                <div class="progress" style="height:1.5rem;">
+                <div class="progress-bar bg-success" role="progressbar" style="width:${progress}%"
+                     aria-valuenow="${progress}" aria-valuemin="0" aria-valuemax="100">${progress}%</div>
+                </div>
+            </td>
+            <td class="${rowClass}">${torrent["state"]}</td><td>${torrent["num_seeds"]}</td><td>${torrent["num_leechs"]}</td>
+            <td>${formatSpeed(torrent["dlspeed"])}</td><td>${formatSpeed(torrent["upspeed"])}</td>
+            <td>${formatTime(torrent["eta"])}</td><td>${torrent["ratio"].toFixed(2)}</td>
+            <td>${new Date(torrent["added_on"] * 1000).toLocaleString()}</td>
+        </tr>`;
+
+            $tbody.append(row);
+
+            // click handler
+            $tbody.find("tr").last().click(() => {
+                selectedTorrentId = torrent["infohash_v1"];
+                $tbody.find("tr").removeClass("selected-row");
+                $tbody.find(`tr[data-infohash='${selectedTorrentId}']`).addClass("selected-row");
+                populateInfoPanel(torrent);
+            });
+        });
+    }
+
+    // populate bottom panel
+    function populateInfoPanel(torrent) {
+        // general info
+        const generalHtml = `
+        <div class="row g-0">
+            <div class="col-md-4">
+                <dl class="row mb-2 g-0">
+                    <dt class="col-4 text-end">Time Active:</dt><dd class="ms-2 col-7">${formatTime(torrent["time_active"])}</dd>
+                    <dt class="col-4 text-end">Downloaded:</dt><dd class="ms-2 col-7">${formatBytes(torrent["downloaded"])} (${formatBytes(torrent["downloaded_session"])} this session)</dd>
+                    <dt class="col-4 text-end">Download Speed:</dt><dd class="ms-2 col-7">${formatSpeed(torrent["dlspeed"])}</dd>
+                    <dt class="col-4 text-end">Ratio:</dt><dd class="ms-2 col-7">${torrent["ratio"].toFixed(2)}</dd>
+                    <dt class="col-4 text-end">Info Hash v1:</dt><dd class="ms-2 col-7">${torrent["infohash_v1"]}</dd>
+                    <dt class="col-4 text-end">Info Hash v2:</dt><dd class="ms-2 col-7">${torrent["infohash_v2"] || "N/A"}</dd>
+                </dl>
+            </div>
+            <div class="col-md-4">
+                <dl class="row mb-2 g-0">
+                    <dt class="col-4 text-end">ETA:</dt><dd class="ms-2 col-7">${formatTime(torrent["eta"])}</dd>
+                    <dt class="col-4 text-end">Uploaded:</dt><dd class="ms-2 col-7">${formatBytes(torrent["uploaded"])} (${formatBytes(torrent["uploaded_session"])} this session)</dd>
+                    <dt class="col-4 text-end">Seeds:</dt><dd class="ms-2 col-7">${torrent["num_seeds"]} / ${torrent["num_complete"]}</dd>
+                    <dt class="col-4 text-end">Peers:</dt><dd class="ms-2 col-7">${torrent["num_leechs"]} / ${torrent["num_incomplete"]}</dd>
+                </dl>
+            </div>
+            <div class="col-md-4">
+                <dl class="row mb-2 g-0">
+                    <dt class="col-4 text-end">Progress:</dt><dd class="ms-2 col-7">${(torrent["progress"] * 100).toFixed(1)}%</dd>
+                    <dt class="col-4 text-end">Added On:</dt><dd class="ms-2 col-7">${new Date(torrent["added_on"] * 1000).toLocaleString()}</dd>
+                    <dt class="col-4 text-end">Save Path:</dt><dd class="ms-2 col-7">${torrent["save_path"]}</dd>
+                </dl>
+            </div>
+        </div>`;
+
+        $("#general-content").html(generalHtml);
+
+        // trackers table
+        let trackerHtml = `<table class="table table-sm table-striped">
+        <thead><tr><th>URL</th><th>Working</th><th>Next Announce</th></tr></thead>
+        <tbody>`;
+        torrent["trackers"].forEach(tracker => {
+            let working = !!tracker["verified"];
+            trackerHtml += `<tr>
+                <td>${tracker["url"]}</td>
+                <td class="${working ? "bg-success" : "bg-danger"}">${working ? 'Yes' : 'No'}</td>
+                <td>${tracker["next_announce"] ? new Date(tracker["next_announce"] * 1000).toLocaleString() : 'N/A'}</td>
+            </tr>`;
+        });
+        trackerHtml += `</tbody></table>`;
+        $("#tracker-content").html(trackerHtml);
+
+        // peers table
+        let peersHtml = `<table class="table table-sm table-striped">
+        <thead><tr><th>IP</th><th>Port</th><th>Client</th><th>Flags</th><th>Down Speed</th><th>Up Speed</th><th>Progress</th></tr></thead>
+        <tbody>`;
+        torrent["peers"].forEach(peer => {
+            const progress = (peer["progress"] * 100).toFixed(1);
+            peersHtml += `<tr>
+            <td>${peer["ip"]}</td>
+            <td>${peer["port"]}</td>
+            <td>${peer["client"]}</td>
+            <td>${peer["flags"]}</td>
+            <td>${formatSpeed(peer["down_speed"])}</td>
+            <td>${formatSpeed(peer["up_speed"])}</td>
+            <td>
+                <div class="progress" style="height:1.5rem;">
+                <div class="progress-bar bg-success" role="progressbar" style="width: ${progress}%"
+                     aria-valuenow="${progress}" aria-valuemin="0" aria-valuemax="100">${progress}%</div>
+                </div>
+            </td>
+        </tr>`;
+        });
+        peersHtml += `</tbody></table>`;
+        $("#peers-content").html(peersHtml);
+    }
+</script>
+</body>
+</html>

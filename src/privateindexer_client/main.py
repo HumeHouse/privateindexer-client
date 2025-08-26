@@ -5,8 +5,9 @@ from contextlib import asynccontextmanager
 import requests
 from fastapi import FastAPI
 
-from privateindexer_client.core import torrent_client, scan
-from privateindexer_client.core.config import TORRENTS_DIR, SCAN_INTERVAL, SCANNER_THREADS, MOVIE_DIR, CATEGORY_PATHS, INDEXER_API_URL, API_KEY, TORRENTING_PORT
+from privateindexer_client.core import torrent_client, scan, api, gui
+from privateindexer_client.core.config import TORRENTS_DIR, SCAN_INTERVAL, SCANNER_THREADS, MOVIE_DIR, CATEGORY_PATHS, INDEXER_API_URL, API_KEY, TORRENTING_PORT, \
+    DOWNLOADS_DIR
 from privateindexer_client.core.logger import log
 
 APP_VERSION = "1.2.0"
@@ -81,3 +82,6 @@ async def lifespan(_: FastAPI):
 
 
 app = FastAPI(lifespan=lifespan)
+
+app.include_router(api.router)
+app.include_router(gui.router)
