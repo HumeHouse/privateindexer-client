@@ -9,7 +9,7 @@ TORRENTS_FILE = "/app/data/torrents.json"
 TORRENTS_DIR = "/app/data/torrents"
 FASTRESUME_DIR = os.path.join(TORRENTS_DIR, "fastresume")
 
-DOWNLOADS_DIR = "/app/downloads"
+DOWNLOADS_DIR = os.getenv("DOWNLOADS_DIR")
 
 CONFIG_FILE = "/app/data/config.json"
 
