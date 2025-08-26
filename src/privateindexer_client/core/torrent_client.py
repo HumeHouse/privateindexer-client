@@ -25,7 +25,7 @@ def create_libtorrent_session():
     libtorrent_session = lt.session(settings)
 
 
-def get_seeding_torrents() -> list:
+def get_all_torrents() -> list:
     """
     Return the list of all torrents currently added to the libtorrent session
     """
@@ -45,21 +45,20 @@ def add_torrents(torrents_to_add: list[dict], force_seed_mode: bool = False):
             continue
 
         try:
-            # skip torrent if libtorrent session is already seeding it
+            # skip torrent if torrent already exists in libtorrent session
             info_hash = lt.sha1_hash(bytes.fromhex(torrent_metadata["hash_v1"]))
             existing = libtorrent_session.find_torrent(info_hash)
             if existing.is_valid():
                 continue
 
-            # add the tracker URL and set parameters for seeding
+            # add the tracker URL
             info = lt.torrent_info(torrent_path)
             info.add_tracker(f"{ANNOUNCE_TRACKER_URL}?apikey={API_KEY}")
 
             params = {"ti": info, "save_path": os.path.dirname(torrent_metadata["path"])}
 
-            if force_seed_mode:
-                flags = lt.torrent_flags.default_flags | lt.torrent_flags.seed_mode
-                params["flags"] = flags
+            flags = lt.torrent_flags.default_flags | lt.torrent_flags.seed_mode
+            params["flags"] = flags
 
             # add to the libtorrent session
             libtorrent_session.add_torrent(params)
@@ -67,7 +66,7 @@ def add_torrents(torrents_to_add: list[dict], force_seed_mode: bool = False):
         except Exception as e:
             log.error(f"[TORCLIENT] Failed to add {torrent_metadata["name"]}: {e}")
     if added > 0:
-        log.info(f"[TORCLIENT] Added {added} torrents to seed client")
+        log.info(f"[TORCLIENT] Added {added} torrent(s) to libtorrent client")
 
 
 async def periodic_torrent_status_task():
