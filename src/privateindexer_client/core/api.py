@@ -6,7 +6,7 @@ import httpx
 from fastapi import Depends, HTTPException, Query, File, Request, Form, APIRouter, status, UploadFile
 from fastapi.responses import PlainTextResponse, JSONResponse
 
-from privateindexer_client.core import config, torrent_client, utils
+from privateindexer_client.core import torrent_client, utils
 from privateindexer_client.core.config import API_KEY, DOWNLOADS_DIR
 from privateindexer_client.core.logger import log
 
@@ -103,12 +103,15 @@ async def get_torrent_info(request: Request, category: str = Query(None)):
 
     try:
         torrents = torrent_client.get_all_torrents()
-        response = [utils.map_torrent_to_qbit(torrent) for torrent in torrents]
+        mapped = [utils.map_torrent_to_qbit(t) for t in torrents]
+
+        if category:
+            mapped = [t for t in mapped if t.get("category") == category]
+
+        return JSONResponse(mapped)
     except Exception as e:
         log.error(f"[API] Failed to get torrent status: {e}")
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-    return JSONResponse(response)
 
 
 @router.get("/torrents/categories", dependencies=[Depends(cookie_required)])
@@ -119,8 +122,7 @@ async def get_categories(request: Request):
     """
     log.debug(f"[API] Categories requested ({request.headers.get("user-agent")})")
 
-    config_data = await config.load_config_threadsafe()
-    categories = config_data.get("categories", {})
+    categories = utils.get_torrent_categories()
 
     return JSONResponse(categories)
 
@@ -133,29 +135,16 @@ async def create_category(request: Request, category: str = Form()):
     """
     log.debug(f"[API] New category requested ({request.headers.get("user-agent")})")
 
-    config_data = await config.load_config_threadsafe()
-    categories = config_data.get("categories", {})
-
     # don't store duplicate categories
-    if category in categories:
+    if category in utils.get_torrent_categories().keys():
         log.warning(f"[API] Refusing to create duplicate category: {category}")
         raise HTTPException(status_code=status.HTTP_409_CONFLICT)
 
     save_dir = os.path.join(DOWNLOADS_DIR, category)
 
-    # try to make a directory in the downloads directory for this category and add it to the config file
+    # try to create the category on the client, this includes updating the config and making a directory in the DOWNLOAD_DIR
     try:
-        if not os.path.exists(save_dir):
-            os.mkdir(save_dir)
-
-        # we have to store them like this per qBittorrent's format
-        categories[category] = {
-            "name": category,
-            "savePath": save_dir
-        }
-        config_data["categories"] = categories
-
-        await config.save_config_threadsafe(config_data)
+        utils.add_torrent_category(category, save_dir)
     except Exception as e:
         log.error(f"[API] Failed to create category directory {save_dir}: {e}")
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR)
@@ -187,11 +176,8 @@ async def add_torrent(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST)
 
     if category:
-        config_data = await config.load_config_threadsafe()
-        categories = config_data.get("categories", {})
-
         # ensure category exists before storing data in it
-        if category not in categories:
+        if category not in utils.get_torrent_categories().keys():
             log.warning(f"[API] Refusing to add torrent, category doesn't exist: {category}")
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST)
 

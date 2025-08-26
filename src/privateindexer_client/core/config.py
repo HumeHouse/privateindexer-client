@@ -1,6 +1,6 @@
-import asyncio
 import json
 import os
+import threading
 
 from privateindexer_client.core.logger import log
 
@@ -28,31 +28,35 @@ API_KEY = os.getenv("API_KEY")
 
 TORRENTING_PORT = int(os.getenv("TORRENTING_PORT", "6881"))
 
-config_lock = asyncio.Lock()
+config_lock = threading.Lock()
+_config_cache = None
 
 
-async def load_config_threadsafe():
-    """
-    Reads data from the JSON configuration file
-    """
-    async with config_lock:
+def load_config():
+    global _config_cache
+    with config_lock:
+        if _config_cache:
+            return _config_cache
+
         if not os.path.exists(CONFIG_FILE):
-            return {}
+            _config_cache = {}
+            return _config_cache
+
         try:
             with open(CONFIG_FILE, "r") as f:
-                return json.load(f)
+                _config_cache = json.load(f)
         except Exception as e:
             log.error(f"[CONFIG] Failed to load config.json: {e}")
-            return {}
+            _config_cache = {}
+        return _config_cache
 
 
-async def save_config_threadsafe(config):
-    """
-    Writes data to the JSON configuration file
-    """
-    async with config_lock:
+def save_config(config):
+    global _config_cache
+    with config_lock:
         try:
             with open(CONFIG_FILE, "w") as f:
                 json.dump(config, f, indent=2)
+            _config_cache = config
         except Exception as e:
             log.error(f"[CONFIG] Failed to write config.json: {e}")

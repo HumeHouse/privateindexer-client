@@ -7,6 +7,7 @@ import time
 import httpx
 import libtorrent as lt
 
+from privateindexer_client.core import config
 from privateindexer_client.core.config import TORZNAB_CATEGORY_PATHS, API_KEY, INDEXER_API_URL, TORRENTS_DIR
 from privateindexer_client.core.logger import log
 
@@ -19,6 +20,40 @@ def detect_torznab_category(file_path: str) -> int:
         if file_path.startswith(cat_info["path"]):
             return cat_info["id"]
     return 0
+
+
+def get_torrent_categories() -> dict[str, dict[str, str]]:
+    return config.load_config().get("categories", {})
+
+
+def add_torrent_category(name: str, save_dir: str):
+    """
+    try to make a directory in the downloads directory for this category and add it to the config file
+    """
+    config_data = config.load_config()
+    categories = config_data.get("categories", {})
+
+    if not os.path.exists(save_dir):
+        os.mkdir(save_dir)
+
+    # we have to store them like this per qBittorrent's format
+    categories[name] = {
+        "name": name,
+        "savePath": save_dir
+    }
+    config_data["categories"] = categories
+
+    config.save_config(config_data)
+
+
+def detect_torrent_category(file_path: str) -> str:
+    """
+    Tries to match the file's path with the categories in the config and returns its name
+    """
+    for category_data in get_torrent_categories().values():
+        if file_path.startswith(category_data.get("savePath")):
+            return category_data.get("name")
+    return ""
 
 
 async def fetch_indexer_user_data():
@@ -291,6 +326,9 @@ def map_torrent_to_qbit(torrent: lt.torrent_handle) -> dict:
     # qBittorrent "hash" field is always the v1 hash if available, otherwise fall back to v2
     torrent_hash = infohash_v1 or infohash_v2
 
+    # try to match the save_path with the configured category paths
+    category = detect_torrent_category(status.save_path)
+
     mapped = {"added_on": int(status.added_time or 0), "amount_left": int(status.total_wanted - status.total_wanted_done), "availability": status.distributed_copies,
               "completed": int(status.total_done), "completion_on": int(status.completed_time or -1), "content_path": os.path.join(status.save_path, status.name),
               "dlspeed": status.download_rate, "download_path": status.save_path, "downloaded": status.all_time_download,
@@ -302,7 +340,7 @@ def map_torrent_to_qbit(torrent: lt.torrent_handle) -> dict:
               "seen_complete": int(status.last_seen_complete or -1), "seq_dl": bool(status.flags & lt.torrent_flags.sequential_download), "size": status.total_wanted,
               "state": map_state(status), "time_active": int(status.active_duration.total_seconds()), "total_size": status.total, "tracker": status.current_tracker,
               "trackers_count": 1 if status.current_tracker else 0, "uploaded": status.all_time_upload, "uploaded_session": status.total_payload_upload,
-              "upspeed": status.upload_rate, }
+              "upspeed": status.upload_rate, "category": category, }
 
     peers_list = []
     for p in torrent.get_peer_info():
