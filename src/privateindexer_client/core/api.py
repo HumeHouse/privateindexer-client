@@ -169,7 +169,7 @@ async def add_torrent(
     qBittorrent technically allows multiple URLs or files, but we don't
     Only torrents created from PrivateIndexer are allowed
     """
-    log.info(f"[API] New torrent requested ({request.headers.get("user-agent")})")
+    log.debug(f"[API] New torrent requested ({request.headers.get("user-agent")})")
 
     if not torrents and not urls:
         log.warning(f"[API] No file upload or URL provided ({request.headers.get("user-agent")})")
@@ -214,5 +214,7 @@ async def add_torrent(
     # remove the temporary file if it still exists
     if os.path.exists(torrent_file):
         os.unlink(torrent_file)
+
+    log.debug(f"[API] Torrent added: {torrent_file} ({request.headers.get("user-agent")})")
 
     return PlainTextResponse(result)
