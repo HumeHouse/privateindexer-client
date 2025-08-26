@@ -103,6 +103,7 @@ services:
     ports:
       - "6881:6881"
       - "6881:6881/udp"
+      - "8080:80"
     logging:
       options:
         max-size: 10m
