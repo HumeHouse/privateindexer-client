@@ -63,7 +63,7 @@ async def lifespan(_: FastAPI):
 
     log.info(f"[APP] Creating libtorrent session, listening on port {TORRENTING_PORT}")
     # init the libtorrent client session
-    torrent_client.create_libtorrent_session()
+    torrent_client.create_libtorrent_session(APP_VERSION)
 
     # load the fastresume data into the client session
     await torrent_client.load_fastresume_data()

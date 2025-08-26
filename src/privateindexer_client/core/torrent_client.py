@@ -10,7 +10,7 @@ from privateindexer_client.core.logger import log
 libtorrent_session: lt.session
 
 
-def create_libtorrent_session():
+def create_libtorrent_session(app_version: str):
     """
     Initialize a libtorrent session with custom settings
     """
@@ -22,6 +22,8 @@ def create_libtorrent_session():
                 "out_enc_policy": 0,  # force encrypted outgoing connections
                 "in_enc_policy": 0,  # force encrypted incoming connections
                 "validate_https_trackers": False,  # necessary because of OPENSSL stuff
+                "user_agent": f"privateindexer-client/{app_version}",  # send custom user agent
+                "always_send_user_agent": True,  # always send the user agent with every tracker request
                 }
     libtorrent_session = lt.session(settings)
 
