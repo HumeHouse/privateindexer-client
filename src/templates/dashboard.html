@@ -87,7 +87,11 @@
         <table class="table table-striped table-bordered table-hover">
             <thead>
             <tr>
-                <th>Name</th>
+                <th class="d-flex">
+                    Name
+                    <input type="text" id="filter-name" class="ms-1 form-control form-control-sm"
+                           placeholder="Filter name...">
+                </th>
                 <th>Size</th>
                 <th>Progress</th>
                 <th>Status</th>
@@ -151,6 +155,20 @@
     let selectedTorrentId = null;
 
     $(document).ready(() => fetchTorrents());
+    $(document).ready(() => {
+        fetchTorrents();
+        $('#filter-name').on('input', applyNameFilter);
+    });
+
+    function applyNameFilter() {
+        const filter = $('#filter-name').val().toLowerCase();
+        $('#torrents-container tr').each(function () {
+            const nameCell = $(this).find('td').first();
+            if (!nameCell.length) return;
+            const nameText = nameCell.text().toLowerCase();
+            $(this).toggleClass("d-none", !nameText.includes(filter));
+        });
+    }
 
     function fetchTorrents() {
         fetch("/dashboard/torrents")
@@ -163,6 +181,21 @@
                 }
             })
             .catch(e => console.error("Error fetching torrents:", e));
+    async function fetchTorrents() {
+        try {
+            const r = await fetch("/dashboard/torrents");
+            const data = await r.json();
+
+            renderTable(data);
+
+            // update selected torrent info panel
+            if (selectedTorrentId) {
+                const updatedTorrent = data.find(t => t["infohash_v1"] === selectedTorrentId);
+                if (updatedTorrent) populateInfoPanel(updatedTorrent);
+            }
+        } catch (e) {
+            console.error("Error fetching torrents:", e);
+        }
 
         setTimeout(fetchTorrents, 5000);
     }
@@ -186,6 +219,7 @@
 
     function renderTable(torrents) {
         const $tbody = $("#torrents-container");
+        const filter = $('#filter-name').val().toLowerCase() || '';
         $tbody.empty();
         if (!torrents || torrents.length === 0) {
             $tbody.append(`<tr><td colspan="11" class="text-center">No torrents</td></tr>`);
@@ -198,20 +232,28 @@
 
             const selectedClass = torrent["infohash_v1"] === selectedTorrentId ? "selected-row" : "";
 
-            const row = `<tr class="${selectedClass}" data-infohash="${torrent["infohash_v1"]}">
-            <td>${torrent["name"]}</td>
-            <td>${formatBytes(torrent["size"])}</td>
-            <td>
-                <div class="progress" style="height:1.5rem;">
-                <div class="progress-bar bg-success" role="progressbar" style="width:${progress}%"
-                     aria-valuenow="${progress}" aria-valuemin="0" aria-valuemax="100">${progress}%</div>
-                </div>
-            </td>
-            <td class="${rowClass}">${torrent["state"]}</td><td>${torrent["num_seeds"]}</td><td>${torrent["num_leechs"]}</td>
-            <td>${formatSpeed(torrent["dlspeed"])}</td><td>${formatSpeed(torrent["upspeed"])}</td>
-            <td>${formatTime(torrent["eta"])}</td><td>${torrent["ratio"].toFixed(2)}</td>
-            <td>${new Date(torrent["added_on"] * 1000).toLocaleString()}</td>
-        </tr>`;
+            const row = $(`<tr class="${selectedClass}" data-infohash="${torrent["infohash_v1"]}"></tr>`);
+
+            row.toggleClass("d-none", !torrent["name"].toLowerCase().includes(filter));
+
+            row.html(`
+                <td>${torrent["name"]}</td>
+                <td>${formatBytes(torrent["size"])}</td>
+                <td>
+                    <div class="progress" style="height:1.5rem;">
+                        <div class="progress-bar bg-success" role="progressbar" style="width: ${progress}%"
+                             aria-valuenow="${progress}" aria-valuemin="0" aria-valuemax="100">${progress}%</div>
+                    </div>
+                </td>
+                <td class="${rowClass}">${torrent["state"]}</td>
+                <td>${torrent["num_seeds"]}</td>
+                <td>${torrent["num_leechs"]}</td>
+                <td>${formatSpeed(torrent["dlspeed"])}</td>
+                <td>${formatSpeed(torrent["upspeed"])}</td>
+                <td>${formatTime(torrent["eta"])}</td>
+                <td>${torrent["ratio"].toFixed(2)}</td>
+                <td>${new Date(torrent["added_on"] * 1000).toLocaleString()}</td>
+            `);
 
             $tbody.append(row);
 
