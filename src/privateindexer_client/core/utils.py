@@ -229,7 +229,7 @@ def map_torrent_to_qbit(torrent: lt.torrent_handle) -> dict:
 
     # here we have to normalize the infohashes because they are raw bytes out of the status
     infohash_v1 = status.info_hashes.v1.to_bytes().hex() if status.info_hashes.has_v1() else None
-    infohash_v2 = (status.info_hashes.v2.to_bytes().hex()) if status.info_hashes.has_v2() else None
+    infohash_v2 = status.info_hashes.v2.to_bytes().hex() if status.info_hashes.has_v2() else None
     # qBittorrent "hash" field is always the v1 hash if available, otherwise fall back to v2
     torrent_hash = infohash_v1 or infohash_v2
 
