@@ -51,7 +51,6 @@ async def send_torrent_to_indexer(metadata):
 
             async with httpx.AsyncClient() as client:
                 response = await client.post(INDEXER_API_URL + "/create", data=data, files=files)
-                response.raise_for_status()
 
                 # based on the response from API, we will know status of upload
                 if response.status_code == 200:
@@ -68,57 +67,58 @@ async def send_torrent_to_indexer(metadata):
         return False
 
 
-def create_torrent(file_path: str):
+def create_torrent(media_file_path: str):
     """
     Main synchronous routine to build and generate a complete torrent file from the media passed in as file_path
     Checks for existing torrent file in case database save operation was interrupted from a previous app run
     Will fail if v1/v2 hash checks do not succeeed
     Removes the torrent file if any failures occur so a new one can be generated
     """
-    # split the extension off the filename, this will become the name of the torrent
-    torrent_name, _ = os.path.splitext(os.path.basename(file_path))
-    torrent_file = os.path.join(TORRENTS_DIR, f"{torrent_name}.torrent")
+    # split the extension off the filename, this will become the name of the torrent if needed
+    torrent_name, _ = os.path.splitext(os.path.basename(media_file_path))
+    torrent_file_path = find_existing_torrent(media_file_path)
 
-    if not os.path.exists(torrent_file):
+    if torrent_file_path:
+        log.info(f"[TORRENT] Torrent '{torrent_name}' already exists")
+    else:
+        torrent_file_path = os.path.join(TORRENTS_DIR, f"{torrent_name}.torrent")
         # use libtorrent to initialize temporary storage, add the media, sign the torrent, set to private, and encode data to the torrent file
-        log.info(f"[TORRENT] Creating torrent for '{torrent_name}' using libtorrent")
+        log.info(f"[TORRENT] Creating torrent for '{torrent_name}'")
         fs = lt.file_storage()
         fs.set_name(torrent_name)
-        lt.add_files(fs, file_path)
+        lt.add_files(fs, media_file_path)
         t = lt.create_torrent(fs)
-        t.set_creator(f"PrivateIndexer Client")
+        t.set_creator("PrivateIndexer Client")
         t.set_priv(True)
-        lt.set_piece_hashes(t, os.path.dirname(file_path))
-        torrent = t.generate()
+        lt.set_piece_hashes(t, os.path.dirname(media_file_path))
+        torrent_data = t.generate()
 
-        with open(torrent_file, "wb") as f:
-            f.write(lt.bencode(torrent))
-    else:
-        log.info(f"[TORRENT] Torrent '{torrent_name}' already exists")
+        with open(torrent_file_path, "wb") as f:
+            f.write(lt.bencode(torrent_data))
 
     # attempt to pull the v1 and v2 hash information from the torrent file, otherwise fail and remove torrent file from disk
     try:
-        info = lt.torrent_info(torrent_file)
+        info = lt.torrent_info(torrent_file_path)
         hashes = info.info_hashes()
         if not hashes.has_v1():
             log.error(f"[TORRENT] Torrent '{torrent_name}' did not generate a v1 hash, it has been removed")
-            os.unlink(torrent_file)
+            os.unlink(torrent_file_path)
             return None
         torrent_hash_v1 = str(hashes.v1)
         if not hashes.has_v2():
             log.error(f"[TORRENT] Torrent '{torrent_name}' did not generate a v2 hash, it has been removed")
-            os.unlink(torrent_file)
+            os.unlink(torrent_file_path)
             return None
         torrent_hash_v2 = str(hashes.v2)
     except Exception as e:
         log.error(f"[TORRENT] Failed to read hash for '{torrent_name}', it has been removed: {e}")
-        os.unlink(torrent_file)
+        os.unlink(torrent_file_path)
         return None
 
-    size = os.path.getsize(file_path)
-    category_id = detect_category(file_path)
+    size = os.path.getsize(media_file_path)
+    category_id = detect_category(media_file_path)
 
-    return {"name": torrent_name, "size": size, "path": file_path, "uploaded": False, "files": 1, "category": category_id, "hash_v1": torrent_hash_v1,
+    return {"name": torrent_name, "size": size, "path": media_file_path, "uploaded": False, "files": 1, "category": category_id, "hash_v1": torrent_hash_v1,
             "hash_v2": torrent_hash_v2}
 
 
@@ -131,6 +131,50 @@ def create_torrent_threadsafe(file_path: str):
     except Exception as e:
         log.error(f"[TORRENT] Failed to create torrent for '{file_path}': {e}")
         return None
+
+
+def find_existing_torrent(media_file_path: str) -> str | None:
+    """
+    Given a media file path, check if a torrent already exists in TORRENTS_DIR with the same info_hash (v1 or v2)
+    Returns the existing torrent path if found, otherwise None
+    """
+    torrent_name, _ = os.path.splitext(os.path.basename(media_file_path))
+
+    try:
+        # build a temporary torrent object in-memory for this media file
+        fs = lt.file_storage()
+        fs.set_name(torrent_name)
+        lt.add_files(fs, media_file_path)
+        t = lt.create_torrent(fs)
+        t.set_priv(True)
+        lt.set_piece_hashes(t, os.path.dirname(media_file_path))
+        new_info = lt.torrent_info(t.generate())
+        new_hashes = new_info.info_hashes()
+        new_hash_v1 = str(new_hashes.v1) if new_hashes.has_v1() else None
+        new_hash_v2 = str(new_hashes.v2) if new_hashes.has_v2() else None
+    except Exception as e:
+        log.error(f"[TORRENT] Failed to generate info hash for '{media_file_path}': {e}")
+        return None
+
+    # compare against torrents in our directory
+    for f in os.listdir(TORRENTS_DIR):
+        if not f.endswith(".torrent"):
+            continue
+
+        existing_path = os.path.join(TORRENTS_DIR, f)
+        try:
+            existing_info = lt.torrent_info(existing_path)
+            existing_hashes = existing_info.info_hashes()
+
+            if (
+                    (new_hash_v1 and existing_hashes.has_v1() and str(existing_hashes.v1) == new_hash_v1) or
+                    (new_hash_v2 and existing_hashes.has_v2() and str(existing_hashes.v2) == new_hash_v2)
+            ):
+                return existing_path
+        except Exception:
+            continue  # skip invalid torrent files
+
+    return None
 
 
 def generate_sid(api_key: str) -> str:

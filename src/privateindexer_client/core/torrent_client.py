@@ -64,9 +64,9 @@ def add_torrent_for_download(torrent_file: str, save_path: str) -> bool:
         torrent_hash = infohash_v1 or infohash_v2
 
         # save torrent metadata to a torrent file in the fastresume data directory
-        torrent_file_out = os.path.join(FASTRESUME_DIR, f"{torrent_hash}.torrent")
+        torrent_file_out = os.path.join(TORRENTS_DIR, f"{torrent_hash}.torrent")
         try:
-            shutil.copyfile(torrent_file, torrent_file_out)
+            shutil.move(torrent_file, torrent_file_out)
             log.info(f"[TORCLIENT] Saved torrent file for {torrent_hash}")
         except Exception as e:
             log.error(f"[TORCLIENT] Failed to save torrent file for {torrent_hash}: {e}")
@@ -152,7 +152,7 @@ async def load_fastresume_data():
 
         base = fname.replace(".fastresume", "")
         fastresume_path = os.path.join(FASTRESUME_DIR, fname)
-        torrent_path = os.path.join(FASTRESUME_DIR, f"{base}.torrent")
+        torrent_path = os.path.join(TORRENTS_DIR, f"{base}.torrent")
 
         try:
             # read fastresume data

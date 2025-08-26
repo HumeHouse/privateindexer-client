@@ -225,7 +225,8 @@ async def add_torrent(
     # attempt to add the torrent to the download client and match qBittorrent return text
     result = "Ok." if torrent_client.add_torrent_for_download(torrent_file, save_dir) else "Fails."
 
-    # remove the temporary file
-    os.unlink(torrent_file)
+    # remove the temporary file if it still exists
+    if os.path.exists(torrent_file):
+        os.unlink(torrent_file)
 
     return PlainTextResponse(result)
