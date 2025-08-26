@@ -7,6 +7,7 @@ from privateindexer_client.core.logger import log
 # gather/set environment variables for usage later
 TORRENTS_FILE = "/app/data/torrents.json"
 TORRENTS_DIR = "/app/data/torrents"
+FASTRESUME_DIR = os.path.join(TORRENTS_DIR, "fastresume")
 
 DOWNLOADS_DIR = "/app/downloads"
 

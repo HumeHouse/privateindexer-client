@@ -17,12 +17,10 @@ APP_VERSION = "1.2.0"
 async def lifespan(_: FastAPI):
     log.info(f"[APP] Starting PrivateIndexer client v{APP_VERSION}")
 
-    # check if the torrent storage directory exists, otherwise create it
-    if os.path.exists(TORRENTS_DIR):
-        log.info(f"[APP] Torrents directory: {TORRENTS_DIR}")
-    else:
-        log.info(f"[APP] Creating torrents directory: {TORRENTS_DIR}")
-        os.makedirs(TORRENTS_DIR)
+    # try to create torrents and fastresume directories
+    log.info(f"[APP] Torrent data directory: {TORRENTS_DIR}")
+    os.makedirs(TORRENTS_DIR, exist_ok=True)
+    os.makedirs(FASTRESUME_DIR, exist_ok=True)
 
     # check if the downloads directory exists, otherwise fail
     if os.path.exists(DOWNLOADS_DIR):
@@ -67,6 +65,9 @@ async def lifespan(_: FastAPI):
     # init the libtorrent client session
     torrent_client.create_libtorrent_session()
 
+    # load the fastresume data into the client session
+    await torrent_client.load_fastresume_data()
+
     log.info("[APP] Starting periodic tasks")
 
     # send the scan task to the asyncio scheduler
@@ -74,6 +75,12 @@ async def lifespan(_: FastAPI):
 
     # send the torrent status task to the asyncio scheduler
     asyncio.create_task(torrent_client.periodic_torrent_status_task())
+
+    # send the torrent fastresume task to the asyncio scheduler
+    asyncio.create_task(torrent_client.periodic_fastresume_task())
+
+    # send the torrent alerts task to the asyncio scheduler
+    asyncio.create_task(torrent_client.periodic_alerts_task())
 
     log.info(f"[APP] API server started on 0.0.0.0:80")
 
