@@ -4,12 +4,10 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
-from privateindexer_client.core import torrent_client, scan, api, gui, httpx_request
+from privateindexer_client.core import torrent_client, scan, api, gui, httpx_request, database
 from privateindexer_client.core.config import TORRENTS_DIR, SCAN_INTERVAL, SCANNER_THREADS, MOVIE_DIR, TORZNAB_CATEGORY_PATHS, INDEXER_API_URL, API_KEY, TORRENTING_PORT, \
-    DOWNLOADS_DIR, FASTRESUME_DIR
+    DOWNLOADS_DIR, FASTRESUME_DIR, APP_VERSION
 from privateindexer_client.core.logger import log
-
-APP_VERSION = "1.2.0"
 
 
 @asynccontextmanager

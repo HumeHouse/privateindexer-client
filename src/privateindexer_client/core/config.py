@@ -4,6 +4,8 @@ import threading
 
 from privateindexer_client.core.logger import log
 
+APP_VERSION = "1.2.0"
+
 # gather/set environment variables for usage later
 TORRENTS_FILE = "/app/data/torrents.json"
 TORRENTS_DIR = "/app/data/torrents"
