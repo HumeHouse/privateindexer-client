@@ -37,11 +37,15 @@ _config_cache = None
 def load_config():
     global _config_cache
     with config_lock:
+        # we have to disable this inspection because it gets confused, default is None, but we update it
+        # noinspection PyUnreachableCode
         if _config_cache:
             return _config_cache
 
         if not os.path.exists(CONFIG_FILE):
+            # create the file if it doesn't exist and return empty config
             _config_cache = {}
+            save_config(_config_cache)
             return _config_cache
 
         try:
