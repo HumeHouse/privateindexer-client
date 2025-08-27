@@ -2,11 +2,10 @@ import os
 import tempfile
 import time
 
-import httpx
 from fastapi import Depends, HTTPException, Query, File, Request, Form, APIRouter, status, UploadFile
 from fastapi.responses import PlainTextResponse, JSONResponse
 
-from privateindexer_client.core import torrent_client, utils
+from privateindexer_client.core import torrent_client, utils, httpx_request
 from privateindexer_client.core.config import API_KEY, DOWNLOADS_DIR
 from privateindexer_client.core.logger import log
 
@@ -199,7 +198,7 @@ async def add_torrent(
             f.write(contents)
     else:
         # download torrent from URL
-        async with httpx.AsyncClient() as client:
+        async with httpx_request.get_client() as client:
             response = await client.get(urls)
             if response.status_code != 200:
                 log.error(f"[API] Failed to download new torrent file: {urls}")

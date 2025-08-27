@@ -4,10 +4,9 @@ import os
 import secrets
 import time
 
-import httpx
 import libtorrent as lt
 
-from privateindexer_client.core import config
+from privateindexer_client.core import config, httpx_request
 from privateindexer_client.core.config import TORZNAB_CATEGORY_PATHS, API_KEY, INDEXER_API_URL, TORRENTS_DIR
 from privateindexer_client.core.logger import log
 
@@ -61,7 +60,7 @@ async def fetch_indexer_user_data():
     Request the current user's indexer statistics for use in the GUI
     """
     try:
-        async with httpx.AsyncClient() as client:
+        async with httpx_request.get_client() as client:
             response = await client.get(INDEXER_API_URL + "/user/stats", params={"apikey": API_KEY})
             response.raise_for_status()
             return response.json()
@@ -84,7 +83,7 @@ async def send_torrent_to_indexer(metadata):
                 {"name": metadata["name"], "size": metadata["size"], "category": metadata["category"], "hash_v1": metadata.get("hash_v1"),
                  "hash_v2": metadata.get("hash_v2"), "files": metadata["files"]})}
 
-            async with httpx.AsyncClient() as client:
+            async with httpx_request.get_client() as client:
                 response = await client.post(INDEXER_API_URL + "/create", data=data, files=files)
 
                 # based on the response from API, we will know status of upload

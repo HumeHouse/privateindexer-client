@@ -2,10 +2,9 @@ import asyncio
 import os
 from contextlib import asynccontextmanager
 
-import httpx
 from fastapi import FastAPI
 
-from privateindexer_client.core import torrent_client, scan, api, gui
+from privateindexer_client.core import torrent_client, scan, api, gui, httpx_request
 from privateindexer_client.core.config import TORRENTS_DIR, SCAN_INTERVAL, SCANNER_THREADS, MOVIE_DIR, TORZNAB_CATEGORY_PATHS, INDEXER_API_URL, API_KEY, TORRENTING_PORT, \
     DOWNLOADS_DIR, FASTRESUME_DIR
 from privateindexer_client.core.logger import log
@@ -41,11 +40,14 @@ async def lifespan(_: FastAPI):
         log.info(f"[APP] Using movies directory: {MOVIE_DIR}")
         TORZNAB_CATEGORY_PATHS["movies"] = {"id": 1000, "path": MOVIE_DIR}
 
+    # init the httpx client session
+    httpx_request.init_client(APP_VERSION)
+
     # try to authenticate with the API to validate the API key, otherwise fail
     try:
         status_code = None
         while status_code not in (403, 200):
-            async with httpx.AsyncClient() as client:
+            async with httpx_request.get_client() as client:
                 indexer_response = await client.get(INDEXER_API_URL + "/user", params={"apikey": API_KEY, "v": APP_VERSION})
                 status_code = indexer_response.status_code
                 if status_code == 200:
