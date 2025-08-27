@@ -1,15 +1,9 @@
-import httpx
+from httpx import AsyncClient
 
-_client = None
+from privateindexer_client.core.config import APP_VERSION
 
 
-def init_client(app_version: str):
-    global _client
-    _client = httpx.AsyncClient(
-        headers={"User-Agent": f"privateindexer-client/{app_version}"}
+def get_client() -> AsyncClient:
+    return AsyncClient(
+        headers={"User-Agent": f"privateindexer-client/{APP_VERSION}"}
     )
-
-
-def get_client() -> httpx.AsyncClient:
-    global _client
-    return _client

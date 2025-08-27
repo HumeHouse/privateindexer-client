@@ -38,9 +38,6 @@ async def lifespan(_: FastAPI):
         log.info(f"[APP] Using movies directory: {MOVIE_DIR}")
         TORZNAB_CATEGORY_PATHS["movies"] = {"id": 1000, "path": MOVIE_DIR}
 
-    # init the httpx client session
-    httpx_request.init_client(APP_VERSION)
-
     # try to authenticate with the API to validate the API key, otherwise fail
     try:
         status_code = None
