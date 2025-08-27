@@ -205,8 +205,10 @@ def find_existing_torrent(media_file_path: str) -> str | None:
                     (new_hash_v2 and existing_hashes.has_v2() and str(existing_hashes.v2) == new_hash_v2)
             ):
                 return existing_path
-        except Exception:
-            continue  # skip invalid torrent files
+        except Exception as e:
+            # skip invalid torrent files
+            log.error(f"[TORRENT] Error occured while trying to find torrent: {e}")
+            continue
 
     return None
 
