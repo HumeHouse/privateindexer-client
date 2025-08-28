@@ -2,7 +2,9 @@
 
 This is the client container for the HumeHouse PrivateIndexer.
 It scans your local media library, creates torrents, and communicates with the PrivateIndexer server.
-There is also a built-in torrent seeder that will automatically start seeding all your media for you.
+There is also a built-in torrent client that will automatically start seeding all your media for you.
+The build-in torrent client also provides qBittorrent-compatible API endpoints for usage with the *arr suite apps.
+You can view a basic dashboard by visiting `http://container-ip:80/dashboard` from a browser.
 
 ---
 
@@ -27,29 +29,33 @@ Use the provided `docker-compose.yml` and adjust paths and environment variables
 
 ### 2. Configure Environment Variables
 
-| Variable           | Default Value     | Description                                                                                                      | Example              |
-|--------------------|-------------------|------------------------------------------------------------------------------------------------------------------|----------------------|
-| `MOVIE_DIR`        | *None (required)* | Path inside the container to your movie media library. (Make sure to mount it to the host somewhere - step 3.)   | `/data/media/movies` |
-| `MOVIE_EXTENSIONS` | `mp4,mkv,m4v,avi` | File extensions (comma-separated) to whitelist for torrent creation during scans.                                |                      |
-| `SCANNER_THREADS`  | `8`               | Number of async threads for scanning media. Recommend matching CPU cores.                                        |                      |
-| `SCAN_INTERVAL`    | `15`              | Minutes between media library scans.                                                                             |                      |
-| `API_KEY`          | *None (required)* | Your assigned API key (contact David if you don’t have one).                                                     | `abcdef123456`       |
-| `TORRENTING_PORT`  | `6881`            | Port accepting connections from other torrent clients. (Make sure to bind this to host and forward in router)    |                      |
-
----
+| Variable           | Default Value     | Description                                                                                                    | Example              |
+|--------------------|-------------------|----------------------------------------------------------------------------------------------------------------|----------------------|
+| `DOWNLOADS_DIR`    | *None (required)* | Path inside the container to your movie media library. (Make sure to mount it to the host somewhere - step 3.) | `/data/downloads`    |
+| `MOVIE_DIR`        | *None (required)* | Path inside the container to your movie media library. (Make sure to mount it to the host somewhere - step 3.) | `/data/media/movies` |
+| `MOVIE_EXTENSIONS` | `mp4,mkv,m4v,avi` | File extensions (comma-separated) to whitelist for torrent creation during scans.                              |                      |
+| `SCANNER_THREADS`  | `8`               | Number of async threads for scanning media. Recommend matching CPU cores.                                      |                      |
+| `SCAN_INTERVAL`    | `15`              | Minutes between media library scans.                                                                           |                      |
+| `API_KEY`          | *None (required)* | Your assigned API key (contact David if you don’t have one).                                                   | `abcdef123456`       |
+| `TORRENTING_PORT`  | `6881`            | Port accepting connections from other torrent clients. (Make sure to bind this to host and forward in router.) |                      |
 
 ### 3. Configure Volumes
 
-| Volume             | Description                                                                                            | Example                                           |
-|--------------------|:-------------------------------------------------------------------------------------------------------|---------------------------------------------------|
-| `/app/data`        | Persistent storage inside the app for storing torrent files (.torrent) and torrent metadata for cache. | `/humehouse/privateindexer/client/data:/app/data` |
-| *Depends on setup* | Movie library location. Path **inside** container MUST match `MOVIE_DIR` environment variable.         | `/data/media/movies:/data/media/movies`           |
-
----
+| Volume      | Description                                                                                                              | Example                                           |
+|-------------|:-------------------------------------------------------------------------------------------------------------------------|---------------------------------------------------|
+| `/app/data` | Persistent storage inside the app for storing torrent files (.torrent), fastresume data, and torrent metadata for cache. | `/humehouse/privateindexer/client/data:/app/data` |
+| *Downloads* | Directory where downloads will be stored. `DOWNLOADS_DIR` MUST be accessible from this directory (Try to match them.)    | `/data/downloads:/data/downloads`                 |
+| *Movies*    | Movie library location. `MOVIE_DIR` MUST be accessible from this directory (Try to match them.)                          | `/data/media/movies:/data/media/movies`           |
 
 ### 4. Port forwarding
 
----
+You should bind and port forward the TORRENTING_PORT to your Docker host to allow incoming connections for seeding.
+
+### NOTE: Map the same port you're using **INSIDE** the container to the port **OUTSIDE** the container on the host
+
+Otherwise the client will start advertising a different port than it's actually reachable on.
+
+The built-in torrent client runs a webserver on port 80 inside the container for RESTful API control of the client
 
 ### 6. Start Client
 
@@ -79,7 +85,8 @@ docker logs -f privateindexer-client
 Here’s an example setup:
 
 - My movie files are stored in `/data/media/movies` on the host
-- My persistent data for the client is stored in `/humehouse/privateindexer` on the host
+- My downloads are stored in `/data/privateindexer/downloads` on the host
+- My persistent data (torrents and database) for client is stored in `/humehouse/privateindexer` on the host
 
 ```yaml
 networks:
@@ -91,7 +98,9 @@ services:
     image: ghcr.io/humehouse/privateindexer-client:latest
     container_name: privateindexer-client
     restart: unless-stopped
+    stop_grace_period: 1m # this may be necessary if you are downloading tons of torrents - the save task during shutdown can be heavy
     environment:
+      DOWNLOADS_DIR: /data/privateindexer/downloads
       MOVIE_DIR: /data/media/movies
       MOVIE_EXTENSIONS: mp4,mkv,m4v,avi
       SCANNER_THREADS: 16 # 16 threads
@@ -100,11 +109,14 @@ services:
       TORRENTING_PORT: 6881
     volumes:
       - /humehouse/privateindexer/client_data:/app/data # mount the persistent data storage location to the host somewhere
+      - /data/privateindexer/downloads:/data/privateindexer/downloads # mount the downloads location on the host to the DOWNLOADS_DIR in the container
       - /data/media/movies:/data/media/movies # mount the movies directory on the host to the MOVIE_DIR in the container
     networks:
       - privateindexer-net
     ports:
       - "6881:6881"
+      - "6881:6881/udp"
+      - "8080:80"
     logging:
       options:
         max-size: 10m

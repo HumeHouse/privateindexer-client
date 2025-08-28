@@ -1,0 +1,44 @@
+version: 1
+disable_existing_loggers: False
+
+formatters:
+  simple:
+    format: "[%(asctime)s] %(levelname)s: %(message)s"
+    datefmt: "%Y-%m-%d %H:%M:%S"
+
+handlers:
+  console:
+    class: logging.StreamHandler
+    formatter: simple
+    level: INFO
+    stream: ext://sys.stdout
+
+loggers:
+  privateindexer:
+    handlers: [ console ]
+    level: INFO
+    propagate: False
+  uvicorn:
+    handlers: [ console ]
+    level: WARNING
+    propagate: False
+  uvicorn.error:
+    handlers: [ console ]
+    level: WARNING
+    propagate: False
+  uvicorn.access:
+    handlers: [ console ]
+    level: WARNING
+    propagate: False
+  httpx:
+    handlers: [ console ]
+    level: WARNING
+    propagate: False
+  httpcore:
+    handlers: [ console ]
+    level: WARNING
+    propagate: False
+
+root:
+  handlers: [ console ]
+  level: INFO

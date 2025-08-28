@@ -7,6 +7,7 @@ services:
     image: ghcr.io/humehouse/privateindexer-client:latest
     container_name: privateindexer-client
     restart: unless-stopped
+    stop_grace_period: 1m
     environment:
       MOVIE_DIR: /path/to/movies
       MOVIE_EXTENSIONS: mp4,mkv,m4v,avi
@@ -22,6 +23,7 @@ services:
     ports:
       - "6881:6881"
       - "6881:6881/udp"
+      - "8080:80"
     logging:
       options:
         max-size: 10m
