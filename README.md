@@ -57,7 +57,7 @@ Otherwise the client will start advertising a different port than it's actually 
 
 The built-in torrent client runs a webserver on port 80 inside the container for RESTful API control of the client
 
-### 6. Start Client
+### 5. Start Client
 
 Start container:
 
@@ -70,6 +70,61 @@ View logs of client:
 ```bash
 docker logs -f privateindexer-client
 ```
+
+### 6. Connect to Prowlarr/Radarr/Sonarr
+
+The API was derived from the qBittorrent API and mocks all of the endpoints used by the *arr suite of apps.
+
+1. Navigate to the `Download Clients` section of the settings in your app.
+2. Click `+` to add new client.
+3. Find `qBittorrent` in the list.
+4. Change the name to something you can identify it with like `PrivateIndexer`.
+5. Set the host to the name of your `privateindexer-client` container or a hostname that points to it (like via reverse
+   proxy).
+6. Set the port to `8080` (or whatever port you've mapped to port 80 inside the container).
+7. Enter any username and the password is your assigned API key. The key is called `API_KEY` in your environment
+   variables.
+8. Give the app a unique category like `radarr`/`sonarr`/`prowlarr` etc.
+9. You may want to click the gear at the bottom to show advanced settings and set the `Client Priority` to something
+   higher than your default download client
+10. **Uncheck** both `Remove Completed` and `Remove Failed` - the app has no sense of either of these options and will
+    only cause errors if you leave these on.
+11. Click `Test` to make sure the connection is working
+12. Click `Save` to add the client
+
+Now you are ready to configure your indexers to use **ONLY** this client **ONLY** for PrivateIndexer downloads
+
+1. Navigate to the `Indexers` section of the settings in your app.
+2. Find your `PrivateIndexer` indexer entry
+3. Click the gear at the bottom to show advanced settings and set the `Download Client` to your newly created client
+4. Click `Save`
+5. For every other indexer in your app, make sure to select a **different** download client, otherwise the indexer may
+   try to use `PrivateIndexer` to download non-private torrents or cause other problems
+
+You're done!
+
+### 7. Visit the web interface
+
+With the provided `docker-compose.yml` the container listens on port 8080 on all interfaces
+
+Navigate to `https://your-hostname:8080/dashboard` to view the dashboard
+
+- Click on torrents to view their status
+- Switch tabs using the menu docked to the bottom of the page to view general info, tracker info, and peer info
+- Filter through torrents by name using the `Filter` search box at the top of the 'Name' column
+
+- Your client stats are displayed at the top center
+    - Uploading: number of torrents you are actively uploading (seeding) from **this local client**
+    - Downloading: number of torrents you are actively downloading (leeching) to  **this local client**
+    - Total: number of torrents added to **this local client**
+    - Peers: number of external clients connected to **this local client** (can be seeds or leeches)
+
+- Your server stats are displayed in the top right corner
+    - Uploaded: number of torrents you've sent to the server
+    - S: number of torrents you are actively seeding to the swarm (all locations)
+    - L: number of torrents you are actively downloading (leeching) from the swarm  (all locations)
+    - Swarm: number of active users who are seeding torrents that you have uploaded
+    - Grabs: number of times other users have downloaded files that you have uploaded
 
 ---
 
