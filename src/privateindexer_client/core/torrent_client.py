@@ -60,17 +60,13 @@ async def add_torrent_for_seeding(torrent_file: str, save_path: str):
             log.error(f"[TORRENT] Torrent '{torrent_name}' did not generate a v1 hash, it has been removed")
             os.unlink(torrent_file)
             return
-        torrent_hash_v1 = str(hashes.v1)
         if not hashes.has_v2():
             log.error(f"[TORRENT] Torrent '{torrent_name}' did not generate a v2 hash, it has been removed")
             os.unlink(torrent_file)
             return
-        torrent_hash_v2 = str(hashes.v2)
 
         # skip torrent if torrent already exists in libtorrent session
-        if libtorrent_session.find_torrent(torrent_hash_v1).is_valid():
-            return
-        if libtorrent_session.find_torrent(torrent_hash_v2).is_valid():
+        if libtorrent_session.find_torrent(info.info_hash()).is_valid():
             return
 
         # add the tracker URL
