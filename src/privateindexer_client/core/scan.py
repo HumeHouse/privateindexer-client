@@ -18,8 +18,8 @@ async def scan_media_library():
     Torrent creation is batched into a multi-threaded executor, number of threads defined by user
     Will attempt to use send_torrent_to_indexer() and seed_torrents() for each torrent if conditions are met
     """
-    torrents = await database.fetch_all("SELECT media_path FROM torrents")
-    existing_media = [t["media_path"] for t in torrents]
+    torrents = await database.fetch_all("SELECT media_path, torrent_path FROM torrents")
+    existing_media = {t["media_path"]: t["torrent_path"] for t in torrents}
 
     total_files = 0
     ignored_files = 0
@@ -42,10 +42,13 @@ async def scan_media_library():
 
                 # ignore the media file if the current path is matches what is in the database
                 if file_path in existing_media:
-                    ignored_files += 1
-                    continue
+                    torrent_path = existing_media[file_path]
+                    # only ignore the creation process if the torrent file exists
+                    if os.path.exists(torrent_path):
+                        ignored_files += 1
+                        continue
 
-                # ignore the media file if we have a torrent file for it
+                # ignore the media file if we can find a matching torrent file for it
                 torrent_file = utils.find_existing_torrent(file_path)
                 if torrent_file:
                     # try to update the media path in the database to match the current path
