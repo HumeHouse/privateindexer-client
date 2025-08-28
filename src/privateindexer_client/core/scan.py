@@ -4,7 +4,7 @@ import os
 from concurrent.futures import ProcessPoolExecutor
 
 from privateindexer_client.core import torrent_client, database, utils
-from privateindexer_client.core.config import SCAN_INTERVAL, SCANNER_THREADS, TORZNAB_CATEGORY_PATHS, MOVIE_EXTENSIONS
+from privateindexer_client.core.config import SCAN_INTERVAL, SCANNER_THREADS, TORZNAB_CATEGORY_PATHS, MOVIE_EXTENSIONS, DOWNLOADS_DIR
 from privateindexer_client.core.logger import log
 
 EXECUTOR = ProcessPoolExecutor(max_workers=SCANNER_THREADS)
@@ -57,7 +57,8 @@ async def scan_media_library():
                         await database.execute("UPDATE torrents SET media_path = ?, category = ? WHERE id = ?", (file_path, category_id, result["id"],))
                         log.info(f"[SCAN] Updated the media path for '{result["name"]}'")
                     else:
-                        log.error(f"[SCAN] Failed to update the media path in database for '{file_path}'")
+                        log.warning(f"[SCAN] Couldn't to update media path, retrying download: '{torrent_file}'")
+                        await torrent_client.add_torrent_for_download(torrent_file, DOWNLOADS_DIR)
                     continue
 
                 # dispatch the torrent creation to the pool of worker threads
