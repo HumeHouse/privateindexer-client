@@ -78,7 +78,7 @@ def add_torrent_for_download(torrent_file: str, save_path: str) -> bool:
         torrent_file_out = os.path.join(TORRENTS_DIR, f"{torrent_name}.torrent")
         try:
             shutil.move(torrent_file, torrent_file_out)
-            log.info(f"[TORCLIENT] Saved torrent file for {torrent_name}")
+            log.debug(f"[TORCLIENT] Saved torrent file for {torrent_name}")
         except Exception as e:
             log.error(f"[TORCLIENT] Failed to save torrent file for {torrent_name}: {e}")
 
@@ -226,15 +226,15 @@ async def load_fastresume_data():
                 ti = lt.torrent_info(torrent_path)
                 atp.ti = ti
             except Exception as e:
-                log.error(f"[FASTRESUME] Failed to load torrent metadata for hash: {base}: {e}")
+                log.error(f"[FASTRESUME] Failed to load torrent metadata for hash: {hash_v1}: {e}")
                 continue
 
             # add to session
             libtorrent_session.add_torrent(atp)
-            log.info(f"[FASTRESUME] Loaded fastresume data for hash: {base}")
+            log.debug(f"[FASTRESUME] Loaded fastresume data for hash: {hash_v1}")
 
         except Exception as e:
-            log.error(f"[FASTRESUME] Failed to read fastresume data for hash: {base}: {e}")
+            log.error(f"[FASTRESUME] Failed to read fastresume data for hash: {hash_v1}: {e}")
 
 
 async def save_all_fastresume_data():

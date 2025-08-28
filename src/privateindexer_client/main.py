@@ -52,10 +52,10 @@ async def lifespan(_: FastAPI):
                     TORRENT_SIGNER = indexer_response.text
                     log.info(f"[APP] Connected to PrivateIndexer server as '{TORRENT_SIGNER}'")
                 elif status_code == 403:
-                    log.error(f"[APP] API key rejected by PrivateIndexer server")
+                    log.error("[APP] API key rejected by PrivateIndexer server")
                     exit(1)
                 else:
-                    log.error(f"[APP] PrivateIndexer server unavailable, trying again in 30 seconds")
+                    log.error("[APP] PrivateIndexer server unavailable, trying again in 30 seconds")
                     await asyncio.sleep(30)
     except Exception as e:
         log.error(f"[APP] Failed to validate API key: {e}")
@@ -65,6 +65,7 @@ async def lifespan(_: FastAPI):
     # init the libtorrent client session
     torrent_client.create_libtorrent_session(APP_VERSION)
 
+    log.info("[APP] Loading fastresume data into torrent client")
     # load the fastresume data into the client session
     await torrent_client.load_fastresume_data()
 
@@ -82,11 +83,11 @@ async def lifespan(_: FastAPI):
     # send the torrent alerts task to the asyncio scheduler
     alerts_task = asyncio.create_task(torrent_client.periodic_alerts_task())
 
-    log.info(f"[APP] API server started on 0.0.0.0:80")
+    log.info("[APP] API server started on 0.0.0.0:80")
 
     yield
 
-    log.info(f"[APP] Shutting down PrivateIndexer client")
+    log.info("[APP] Shutting down PrivateIndexer client")
 
     log.info(f"[APP] Stopping tasks")
     scan_task.cancel()
@@ -94,10 +95,10 @@ async def lifespan(_: FastAPI):
     fastresume_task.cancel()
     alerts_task.cancel()
 
-    log.info(f"[APP] Saving fastresume data")
+    log.info("[APP] Saving fastresume data")
     await torrent_client.save_all_fastresume_data()
 
-    log.info(f"[APP] Shutdown complete")
+    log.info("[APP] Shutdown complete")
 
 
 app = FastAPI(lifespan=lifespan)

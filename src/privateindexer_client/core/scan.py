@@ -120,7 +120,7 @@ async def periodic_scan_task():
     Wraps scan_media_library() asynchronously and periodically scans media libraries defined by user
     Will also attempt to resend failed uploads torrents to the PrivateIndexer server after each scan
     """
-    log.info("[SCAN] Task loop started")
+    log.debug("[SCAN] Task loop started")
     while True:
         try:
             log.info("[SCAN] Running media library scan")
