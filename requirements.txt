@@ -1,2 +1,7 @@
+fastapi
+uvicorn[standard]
+python-multipart
 libtorrent
-requests
+httpx
+jinja2
+aiosqlite
