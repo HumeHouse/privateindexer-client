@@ -108,9 +108,11 @@ async def scan_media_library():
         elif media_path and not os.path.exists(media_path):
             await database.execute("UPDATE torrents SET media_path = NULL WHERE id = ?", (torrent["id"],))
 
-    await database.save_torrents_threadsafe(still_existing)
-
-    removed_entries = len(torrents) - len(still_existing)
+    # TODO: keep this legacy code in here until the next version to let the client build/save fastresume data
+    log.info(f"[SCAN] Legacy-mode: adding all torrents to torrent client for seeding")
+    # add all torrents to the torrent client if they aren't already
+    torrents = await database.fetch_all("SELECT * FROM torrents")
+    torrent_client.add_torrents_for_seeding(torrents)
 
     return total_files, ignored_files, created_files, removed_entries
 

@@ -151,6 +151,7 @@ async def add_torrent_for_download(torrent_file: str, save_path: str) -> bool:
 
 
 def add_torrents_for_seeding(torrents_to_add: list[dict]):
+    # TODO: remove this legacy function next version, torrents will not be batch-added
     """
     Add multiple torrent files to libtorrent session
     Ensures torrent file exists before adding
