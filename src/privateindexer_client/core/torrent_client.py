@@ -85,7 +85,7 @@ async def add_torrent_for_seeding(torrent_file: str, save_path: str):
 
 async def add_torrent_for_download(torrent_file: str, save_path: str) -> bool:
     """
-    Adds a single torrent file to libtorrent session
+    Adds a single torrent file to libtorrent session for download
     """
     if not os.path.exists(torrent_file):
         log.error(f"[TORCLIENT] Torrent file not found: {torrent_file}")
