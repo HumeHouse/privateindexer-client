@@ -179,7 +179,9 @@ def add_torrents_for_seeding(torrents_to_add: list[dict]):
             params["flags"] = flags
 
             # add to the libtorrent session
-            libtorrent_session.add_torrent(params)
+            torrent_handle = libtorrent_session.add_torrent(params)
+            # trigger a fastresume save task
+            torrent_handle.save_resume_data()
             added += 1
         except Exception as e:
             log.error(f"[TORCLIENT] Failed to add {torrent_metadata["name"]}: {e}")
