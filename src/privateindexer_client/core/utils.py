@@ -140,31 +140,26 @@ def torrent_matches_file(torrent_path: str, media_path: str) -> bool:
 def create_torrent(media_file_path: str):
     """
     Main synchronous routine to build and generate a complete torrent file from the media passed in as file_path
-    Checks for existing torrent file in case database save operation was interrupted from a previous app run
     Will fail if v1/v2 hash checks do not succeeed
     Removes the torrent file if any failures occur so a new one can be generated
     """
     # split the extension off the filename, this will become the name of the torrent if needed
     torrent_name, _ = os.path.splitext(os.path.basename(media_file_path))
-    torrent_file_path = find_existing_torrent(media_file_path)
+    torrent_file_path = os.path.join(TORRENTS_DIR, f"{torrent_name}.torrent")
 
-    if torrent_file_path:
-        log.info(f"[TORRENT] Torrent '{torrent_name}' already exists")
-    else:
-        torrent_file_path = os.path.join(TORRENTS_DIR, f"{torrent_name}.torrent")
-        # use libtorrent to initialize temporary storage, add the media, sign the torrent, set to private, and encode data to the torrent file
-        log.info(f"[TORRENT] Creating torrent for '{torrent_name}'")
-        fs = lt.file_storage()
-        fs.set_name(torrent_name)
-        lt.add_files(fs, media_file_path)
-        t = lt.create_torrent(fs)
-        t.set_creator("PrivateIndexer Client")
-        t.set_priv(True)
-        lt.set_piece_hashes(t, os.path.dirname(media_file_path))
-        torrent_data = t.generate()
+    # use libtorrent to initialize temporary storage, add the media, sign the torrent, set to private, and encode data to the torrent file
+    log.info(f"[TORRENT] Creating torrent for '{torrent_name}'")
+    fs = lt.file_storage()
+    fs.set_name(torrent_name)
+    lt.add_files(fs, media_file_path)
+    t = lt.create_torrent(fs)
+    t.set_creator("PrivateIndexer Client")
+    t.set_priv(True)
+    lt.set_piece_hashes(t, os.path.dirname(media_file_path))
+    torrent_data = t.generate()
 
-        with open(torrent_file_path, "wb") as f:
-            f.write(lt.bencode(torrent_data))
+    with open(torrent_file_path, "wb") as f:
+        f.write(lt.bencode(torrent_data))
 
     # attempt to pull the v1 and v2 hash information from the torrent file, otherwise fail and remove torrent file from disk
     try:
