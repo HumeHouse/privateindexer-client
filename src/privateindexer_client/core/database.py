@@ -13,7 +13,7 @@ TORRENTS_TABLE_SQL = """
                          id            INTEGER primary key,
                          name          TEXT    not null,
                          size          INTEGER not null,
-                         torrent_path  TEXT    not null,
+                         torrent_path TEXT not null unique,
                          media_path    TEXT,
                          download_path TEXT,
                          uploaded      BOOLEAN not null,
