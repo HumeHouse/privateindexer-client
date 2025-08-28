@@ -173,6 +173,7 @@ async def add_torrent(
     if not torrents and not urls:
         log.warning(f"[API] No file upload or URL provided ({request.headers.get("user-agent")})")
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST)
+    # TODO: validate the torrent URL is actually a PrivateIndexer torrent
 
     if category:
         # ensure category exists before storing data in it
