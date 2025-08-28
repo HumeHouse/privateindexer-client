@@ -323,7 +323,7 @@ async def periodic_torrent_status_task():
     """
     Periodically check torrent status and validate error status every 5 seconds.
     """
-    log.info("[STATUS] Task loop started")
+    log.debug("[STATUS] Task loop started")
     while True:
         try:
             torrents = libtorrent_session.get_torrents()
@@ -345,7 +345,7 @@ async def periodic_fastresume_task():
     Periodically schedule fastresume saves every 60 minutes
     """
     # TODO: allow user to change fastresume interval
-    log.info("[FASTRESUME] Task loop started")
+    log.debug("[FASTRESUME] Task loop started")
     while True:
         try:
             await save_all_fastresume_data()
@@ -359,7 +359,7 @@ async def periodic_alerts_task():
     """
     Periodically check for alerts and process them every 5 seconds
     """
-    log.info("[ALERTS] Task loop started")
+    log.debug("[ALERTS] Task loop started")
     while True:
         try:
             alerts = libtorrent_session.pop_alerts()
