@@ -14,6 +14,9 @@ from privateindexer_client.core.logger import log
 async def lifespan(_: FastAPI):
     log.info(f"[APP] Starting PrivateIndexer client v{APP_VERSION}")
 
+    # initialize the database
+    await database.initialize()
+
     # try to create torrents and fastresume directories
     log.info(f"[APP] Torrent data directory: {TORRENTS_DIR}")
     os.makedirs(TORRENTS_DIR, exist_ok=True)

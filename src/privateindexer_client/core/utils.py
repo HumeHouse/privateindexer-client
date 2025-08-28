@@ -101,6 +101,42 @@ async def send_torrent_to_indexer(metadata):
         return False
 
 
+def hash_file_by_pieces(file_path: str, piece_length: int) -> list[str]:
+    """
+    Return list of SHA1 hashes (hex) of file split into piece_length chunks
+    """
+    hashes = []
+    with open(file_path, "rb") as f:
+        while chunk := f.read(piece_length):
+            h = hashlib.sha1(chunk).digest()
+            hashes.append(h)
+    return hashes
+
+
+def torrent_matches_file(torrent_path: str, media_path: str) -> bool:
+    """
+    Checks if a torrent file and media hashes match
+    Calculates hash of the media and compares to the hashes found in the torrent file
+    """
+    # read torrent info
+    info = lt.torrent_info(torrent_path)
+
+    # single file torrent
+    if info.num_files() == 1:
+        if os.path.getsize(media_path) != info.total_size():
+            return False
+
+        piece_length = info.piece_length()
+        file_hashes = hash_file_by_pieces(media_path, piece_length)
+
+        # get piece hashes from torrent info
+        torrent_hashes = [info.hash_for_piece(i) for i in range(info.num_pieces())]
+        return file_hashes == torrent_hashes
+
+    # TODO: multi-file torrents require walking directory
+    return False
+
+
 def create_torrent(media_file_path: str):
     """
     Main synchronous routine to build and generate a complete torrent file from the media passed in as file_path
@@ -144,6 +180,9 @@ def create_torrent(media_file_path: str):
             os.unlink(torrent_file_path)
             return None
         torrent_hash_v2 = str(hashes.v2)
+
+        # get the number of files in the torrent
+        file_count = info.num_files()
     except Exception as e:
         log.error(f"[TORRENT] Failed to read hash for '{torrent_name}', it has been removed: {e}")
         os.unlink(torrent_file_path)
@@ -152,8 +191,8 @@ def create_torrent(media_file_path: str):
     size = os.path.getsize(media_file_path)
     category_id = detect_torznab_category(media_file_path)
 
-    return {"name": torrent_name, "size": size, "path": media_file_path, "uploaded": False, "files": 1, "category": category_id, "hash_v1": torrent_hash_v1,
-            "hash_v2": torrent_hash_v2}
+    return {"name": torrent_name, "size": size, "media_path": media_file_path, "torrent_path": torrent_file_path, "uploaded": False, "files": file_count,
+            "category": category_id, "hash_v1": torrent_hash_v1, "hash_v2": torrent_hash_v2}
 
 
 def create_torrent_threadsafe(file_path: str):
@@ -167,49 +206,41 @@ def create_torrent_threadsafe(file_path: str):
         return None
 
 
-def find_existing_torrent(media_file_path: str) -> str | None:
+def find_existing_torrent(media_path: str) -> str | None:
     """
-    Given a media file path, check if a torrent already exists in TORRENTS_DIR with the same info_hash (v1 or v2)
+    Given a media path, check if a torrent already exists in TORRENTS_DIR with the same name
     Returns the existing torrent path if found, otherwise None
     """
-    torrent_name, _ = os.path.splitext(os.path.basename(media_file_path))
+    # get just the name of file or directory without the path
+    basename = os.path.basename(media_path)
 
-    try:
-        # build a temporary torrent object in-memory for this media file
-        fs = lt.file_storage()
-        fs.set_name(torrent_name)
-        lt.add_files(fs, media_file_path)
-        t = lt.create_torrent(fs)
-        t.set_priv(True)
-        lt.set_piece_hashes(t, os.path.dirname(media_file_path))
-        new_info = lt.torrent_info(t.generate())
-        new_hashes = new_info.info_hashes()
-        new_hash_v1 = str(new_hashes.v1) if new_hashes.has_v1() else None
-        new_hash_v2 = str(new_hashes.v2) if new_hashes.has_v2() else None
-    except Exception as e:
-        log.error(f"[TORRENT] Failed to generate info hash for '{media_file_path}': {e}")
-        return None
+    # try to find the torrent file based on the file or directory name
+    torrent_file = os.path.join(TORRENTS_DIR, basename + ".torrent")
+    if os.path.exists(torrent_file):
+        log.debug(f"[TORRENT] Matched '{media_path}' to '{torrent_file}' by name")
+        return torrent_file
 
-    # compare against torrents in our directory
-    for f in os.listdir(TORRENTS_DIR):
-        if not f.endswith(".torrent"):
+    # if this media is a file, we can try to strip the extension off and find a match
+    if os.path.isfile(media_path):
+        filename = os.path.splitext(os.path.basename(media_path))[0]
+        torrent_file = os.path.join(TORRENTS_DIR, filename + ".torrent")
+        if os.path.exists(torrent_file):
+            log.debug(f"[TORRENT] Matched '{media_path}' to '{torrent_file}' by filename")
+            return torrent_file
+
+    # find a torrent whose file hashes match that of what we are looking for
+    for torrent_file in os.listdir(TORRENTS_DIR):
+        if not torrent_file.endswith(".torrent"):
             continue
-
-        existing_path = os.path.join(TORRENTS_DIR, f)
+        torrent_path = os.path.join(TORRENTS_DIR, torrent_file)
         try:
-            existing_info = lt.torrent_info(existing_path)
-            existing_hashes = existing_info.info_hashes()
-
-            if (
-                    (new_hash_v1 and existing_hashes.has_v1() and str(existing_hashes.v1) == new_hash_v1) or
-                    (new_hash_v2 and existing_hashes.has_v2() and str(existing_hashes.v2) == new_hash_v2)
-            ):
-                return existing_path
+            if torrent_matches_file(torrent_path, media_path):
+                log.debug(f"[TORRENT] Matched '{media_path}' to '{torrent_path}' by hash")
+                return torrent_path
         except Exception as e:
-            # skip invalid torrent files
-            log.error(f"[TORRENT] Error occured while trying to find torrent: {e}")
-            continue
+            log.error(f"[TORRENT] Error comparing hash for '{media_path}' to '{torrent_file}': {e}")
 
+    log.debug(f"[TORRENT] Couldn't find torrent file for: '{media_path}")
     return None
 
 
