@@ -172,7 +172,7 @@ def add_torrents_for_seeding(torrents_to_add: list[dict]):
 
             # add the tracker URL
             info = lt.torrent_info(torrent_path)
-            info.add_tracker(f"{ANNOUNCE_TRACKER_URL}?apikey={API_KEY}")
+            info.add_tracker(ANNOUNCE_TRACKER_URL)
 
             params = {"ti": info, "save_path": os.path.dirname(torrent_metadata["media_path"])}
 
