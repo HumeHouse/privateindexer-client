@@ -37,7 +37,53 @@ def get_all_torrents() -> list:
     return libtorrent_session.get_torrents()
 
 
-def add_torrent_for_download(torrent_file: str, save_path: str) -> bool:
+async def add_torrent_for_seeding(torrent_file: str, save_path: str):
+    """
+    Adds a single torrent file to libtorrent session in seed mode
+    """
+    if not os.path.exists(torrent_file):
+        log.error(f"[TORCLIENT] Torrent file not found: {torrent_file}")
+        return
+
+    try:
+        info = lt.torrent_info(torrent_file)
+        torrent_name = info.name()
+
+        # make sure the torrent we're trying to seed has a v1 and a v2 hash
+        hashes = info.info_hashes()
+        if not hashes.has_v1():
+            log.error(f"[TORRENT] Torrent '{torrent_name}' did not generate a v1 hash, it has been removed")
+            os.unlink(torrent_file)
+            return
+        torrent_hash_v1 = str(hashes.v1)
+        if not hashes.has_v2():
+            log.error(f"[TORRENT] Torrent '{torrent_name}' did not generate a v2 hash, it has been removed")
+            os.unlink(torrent_file)
+            return
+        torrent_hash_v2 = str(hashes.v2)
+
+        # skip torrent if torrent already exists in libtorrent session
+        if libtorrent_session.find_torrent(torrent_hash_v1).is_valid():
+            return
+        if libtorrent_session.find_torrent(torrent_hash_v2).is_valid():
+            return
+
+        # add the tracker URL
+        info.add_tracker(ANNOUNCE_TRACKER_URL)
+
+        params = {"ti": info, "save_path": os.path.dirname(save_path)}
+
+        flags = lt.torrent_flags.default_flags | lt.torrent_flags.seed_mode
+        params["flags"] = flags
+
+        # add to the libtorrent session
+        libtorrent_session.add_torrent(params)
+        log.info(f"[TORCLIENT] Added torrent for seeding: {torrent_name}")
+    except Exception as e:
+        log.error(f"[TORCLIENT] Failed to add torrent '{torrent_file}': {e}")
+
+
+async def add_torrent_for_download(torrent_file: str, save_path: str) -> bool:
     """
     Adds a single torrent file to libtorrent session
     """
