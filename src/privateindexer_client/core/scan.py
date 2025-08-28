@@ -51,8 +51,10 @@ async def scan_media_library():
                     # try to update the media path in the database to match the current path
                     result = await database.fetch_one("SELECT id, name FROM torrents WHERE torrent_path = ?", (torrent_file,))
                     if result and result.get("id") is not None:
+                        # detect category in case it's not matching in the database
+                        category_id = utils.detect_torznab_category(file_path)
                         # update the old media location to match current location
-                        await database.execute("UPDATE torrents SET media_path = ? WHERE id = ?", (file_path, result["id"],))
+                        await database.execute("UPDATE torrents SET media_path = ?, category = ? WHERE id = ?", (file_path, category_id, result["id"],))
                         log.info(f"[SCAN] Updated the media path for '{result["name"]}'")
                     else:
                         log.error(f"[SCAN] Failed to update the media path in database for '{file_path}'")

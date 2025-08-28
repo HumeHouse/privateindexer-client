@@ -5,7 +5,6 @@ import shutil
 import libtorrent as lt
 
 from privateindexer_client.core import database
-from privateindexer_client.core import utils
 from privateindexer_client.core.config import TORRENTING_PORT, TORRENTS_DIR, ANNOUNCE_TRACKER_URL, FASTRESUME_DIR
 from privateindexer_client.core.logger import log
 
@@ -138,14 +137,11 @@ async def add_torrent_for_download(torrent_file: str, save_path: str) -> bool:
         log.error(f"[TORCLIENT] Failed to add new torrent: {e}")
         return False
 
-    # find the category based on the file save path
-    category = utils.detect_torrent_category(save_path)
-
     # add the data for the torrent to the database
     await database.execute(
         "INSERT INTO torrents (name, size, download_path, torrent_path, uploaded, files, category, hash_v1, hash_v2) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
         "ON CONFLICT(torrent_path) DO UPDATE SET name=excluded.name, size=excluded.size, media_path=excluded.media_path, uploaded=excluded.uploaded, files=excluded.files, category=excluded.category, hash_v1=excluded.hash_v1, hash_v2=excluded.hash_v2",
-        (torrent_name, total_size, save_path, torrent_file_out, True, file_count, category_id, torrent_hash_v1, torrent_hash_v2,))
+        (torrent_name, total_size, save_path, torrent_file_out, True, file_count, 0, torrent_hash_v1, torrent_hash_v2,))
 
     log.info(f"[TORCLIENT] Added new torrent for download: {torrent_name}")
     return True
