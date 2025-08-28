@@ -25,6 +25,12 @@ def create_libtorrent_session(app_version: str):
                 "validate_https_trackers": False,  # necessary because of OPENSSL stuff
                 "user_agent": f"privateindexer-client/{app_version}",  # send custom user agent
                 "always_send_user_agent": True,  # always send the user agent with every tracker request
+                "seed_time_limit": -1,  # no seed limit for torrents
+                "active_tracker_limit": -1,  # unlimited trackers
+                "active_limit": -1,  # unlimited number of torrents
+                "unchoke_slots_limit": -1,  # unlimited number of unchoked peers
+                "connections_limit": -1,  # unlimited connections
+                "seed_choking_algorithm": lt.seed_choking_algorithm_t.fastest_upload,  # choke based on upload speed
                 }
     libtorrent_session = lt.session(settings)
 
