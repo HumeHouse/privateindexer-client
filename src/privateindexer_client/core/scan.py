@@ -4,7 +4,7 @@ import os
 from concurrent.futures import ProcessPoolExecutor
 
 from privateindexer_client.core import torrent_client, database, utils
-from privateindexer_client.core.config import TORRENTS_DIR, SCAN_INTERVAL, SCANNER_THREADS, TORZNAB_CATEGORY_PATHS, MOVIE_EXTENSIONS
+from privateindexer_client.core.config import SCAN_INTERVAL, SCANNER_THREADS, TORZNAB_CATEGORY_PATHS, MOVIE_EXTENSIONS
 from privateindexer_client.core.logger import log
 
 EXECUTOR = ProcessPoolExecutor(max_workers=SCANNER_THREADS)
@@ -18,8 +18,8 @@ async def scan_media_library():
     Torrent creation is batched into a multi-threaded executor, number of threads defined by user
     Will attempt to use send_torrent_to_indexer() and seed_torrents() for each torrent if conditions are met
     """
-    torrents = await database.load_torrents_threadsafe()
-    torrents_by_path = {t["path"]: t for t in torrents}
+    torrents = await database.fetch_all("SELECT media_path FROM torrents")
+    existing_media = [t["media_path"] for t in torrents]
 
     total_files = 0
     ignored_files = 0
@@ -32,18 +32,30 @@ async def scan_media_library():
     for category_key, cat_info in TORZNAB_CATEGORY_PATHS.items():
         for root, _, files in os.walk(cat_info["path"]):
             for f in files:
-                total_files += 1
-
                 # skip files that have non-whitelisted extensions
                 file_path = os.path.join(root, f)
                 extension = os.path.splitext(os.path.basename(file_path))[1].replace(".", "")
                 if extension not in MOVIE_EXTENSIONS:
                     log.debug(f"[SCAN] Skipping file with {extension} extension")
                     continue
+                total_files += 1
 
-                # ignore the media file if it has already been uploaded according to the database
-                if file_path in torrents_by_path and torrents_by_path[file_path].get("uploaded", False):
+                # ignore the media file if the current path is matches what is in the database
+                if file_path in existing_media:
                     ignored_files += 1
+                    continue
+
+                # ignore the media file if we have a torrent file for it
+                torrent_file = utils.find_existing_torrent(file_path)
+                if torrent_file:
+                    # try to update the media path in the database to match the current path
+                    result = await database.fetch_one("SELECT id, name FROM torrents WHERE torrent_path = ?", (torrent_file,))
+                    if result and result.get("id") is not None:
+                        # update the old media location to match current location
+                        await database.execute("UPDATE torrents SET media_path = ? WHERE id = ?", (file_path, result["id"],))
+                        log.info(f"[SCAN] Updated the media path for '{result["name"]}'")
+                    else:
+                        log.error(f"[SCAN] Failed to update the media path in database for '{file_path}'")
                     continue
 
                 # dispatch the torrent creation to the pool of worker threads
@@ -56,38 +68,45 @@ async def scan_media_library():
     # collect the workers as they finish and process their output
     for future in asyncio.as_completed(futures):
         try:
-            torrent_metadata = await future
-            if torrent_metadata:
+            metadata = await future
+            if metadata:
                 created_files += 1
 
                 # attempt to send torrent file to indexer server
-                if not torrent_metadata["uploaded"]:
-                    if await utils.send_torrent_to_indexer(torrent_metadata):
-                        torrent_metadata["uploaded"] = True
+                metadata["uploaded"] = await utils.send_torrent_to_indexer(metadata)
 
-                torrents_by_path[torrent_metadata["path"]] = torrent_metadata
-                await database.save_torrents_threadsafe(list(torrents_by_path.values()))
+                # add the torrent metadata to the database
+                await database.execute(
+                    "INSERT INTO torrents (name, size, media_path, torrent_path, uploaded, files, category, hash_v1, hash_v2) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    (metadata["name"], metadata["size"], metadata["media_path"], metadata["torrent_path"], metadata["uploaded"], metadata["files"], metadata["category"],
+                     metadata["hash_v1"], metadata["hash_v2"],))
 
                 # attempt to add the torrent to the libtorrent session right away for immediate seeding
-                torrent_client.add_torrents_for_seeding([torrent_metadata])
+                await torrent_client.add_torrent_for_seeding(metadata["torrent_path"], metadata["media_path"])
 
-                log.info(f"[SCAN] Created or updated torrent: {torrent_metadata["name"]}")
+                log.info(f"[SCAN] Created or updated torrent: {metadata["name"]}")
         except Exception as e:
             log.error(f"[SCAN] Error in torrent post-torrent-creation process: {e}")
 
-    torrents = list(torrents_by_path.values())
-
-    # here we check to make sure the media files for a torrent still exist on the disk, otherwise remove the torrent from the local database ONLY
-    still_existing = []
+    # here we check to make sure the media files for a torrent still exist on the disk, otherwise remove the torrent from the database
+    torrents = await database.fetch_all("SELECT * FROM torrents")
+    removed_entries = 0
     for torrent in torrents:
-        if os.path.exists(torrent["path"]):
-            still_existing.append(torrent)
-        else:
-            log.info(f"[SCAN] Media files missing for '{torrent["name"]}', removed it from database and torrent client")
-            await torrent_client.remove_torrent_by_hash(torrent.get("hash_v2"))
+        media_path = torrent.get("media_path")
+        download_path = torrent.get("download_path")
 
-    # attempt to add any missing files to the libtorrent session for seeding
-    torrent_client.add_torrents_for_seeding(still_existing)
+        # case where both the media and the downloaded data are missing, we assume the user deleted them and purge it
+        if (not media_path or (media_path and not os.path.exists(media_path))) and (not download_path or (download_path and not os.path.exists(download_path))):
+            removed_entries += 1
+            # remove from torrent client
+            await torrent_client.remove_torrent_by_hash(torrent.get("hash_v2"))
+            # remove from database
+            await database.execute("DELETE FROM torrents WHERE id = ?", (torrent["id"],))
+            log.info(f"[SCAN] All files missing for '{torrent["name"]}', removed it from database and torrent client")
+
+        # case where only the media data is missing, remove the media_path in the database
+        elif media_path and not os.path.exists(media_path):
+            await database.execute("UPDATE torrents SET media_path = NULL WHERE id = ?", (torrent["id"],))
 
     await database.save_torrents_threadsafe(still_existing)
 
@@ -113,27 +132,20 @@ async def periodic_scan_task():
             log.info(f"[SCAN] Media library scan complete ({delta}): "
                      f"total {total_files} files, {ignored_files} ignored, {created_files} created, {removed_entries} removed")
 
-            torrents = await database.load_torrents_threadsafe()
-            updated = False
             # attempt to resend all failed uploads to indexer server
-            for torrent in torrents:
-                if torrent.get("uploaded"):
-                    continue
-
-                torrent_file = os.path.join(TORRENTS_DIR, f"{torrent["name"]}.torrent")
+            failed_upload_torrents = await database.fetch_all("SELECT * FROM torrents WHERE uploaded = FALSE")
+            for torrent in failed_upload_torrents:
+                torrent_file = torrent["torrent_path"]
                 if os.path.exists(torrent_file):
                     log.info(f"[SCAN] Attempting to resend torrent to indexer: '{torrent["name"]}'")
                     if await utils.send_torrent_to_indexer(torrent):
-                        torrent["uploaded"] = True
-                        updated = True
+                        await database.execute("UPDATE torrents SET uploaded = TRUE WHERE id = ?", (torrent["id"],))
 
                 # torrent file is missing, remove the entry from database so it can be regenerated on next scan
                 else:
-                    torrents.pop(torrent)
-                    updated = True
+                    await database.execute("DELETE FROM torrents WHERE id = ?", (torrent["id"],))
                     log.warning(f"[SCAN] Torrent file doesn't exist, removed from database: '{torrent_file}'")
-            if updated:
-                await database.save_torrents_threadsafe(torrents)
+
         except Exception as e:
             log.error(f"[SCAN] Error during periodic scan: {e}")
         await asyncio.sleep(SCAN_INTERVAL)
