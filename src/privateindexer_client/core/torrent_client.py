@@ -143,10 +143,8 @@ async def add_torrent_for_download(torrent_file: str, save_path: str) -> bool:
         return False
 
     # add the data for the torrent to the database
-    await database.execute(
-        "INSERT INTO torrents (name, size, download_path, torrent_path, uploaded, files, category, hash_v1, hash_v2) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
-        "ON CONFLICT(torrent_path) DO UPDATE SET name=excluded.name, size=excluded.size, media_path=excluded.media_path, uploaded=excluded.uploaded, files=excluded.files, category=excluded.category, hash_v1=excluded.hash_v1, hash_v2=excluded.hash_v2",
-        (torrent_name, total_size, save_path, torrent_file_out, True, file_count, 0, torrent_hash_v1, torrent_hash_v2,))
+    await utils.add_torrent_to_database(name=torrent_name, size=total_size, torrent_path=torrent_file_out, uploaded=True, files=file_count, category=0,
+                                        media_path=save_path, download_path=DOWNLOADS_DIR, hash_v1=torrent_hash_v1, hash_v2=torrent_hash_v2)
 
     log.info(f"[TORCLIENT] Added new torrent for download: {torrent_name}")
     return True
