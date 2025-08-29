@@ -9,6 +9,7 @@ services:
     restart: unless-stopped
     stop_grace_period: 1m
     environment:
+      DOWNLOADS_DIR: /path/to/downloads
       MOVIE_DIR: /path/to/movies
       MOVIE_EXTENSIONS: mp4,mkv,m4v,avi
       SCANNER_THREADS: 8
