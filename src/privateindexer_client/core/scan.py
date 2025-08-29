@@ -23,7 +23,7 @@ async def scan_media_library():
     ignored_files = 0
     created_files = 0
 
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
     futures = []
 
     # loop through all files in the media directories
@@ -70,7 +70,7 @@ async def scan_media_library():
         log.info(f"[SCAN] Queued {len(futures)} torrents for creation")
 
     # collect the workers as they finish and process their output
-    for future in asyncio.as_completed(futures):
+    async for future in asyncio.as_completed(futures):
         try:
             metadata = await future
             if metadata:
