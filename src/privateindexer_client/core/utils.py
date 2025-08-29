@@ -263,6 +263,18 @@ def find_existing_torrent(media_path: str) -> str | None:
     return None
 
 
+async def add_torrent_to_database(name: str, size: int, torrent_path: str, uploaded: bool, files: int, category: int, media_path: str = None, download_path: str = None,
+                                  hash_v1: str = None, hash_v2: str = None):
+    """
+    Add torrent metadata into the database or update upon duplicate torrent_path
+    """
+    await database.execute(
+        "INSERT INTO torrents (name, size, torrent_path, uploaded, files, category, media_path, download_path, hash_v1, hash_v2)"
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+        "ON CONFLICT(torrent_path) DO UPDATE SET name=excluded.name, size=excluded.size, uploaded=excluded.uploaded, files=excluded.files, category=excluded.category, media_path=excluded.media_path, download_path=excluded.download_path, hash_v1=excluded.hash_v1, hash_v2=excluded.hash_v2",
+        (name, size, torrent_path, uploaded, files, category, media_path, download_path, hash_v1, hash_v2,))
+
+
 def process_fastresume_file(fastresume_path: str, hash_v1: str, torrent_path: str | None):
     """
     Thread-safe way to read fastresume file bytes, returns raw data to main thread
