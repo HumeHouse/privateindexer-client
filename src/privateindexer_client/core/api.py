@@ -2,11 +2,12 @@ import os
 import tempfile
 import time
 
+import libtorrent as lt
 from fastapi import Depends, HTTPException, Query, File, Request, Form, APIRouter, status, UploadFile
 from fastapi.responses import PlainTextResponse, JSONResponse
 
 from privateindexer_client.core import torrent_client, utils, httpx_request
-from privateindexer_client.core.config import API_KEY, DOWNLOADS_DIR
+from privateindexer_client.core.config import API_KEY, DOWNLOADS_DIR, INDEXER_API_URL
 from privateindexer_client.core.logger import log
 
 router = APIRouter(prefix="/api/v2")
@@ -173,7 +174,6 @@ async def add_torrent(
     if not torrents and not urls:
         log.warning(f"[API] No file upload or URL provided ({request.headers.get("user-agent")})")
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST)
-    # TODO: validate the torrent URL is actually a PrivateIndexer torrent
 
     if category:
         # ensure category exists before storing data in it
@@ -192,12 +192,47 @@ async def add_torrent(
     torrent_file = None
     # save torrent data to a temporary file
     if torrents:
-        # write the file stream
+        torrent_name = torrents.filename
+        log.debug(f"[API] Saving torrent '{torrent_name}' to temp directory")
+        # write the file stream to temporary file
         contents = await torrents.read()
-        torrent_file = os.path.join(tempfile.gettempdir(), torrents.filename)
+        torrent_file = os.path.join(tempfile.gettempdir(), torrent_name)
         with open(torrent_file, "wb") as f:
             f.write(contents)
+
+        log.debug(f"[API] Validating torrent: {torrent_name}")
+        info = lt.torrent_info(torrent_file)
+        torrent_name = info.name()
+
+        # make sure the torrent we're trying to download has a v1 and a v2 hash
+        hashes = info.info_hashes()
+        if not hashes.has_v1():
+            log.warning(f"[API] Refusing to keep torrent, no v1 hash (not from PrivateIndexer?): {torrent_name}")
+            os.unlink(torrent_file)
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST)
+        if not hashes.has_v2():
+            log.warning(f"[API] Refusing to keep torrent, no v2 hash (not from PrivateIndexer?): {torrent_name}")
+            os.unlink(torrent_file)
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST)
+        torrent_hash_v2 = str(hashes.v2)
+
+        # check with the server to validate that this is a torrent from PrivateIndexer
+        async with httpx_request.get_client() as client:
+            response = await client.get(f"{INDEXER_API_URL}/torrents?hash_v2={torrent_hash_v2}&apikey={API_KEY}&nograb=true")
+            # based on the response from API, we will know if torrent exists on server
+            if response.status_code == 200:
+                # this means the torrent exists in the server database
+                pass
+            elif response.status_code == 404:
+                log.warning(f"[API] Refusing to keep torrent, file does not come from PrivateIndexer: {torrent_name}")
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST)
+            else:
+                log.error(f"[API] Unknown error code occurred when validating '{torrent_name}' with indexer: {response.status_code}")
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST)
     else:
+        if not urls.startswith(INDEXER_API_URL):
+            log.warning(f"[API] Refusing to keep torrent, URL does not come from PrivateIndexer: {urls}")
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST)
         # download torrent from URL
         async with httpx_request.get_client() as client:
             response = await client.get(urls)
