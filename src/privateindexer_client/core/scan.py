@@ -1,13 +1,11 @@
 import asyncio
 import datetime
 import os
-from concurrent.futures import ProcessPoolExecutor
 
 from privateindexer_client.core import torrent_client, database, utils
-from privateindexer_client.core.config import SCAN_INTERVAL, SCANNER_THREADS, TORZNAB_CATEGORY_PATHS, MOVIE_EXTENSIONS, DOWNLOADS_DIR
+from privateindexer_client.core.config import SCAN_INTERVAL, TORZNAB_CATEGORY_PATHS, MOVIE_EXTENSIONS, DOWNLOADS_DIR
 from privateindexer_client.core.logger import log
-
-EXECUTOR = ProcessPoolExecutor(max_workers=SCANNER_THREADS)
+from privateindexer_client.core.thread_executor import EXECUTOR
 
 
 async def scan_media_library():
