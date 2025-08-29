@@ -3,7 +3,7 @@ import datetime
 import os
 
 from privateindexer_client.core import torrent_client, database, utils
-from privateindexer_client.core.config import SCAN_INTERVAL, TORZNAB_CATEGORY_PATHS, MOVIE_EXTENSIONS, DOWNLOADS_DIR
+from privateindexer_client.core.config import SCAN_INTERVAL, TORZNAB_CATEGORY_PATHS, MOVIE_EXTENSIONS
 from privateindexer_client.core.logger import log
 from privateindexer_client.core.thread_executor import EXECUTOR
 
@@ -58,14 +58,10 @@ async def scan_media_library():
                         # update the old media location to match current location
                         await database.execute("UPDATE torrents SET media_path = ?, category = ? WHERE id = ?", (file_path, category_id, result["id"],))
                         log.info(f"[SCAN] Updated the media path for '{result["name"]}'")
-                    else:
-                        log.warning(f"[SCAN] Couldn't to update media path, retrying download: '{torrent_file}'")
-                        await torrent_client.add_torrent_for_download(torrent_file, DOWNLOADS_DIR)
-                    continue
 
                 log.debug(f"[SCAN] Queueing for torrent creation: '{file_path}'")
                 # dispatch the torrent creation to the pool of worker threads
-                future = loop.run_in_executor(EXECUTOR, utils.create_torrent_threadsafe, file_path)
+                future = loop.run_in_executor(EXECUTOR, utils.create_torrent_threadsafe, file_path, torrent_file)
                 futures.append(future)
 
     if len(futures) > 0:
@@ -134,16 +130,16 @@ async def periodic_scan_task():
 
             # attempt to resend all failed uploads to indexer server
             failed_upload_torrents = await database.fetch_all("SELECT * FROM torrents WHERE uploaded = FALSE")
-            for torrent in failed_upload_torrents:
-                torrent_file = torrent["torrent_path"]
+            for torrent_metadata in failed_upload_torrents:
+                torrent_file = torrent_metadata["torrent_path"]
                 if os.path.exists(torrent_file):
-                    log.info(f"[SCAN] Attempting to resend torrent to indexer: '{torrent["name"]}'")
-                    if await utils.send_torrent_to_indexer(torrent):
-                        await database.execute("UPDATE torrents SET uploaded = TRUE WHERE id = ?", (torrent["id"],))
+                    log.info(f"[SCAN] Attempting to resend torrent to indexer: '{torrent_metadata["name"]}'")
+                    if await utils.send_torrent_to_indexer(torrent_metadata):
+                        await database.execute("UPDATE torrents SET uploaded = TRUE WHERE id = ?", (torrent_metadata["id"],))
 
                 # torrent file is missing, remove the entry from database so it can be regenerated on next scan
                 else:
-                    await database.execute("DELETE FROM torrents WHERE id = ?", (torrent["id"],))
+                    await database.execute("DELETE FROM torrents WHERE id = ?", (torrent_metadata["id"],))
                     log.warning(f"[SCAN] Torrent file doesn't exist, removed from database: '{torrent_file}'")
 
         except Exception as e:
