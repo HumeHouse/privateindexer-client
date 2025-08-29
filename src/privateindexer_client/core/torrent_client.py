@@ -152,46 +152,6 @@ async def add_torrent_for_download(torrent_file: str, save_path: str) -> bool:
     return True
 
 
-def add_torrents_for_seeding(torrents_to_add: list[dict]):
-    # TODO: remove this legacy function next version, torrents will not be batch-added
-    """
-    Add multiple torrent files to libtorrent session
-    Ensures torrent file exists before adding
-    """
-    added = 0
-    for torrent_metadata in torrents_to_add:
-        torrent_path = os.path.join(TORRENTS_DIR, f"{torrent_metadata['name']}.torrent")
-        if not os.path.exists(torrent_path):
-            log.error(f"[TORCLIENT] Torrent file not found: {torrent_path}")
-            continue
-
-        try:
-            # skip torrent if torrent already exists in libtorrent session
-            info_hash = lt.sha1_hash(bytes.fromhex(torrent_metadata["hash_v1"]))
-            existing = libtorrent_session.find_torrent(info_hash)
-            if existing.is_valid():
-                continue
-
-            # add the tracker URL
-            info = lt.torrent_info(torrent_path)
-            info.add_tracker(ANNOUNCE_TRACKER_URL)
-
-            params = {"ti": info, "save_path": os.path.dirname(torrent_metadata["media_path"])}
-
-            flags = lt.torrent_flags.default_flags | lt.torrent_flags.seed_mode
-            params["flags"] = flags
-
-            # add to the libtorrent session
-            torrent_handle = libtorrent_session.add_torrent(params)
-            # trigger a fastresume save task
-            torrent_handle.save_resume_data()
-            added += 1
-        except Exception as e:
-            log.error(f"[TORCLIENT] Failed to add {torrent_metadata["name"]}: {e}")
-    if added > 0:
-        log.info(f"[TORCLIENT] Added {added} torrent(s) to libtorrent client")
-
-
 async def remove_torrent_by_hash(torrent_hash: str, remove_downloads: bool = False):
     """
     Remove a torrent from the libtorrent session if it exists
