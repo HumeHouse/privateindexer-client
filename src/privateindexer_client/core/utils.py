@@ -239,6 +239,21 @@ def find_existing_torrent(media_path: str) -> str | None:
     return None
 
 
+def process_fastresume_file(fastresume_path: str, hash_v1: str, torrent_path: str | None):
+    """
+    Thread-safe way to read fastresume file bytes, returns raw data to main thread
+    """
+    try:
+        # read bytes from fastresume file
+        with open(fastresume_path, "rb") as f:
+            data = f.read()
+        log.debug(f"[FASTRESUME] Loaded fastresume file for hash: {hash_v1}")
+        return data, hash_v1, torrent_path
+    except Exception as e:
+        log.error(f"[FASTRESUME] Failed to read fastresume file for hash: {hash_v1}: {e}")
+        return None, hash_v1, torrent_path
+
+
 def generate_sid(api_key: str) -> str:
     """
     Generate a simple session ID based on the user's API key

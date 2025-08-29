@@ -1,12 +1,15 @@
 import asyncio
 import os
 import shutil
+import time
 
 import libtorrent as lt
 
 from privateindexer_client.core import database
-from privateindexer_client.core.config import TORRENTING_PORT, TORRENTS_DIR, ANNOUNCE_TRACKER_URL, FASTRESUME_DIR
+from privateindexer_client.core.config import TORRENTING_PORT, TORRENTS_DIR, ANNOUNCE_TRACKER_URL, FASTRESUME_DIR, FASTRESUME_INTERVAL
 from privateindexer_client.core.logger import log
+from privateindexer_client.core.thread_executor import EXECUTOR
+from privateindexer_client.core.utils import process_fastresume_file
 
 libtorrent_session: lt.session
 
@@ -211,7 +214,7 @@ async def remove_torrent_by_hash(torrent_hash: str, remove_downloads: bool = Fal
             os.unlink(result["download_path"])
 
 
-async def save_fastresume_to_disk(alert: lt.save_resume_data_alert) -> str | None:
+def save_fastresume_to_disk(alert: lt.save_resume_data_alert) -> str | None:
     """
     Takes the alert from libtorrent and processes the fastresume data into a file on the disk
     """
@@ -240,52 +243,47 @@ async def load_fastresume_data():
     """
     Load fastresume and torrent files from torrents dir into the session
     """
-    # get all the torrent files from the database and build a lookup table by hash_v1
+    # build a map of all the hashes and their respective torrent files
     torrents = await database.fetch_all("SELECT hash_v1, torrent_path FROM torrents")
     torrent_hash_path_map = {t["hash_v1"]: t["torrent_path"] for t in torrents}
 
-    # loop through all fastresume files in the directory
+    loop = asyncio.get_running_loop()
+    futures = []
+
+    # loop through the files in the fastresume directory
     for fname in os.listdir(FASTRESUME_DIR):
+        # ignore files we don't care about
         if not fname.endswith(".fastresume"):
             continue
-
         fastresume_path = os.path.join(FASTRESUME_DIR, fname)
-
-        # strip off the extension so we can use the hash for processing
         hash_v1 = fname.replace(".fastresume", "")
-
-        # find the torrent file for the hash
         torrent_path = torrent_hash_path_map.get(hash_v1)
 
-        # if the torrent path doesn't exist, remove the fastresume data
+        # remove fastresume files which do not have a matching torrent file
         if not torrent_path or not os.path.exists(torrent_path):
             os.unlink(fastresume_path)
-            log.warning(f"[FASTRESUME] Removed invalid fastresume file with hash: {hash_v1}")
+            log.warning(f"[FASTRESUME] Removed dangling fastresume file with hash: {hash_v1}")
             continue
 
+        # dispatch the fastresume file to the pool of worker threads
+        futures.append(loop.run_in_executor(EXECUTOR, process_fastresume_file, fastresume_path, hash_v1, torrent_path))
+
+    # collect results as they finish
+    async for future in asyncio.as_completed(futures):
         try:
-            # read fastresume data
-            with open(fastresume_path, "rb") as f:
-                data = f.read()
-            atp = lt.read_resume_data(data)
-
-            # read torrent metadata
-            try:
-                ti = lt.torrent_info(torrent_path)
-                atp.ti = ti
-            except Exception as e:
-                log.error(f"[FASTRESUME] Failed to load torrent metadata for hash: {hash_v1}: {e}")
-                continue
-
-            # add to session
-            libtorrent_session.add_torrent(atp)
-            log.debug(f"[FASTRESUME] Loaded fastresume data for hash: {hash_v1}")
-
+            raw_data, hash_v1, torrent_path = await future
+            if raw_data:
+                # assemble the raw data into fastresume add_torrent_params
+                atp = lt.read_resume_data(raw_data)
+                # attach the torrent info to the params
+                atp.ti = lt.torrent_info(torrent_path)
+                # add the torrent to the session
+                libtorrent_session.add_torrent(atp)
         except Exception as e:
-            log.error(f"[FASTRESUME] Failed to read fastresume data for hash: {hash_v1}: {e}")
+            log.error(f"[FASTRESUME] Error in fastresume data post-processing: {e}")
 
 
-async def save_all_fastresume_data():
+def save_all_fastresume_data():
     """
     Immediately schedules a save of fastresume data for all torrents in the session
     This function waits for all alerts to clear before finishing
@@ -305,16 +303,16 @@ async def save_all_fastresume_data():
                 hashes_to_await.add(torrent_hash)
             except Exception as e:
                 log.error(f"[FASTRESUME] Error saving fastresume data for torrent: {e}")
-        while len(hashes_to_await) > 0:
+
+        while hashes_to_await:
             alerts = libtorrent_session.pop_alerts()
             for alert in alerts:
-
-                # process fastresume alerts
                 if isinstance(alert, lt.save_resume_data_alert):
-
-                    torrent_hash = await save_fastresume_to_disk(alert)
-                    if torrent_hash:
+                    torrent_hash = save_fastresume_to_disk(alert)
+                    if torrent_hash and torrent_hash in hashes_to_await:
                         hashes_to_await.remove(torrent_hash)
+            # let the thread sleep so libtorrent has time to generate alerts
+            time.sleep(0.1)
 
     except Exception as e:
         log.error(f"[FASTRESUME] Error saving fastresume data for all torrents: {e}")
@@ -345,15 +343,13 @@ async def periodic_fastresume_task():
     """
     Periodically schedule fastresume saves every 60 minutes
     """
-    # TODO: allow user to change fastresume interval
     log.debug("[FASTRESUME] Task loop started")
     while True:
+        await asyncio.sleep(FASTRESUME_INTERVAL)
         try:
-            await save_all_fastresume_data()
+            save_all_fastresume_data()
         except Exception as e:
             log.error(f"[FASTRESUME] Error in torrent fastresume loop: {e}")
-
-        await asyncio.sleep(3600)
 
 
 async def periodic_alerts_task():
@@ -368,7 +364,7 @@ async def periodic_alerts_task():
 
                 # process fastresume available alerts
                 if isinstance(alert, lt.save_resume_data_alert):
-                    await save_fastresume_to_disk(alert)
+                    save_fastresume_to_disk(alert)
 
         except Exception as e:
             log.error(f"[ALERTS] Error in torrent alerts loop: {e}")
