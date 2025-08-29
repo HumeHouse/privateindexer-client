@@ -1,3 +1,4 @@
+import datetime
 import hashlib
 import json
 import os
@@ -9,6 +10,8 @@ import libtorrent as lt
 from privateindexer_client.core import config, httpx_request
 from privateindexer_client.core.config import TORZNAB_CATEGORY_PATHS, API_KEY, INDEXER_API_URL, TORRENTS_DIR
 from privateindexer_client.core.logger import log
+
+_file_piece_hash_cache: dict[str, dict[int, list[bytes]]] = {}
 
 
 def detect_torznab_category(file_path: str) -> int:
@@ -104,12 +107,33 @@ async def send_torrent_to_indexer(metadata):
 def hash_file_by_pieces(file_path: str, piece_length: int) -> list[str]:
     """
     Return list of SHA1 hashes (hex) of file split into piece_length chunks
+    Caches results per file_path and piece_length
     """
+    # try to return a value from the peice length cache
+    if file_path in _file_piece_hash_cache:
+        if piece_length in _file_piece_hash_cache[file_path]:
+            return _file_piece_hash_cache[file_path][piece_length]
+
     hashes = []
-    with open(file_path, "rb") as f:
-        while chunk := f.read(piece_length):
-            h = hashlib.sha1(chunk).digest()
-            hashes.append(h)
+    before = datetime.datetime.now()
+
+    try:
+        with open(file_path, "rb") as f:
+            while chunk := f.read(piece_length):
+                h = hashlib.sha1(chunk).digest()
+                hashes.append(h)
+    except Exception as e:
+        log.error(f"[TORRENT] Error generating hashes for '{file_path}': {e}")
+        return []
+
+    delta = datetime.datetime.now() - before
+    log.debug(f"[TORRENT] Hashed {len(hashes)}x {piece_length} Byte chunks from '{file_path}' in {delta}")
+
+    # store in cache
+    if file_path not in _file_piece_hash_cache:
+        _file_piece_hash_cache[file_path] = {}
+    _file_piece_hash_cache[file_path][piece_length] = hashes
+
     return hashes
 
 
