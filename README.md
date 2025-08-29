@@ -29,16 +29,17 @@ Use the provided `docker-compose.yml` and adjust paths and environment variables
 
 ### 2. Configure Environment Variables
 
-| Variable           | Default Value     | Description                                                                                                                            | Example              |
-|--------------------|-------------------|----------------------------------------------------------------------------------------------------------------------------------------|----------------------|
-| `DOWNLOADS_DIR`    | *None (required)* | Path inside the container to your movie media library. (Make sure to mount it to the host somewhere - step 3.)                         | `/data/downloads`    |
-| `MOVIE_DIR`        | *None (required)* | Path inside the container to your movie media library. (Make sure to mount it to the host somewhere - step 3.)                         | `/data/media/movies` |
-| `MOVIE_EXTENSIONS` | `mp4,mkv,m4v,avi` | File extensions (comma-separated) to whitelist for torrent creation during scans.                                                      |                      |
-| `SCANNER_THREADS`  | `8`               | Number of async threads for scanning media. Recommend matching CPU cores.                                                              |                      |
-| `SCAN_INTERVAL`    | `15`              | Minutes between media library scans.                                                                                                   |                      |
-| `API_KEY`          | *None (required)* | Your assigned API key (contact David if you don’t have one).                                                                           | `abcdef123456`       |
-| `TORRENTING_PORT`  | `6881`            | Port accepting connections from other torrent clients. (Make sure to bind this to host and forward in router.)                         |                      |
-| `LOG_LEVEL`        | `INFO`            | Lowest log level to show in console. Can be `DEBUG`, `INFO`, `WARNING`, `ERROR`, or `CRITICAL` where `DEBUG` shows most amount of logs |                      |
+| Variable              | Default Value     | Description                                                                                                                            | Example              |
+|-----------------------|-------------------|----------------------------------------------------------------------------------------------------------------------------------------|----------------------|
+| `DOWNLOADS_DIR`       | *None (required)* | Path inside the container to your movie media library. (Make sure to mount it to the host somewhere - step 3.)                         | `/data/downloads`    |
+| `MOVIE_DIR`           | *None (required)* | Path inside the container to your movie media library. (Make sure to mount it to the host somewhere - step 3.)                         | `/data/media/movies` |
+| `MOVIE_EXTENSIONS`    | `mp4,mkv,m4v,avi` | File extensions (comma-separated) to whitelist for torrent creation during scans.                                                      |                      |
+| `MAX_THREADS `        | `8`               | Number of threads to use for CPU & I/O bound tasks. Recommend matching CPU cores.                                                      |                      |
+| `SCAN_INTERVAL`       | `30`              | Minutes between media library scans.                                                                                                   |                      |
+| `FASTRESUME_INTERVAL` | `60`              | How often (in minutes) to save fastresume data. *Setting this too low can negatively impact your disk performance.*                    |                      |
+| `API_KEY`             | *None (required)* | Your assigned API key (contact David if you don’t have one).                                                                           | `abcdef123456`       |
+| `TORRENTING_PORT`     | `6881`            | Port accepting connections from other torrent clients. (Make sure to bind this to host and forward in router.)                         |                      |
+| `LOG_LEVEL`           | `INFO`            | Lowest log level to show in console. Can be `DEBUG`, `INFO`, `WARNING`, `ERROR`, or `CRITICAL` where `DEBUG` shows most amount of logs |                      |
 
 ### 3. Configure Volumes
 
@@ -154,12 +155,13 @@ services:
     image: ghcr.io/humehouse/privateindexer-client:latest
     container_name: privateindexer-client
     restart: unless-stopped
-    stop_grace_period: 1m # this may be necessary if you are downloading tons of torrents - the save task during shutdown can be heavy
+    stop_grace_period: 5m # careful not to let Docker kill the container, it could prevent fastresume data from being saved during shutdown
     environment:
       DOWNLOADS_DIR: /data/privateindexer/downloads
       MOVIE_DIR: /data/media/movies
       MOVIE_EXTENSIONS: mp4,mkv,m4v,avi
-      SCANNER_THREADS: 16 # 16 threads
+      MAX_THREADS: 16 # 16 threads
+      FASTRESUME_INTERVAL: 60 # save fastresume data every hour
       SCAN_INTERVAL: 30 # 30 minutes
       API_KEY: keyhere
       TORRENTING_PORT: 6881

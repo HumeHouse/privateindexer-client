@@ -7,13 +7,14 @@ services:
     image: ghcr.io/humehouse/privateindexer-client:latest
     container_name: privateindexer-client
     restart: unless-stopped
-    stop_grace_period: 1m
+    stop_grace_period: 5m
     environment:
       DOWNLOADS_DIR: /path/to/downloads
       MOVIE_DIR: /path/to/movies
       MOVIE_EXTENSIONS: mp4,mkv,m4v,avi
-      SCANNER_THREADS: 8
+      MAX_THREADS: 8
       SCAN_INTERVAL: 15
+      FASTRESUME_INTERVAL: 60
       API_KEY: keyhere
       TORRENTING_PORT: 6881
       LOG_LEVEL: INFO
