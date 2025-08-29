@@ -46,6 +46,7 @@ async def scan_media_library():
                         ignored_files += 1
                         continue
 
+                log.debug(f"[SCAN] Trying to locate torrent file for: '{file_path}'")
                 # ignore the media file if we can find a matching torrent file for it
                 torrent_file = utils.find_existing_torrent(file_path)
                 if torrent_file:
@@ -62,6 +63,7 @@ async def scan_media_library():
                         await torrent_client.add_torrent_for_download(torrent_file, DOWNLOADS_DIR)
                     continue
 
+                log.debug(f"[SCAN] Queueing for torrent creation: '{file_path}'")
                 # dispatch the torrent creation to the pool of worker threads
                 future = loop.run_in_executor(EXECUTOR, utils.create_torrent_threadsafe, file_path)
                 futures.append(future)
@@ -124,13 +126,13 @@ async def periodic_scan_task():
     log.debug("[SCAN] Task loop started")
     while True:
         try:
-            log.info("[SCAN] Running media library scan")
+            log.info("[SCAN] Scanning media library for new or updated files")
             before = datetime.datetime.now()
 
             total_files, ignored_files, created_files, removed_entries = await scan_media_library()
 
             delta = datetime.datetime.now() - before
-            log.info(f"[SCAN] Media library scan complete ({delta}): "
+            log.info(f"[SCAN] Media library scan completed ({delta}): "
                      f"total {total_files} files, {ignored_files} ignored, {created_files} created, {removed_entries} removed")
 
             # attempt to resend all failed uploads to indexer server
