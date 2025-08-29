@@ -7,7 +7,7 @@ import time
 
 import libtorrent as lt
 
-from privateindexer_client.core import config, httpx_request
+from privateindexer_client.core import config, httpx_request, database
 from privateindexer_client.core.config import TORZNAB_CATEGORY_PATHS, API_KEY, INDEXER_API_URL, TORRENTS_DIR
 from privateindexer_client.core.logger import log
 
@@ -77,8 +77,8 @@ async def send_torrent_to_indexer(metadata):
     Attempt to upload the torrent file along with its metadata to the PrivateIndexer server
     Will mark a file as uploaded in the database if the server API returns a 409 status code
     """
-    torrent_file = os.path.join(TORRENTS_DIR, f"{metadata["name"]}.torrent")
     try:
+        torrent_file = metadata["torrent_path"]
         with open(torrent_file, "rb") as f:
             # build the request with all the necessary torrent metadata required by indexer
             files = {"torrent_file": (os.path.basename(torrent_file), f, "application/x-bittorrent")}
@@ -161,65 +161,72 @@ def torrent_matches_file(torrent_path: str, media_path: str) -> bool:
     return False
 
 
-def create_torrent(media_file_path: str):
+def create_torrent(media_file_path: str, output_torrent_file: str):
     """
     Main synchronous routine to build and generate a complete torrent file from the media passed in as file_path
     Will fail if v1/v2 hash checks do not succeeed
     Removes the torrent file if any failures occur so a new one can be generated
     """
-    # split the extension off the filename, this will become the name of the torrent if needed
-    torrent_name, _ = os.path.splitext(os.path.basename(media_file_path))
-    torrent_file_path = os.path.join(TORRENTS_DIR, f"{torrent_name}.torrent")
+    # check if the torrent file supplied exists
+    if output_torrent_file and os.path.exists(output_torrent_file):
+        # skip generation if torrent exists
+        log.debug(f"[TORRENT] Torrent file '{output_torrent_file}' already exists, generation will be skipped")
 
-    # use libtorrent to initialize temporary storage, add the media, sign the torrent, set to private, and encode data to the torrent file
-    log.info(f"[TORRENT] Creating torrent for '{torrent_name}'")
-    fs = lt.file_storage()
-    fs.set_name(torrent_name)
-    lt.add_files(fs, media_file_path)
-    t = lt.create_torrent(fs)
-    t.set_creator("PrivateIndexer Client")
-    t.set_priv(True)
-    lt.set_piece_hashes(t, os.path.dirname(media_file_path))
-    torrent_data = t.generate()
+    else:
+        log.debug(f"[TORRENT] Torrent file '{output_torrent_file}' does not exist, generating one")
+        # split the extension off the filename, this will become the name of the new torrent
+        torrent_name, _ = os.path.splitext(os.path.basename(media_file_path))
+        output_torrent_file = os.path.join(TORRENTS_DIR, f"{torrent_name}.torrent")
+        # use libtorrent to initialize temporary storage, add the media, sign the torrent, set to private, and encode data to the torrent file
+        log.info(f"[TORRENT] Creating torrent for '{torrent_name}'")
+        fs = lt.file_storage()
+        fs.set_name(torrent_name)
+        lt.add_files(fs, media_file_path)
+        t = lt.create_torrent(fs)
+        t.set_creator("PrivateIndexer Client")
+        t.set_priv(True)
+        lt.set_piece_hashes(t, os.path.dirname(media_file_path))
+        torrent_data = t.generate()
 
-    with open(torrent_file_path, "wb") as f:
-        f.write(lt.bencode(torrent_data))
+        with open(output_torrent_file, "wb") as f:
+            f.write(lt.bencode(torrent_data))
 
     # attempt to pull the v1 and v2 hash information from the torrent file, otherwise fail and remove torrent file from disk
     try:
-        info = lt.torrent_info(torrent_file_path)
+        info = lt.torrent_info(output_torrent_file)
+        torrent_name = info.name()
         hashes = info.info_hashes()
         if not hashes.has_v1():
             log.error(f"[TORRENT] Torrent '{torrent_name}' did not generate a v1 hash, it has been removed")
-            os.unlink(torrent_file_path)
+            os.unlink(output_torrent_file)
             return None
         torrent_hash_v1 = str(hashes.v1)
         if not hashes.has_v2():
             log.error(f"[TORRENT] Torrent '{torrent_name}' did not generate a v2 hash, it has been removed")
-            os.unlink(torrent_file_path)
+            os.unlink(output_torrent_file)
             return None
         torrent_hash_v2 = str(hashes.v2)
 
         # get the number of files in the torrent
         file_count = info.num_files()
     except Exception as e:
-        log.error(f"[TORRENT] Failed to read hash for '{torrent_name}', it has been removed: {e}")
-        os.unlink(torrent_file_path)
+        log.error(f"[TORRENT] Failed to read hash for '{output_torrent_file}', it has been removed: {e}")
+        os.unlink(output_torrent_file)
         return None
 
     size = os.path.getsize(media_file_path)
     category_id = detect_torznab_category(media_file_path)
 
-    return {"name": torrent_name, "size": size, "media_path": media_file_path, "torrent_path": torrent_file_path, "uploaded": False, "files": file_count,
+    return {"name": torrent_name, "size": size, "media_path": media_file_path, "torrent_path": output_torrent_file, "uploaded": False, "files": file_count,
             "category": category_id, "hash_v1": torrent_hash_v1, "hash_v2": torrent_hash_v2}
 
 
-def create_torrent_threadsafe(file_path: str):
+def create_torrent_threadsafe(file_path: str, output_torrent_file: str):
     """
     Wraps the create_torrent() routine in a try/accept to catch all runtime errors
     """
     try:
-        return create_torrent(file_path)
+        return create_torrent(file_path, output_torrent_file)
     except Exception as e:
         log.error(f"[TORRENT] Failed to create torrent for '{file_path}': {e}")
         return None
@@ -227,7 +234,7 @@ def create_torrent_threadsafe(file_path: str):
 
 def find_existing_torrent(media_path: str) -> str | None:
     """
-    Given a media path, check if a torrent already exists in TORRENTS_DIR with the same name
+    Given a media path, check if a torrent already exists in TORRENTS_DIR with the same name or hash
     Returns the existing torrent path if found, otherwise None
     """
     # get just the name of file or directory without the path
