@@ -16,6 +16,7 @@ services:
       SCAN_INTERVAL: 15
       API_KEY: keyhere
       TORRENTING_PORT: 6881
+      LOG_LEVEL: INFO
     volumes:
       - /path/to/client/data:/app/data
       - /path/to/movies:/path/to/movies
