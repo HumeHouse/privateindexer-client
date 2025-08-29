@@ -8,8 +8,6 @@ APP_VERSION = "1.2.2"
 
 # gather/set environment variables for usage later
 DATABASE_FILE = "/app/data/torrents.db"
-# TODO: remove this key in a few versions or once everyone is updated to SQLite
-TORRENTS_FILE = "/app/data/torrents.json"
 TORRENTS_DIR = "/app/data/torrents"
 FASTRESUME_DIR = os.path.join(TORRENTS_DIR, "fastresume")
 
