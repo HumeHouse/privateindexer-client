@@ -31,7 +31,7 @@ async def lifespan(_: FastAPI):
 
     # create the multi-thread executor with user-defined number of threads
     log.info(f"[APP] Scan interval: {SCAN_INTERVAL} seconds")
-    log.info(f"[APP] Scanner threads: {SCANNER_THREADS}")
+    log.info(f"[APP] Maximum threads: {MAX_THREADS}")
 
     # make sure media directory exists and index it with ID in the category paths
     if MOVIE_DIR.lower() != "false":
