@@ -1,3 +1,4 @@
+import datetime
 import hashlib
 import json
 import os
@@ -6,9 +7,11 @@ import time
 
 import libtorrent as lt
 
-from privateindexer_client.core import config, httpx_request
+from privateindexer_client.core import config, httpx_request, database
 from privateindexer_client.core.config import TORZNAB_CATEGORY_PATHS, API_KEY, INDEXER_API_URL, TORRENTS_DIR
 from privateindexer_client.core.logger import log
+
+_file_piece_hash_cache: dict[str, dict[int, list[bytes]]] = {}
 
 
 def detect_torznab_category(file_path: str) -> int:
@@ -74,8 +77,8 @@ async def send_torrent_to_indexer(metadata):
     Attempt to upload the torrent file along with its metadata to the PrivateIndexer server
     Will mark a file as uploaded in the database if the server API returns a 409 status code
     """
-    torrent_file = os.path.join(TORRENTS_DIR, f"{metadata["name"]}.torrent")
     try:
+        torrent_file = metadata["torrent_path"]
         with open(torrent_file, "rb") as f:
             # build the request with all the necessary torrent metadata required by indexer
             files = {"torrent_file": (os.path.basename(torrent_file), f, "application/x-bittorrent")}
@@ -104,12 +107,33 @@ async def send_torrent_to_indexer(metadata):
 def hash_file_by_pieces(file_path: str, piece_length: int) -> list[str]:
     """
     Return list of SHA1 hashes (hex) of file split into piece_length chunks
+    Caches results per file_path and piece_length
     """
+    # try to return a value from the peice length cache
+    if file_path in _file_piece_hash_cache:
+        if piece_length in _file_piece_hash_cache[file_path]:
+            return _file_piece_hash_cache[file_path][piece_length]
+
     hashes = []
-    with open(file_path, "rb") as f:
-        while chunk := f.read(piece_length):
-            h = hashlib.sha1(chunk).digest()
-            hashes.append(h)
+    before = datetime.datetime.now()
+
+    try:
+        with open(file_path, "rb") as f:
+            while chunk := f.read(piece_length):
+                h = hashlib.sha1(chunk).digest()
+                hashes.append(h)
+    except Exception as e:
+        log.error(f"[TORRENT] Error generating hashes for '{file_path}': {e}")
+        return []
+
+    delta = datetime.datetime.now() - before
+    log.debug(f"[TORRENT] Hashed {len(hashes)}x {piece_length} Byte chunks from '{file_path}' in {delta}")
+
+    # store in cache
+    if file_path not in _file_piece_hash_cache:
+        _file_piece_hash_cache[file_path] = {}
+    _file_piece_hash_cache[file_path][piece_length] = hashes
+
     return hashes
 
 
@@ -137,65 +161,72 @@ def torrent_matches_file(torrent_path: str, media_path: str) -> bool:
     return False
 
 
-def create_torrent(media_file_path: str):
+def create_torrent(media_file_path: str, output_torrent_file: str):
     """
     Main synchronous routine to build and generate a complete torrent file from the media passed in as file_path
     Will fail if v1/v2 hash checks do not succeeed
     Removes the torrent file if any failures occur so a new one can be generated
     """
-    # split the extension off the filename, this will become the name of the torrent if needed
-    torrent_name, _ = os.path.splitext(os.path.basename(media_file_path))
-    torrent_file_path = os.path.join(TORRENTS_DIR, f"{torrent_name}.torrent")
+    # check if the torrent file supplied exists
+    if output_torrent_file and os.path.exists(output_torrent_file):
+        # skip generation if torrent exists
+        log.debug(f"[TORRENT] Torrent file '{output_torrent_file}' already exists, generation will be skipped")
 
-    # use libtorrent to initialize temporary storage, add the media, sign the torrent, set to private, and encode data to the torrent file
-    log.info(f"[TORRENT] Creating torrent for '{torrent_name}'")
-    fs = lt.file_storage()
-    fs.set_name(torrent_name)
-    lt.add_files(fs, media_file_path)
-    t = lt.create_torrent(fs)
-    t.set_creator("PrivateIndexer Client")
-    t.set_priv(True)
-    lt.set_piece_hashes(t, os.path.dirname(media_file_path))
-    torrent_data = t.generate()
+    else:
+        log.debug(f"[TORRENT] Torrent file '{output_torrent_file}' does not exist, generating one")
+        # split the extension off the filename, this will become the name of the new torrent
+        torrent_name, _ = os.path.splitext(os.path.basename(media_file_path))
+        output_torrent_file = os.path.join(TORRENTS_DIR, f"{torrent_name}.torrent")
+        # use libtorrent to initialize temporary storage, add the media, sign the torrent, set to private, and encode data to the torrent file
+        log.info(f"[TORRENT] Creating torrent for '{torrent_name}'")
+        fs = lt.file_storage()
+        fs.set_name(torrent_name)
+        lt.add_files(fs, media_file_path)
+        t = lt.create_torrent(fs)
+        t.set_creator("PrivateIndexer Client")
+        t.set_priv(True)
+        lt.set_piece_hashes(t, os.path.dirname(media_file_path))
+        torrent_data = t.generate()
 
-    with open(torrent_file_path, "wb") as f:
-        f.write(lt.bencode(torrent_data))
+        with open(output_torrent_file, "wb") as f:
+            f.write(lt.bencode(torrent_data))
 
     # attempt to pull the v1 and v2 hash information from the torrent file, otherwise fail and remove torrent file from disk
     try:
-        info = lt.torrent_info(torrent_file_path)
+        info = lt.torrent_info(output_torrent_file)
+        torrent_name = info.name()
         hashes = info.info_hashes()
         if not hashes.has_v1():
             log.error(f"[TORRENT] Torrent '{torrent_name}' did not generate a v1 hash, it has been removed")
-            os.unlink(torrent_file_path)
+            os.unlink(output_torrent_file)
             return None
         torrent_hash_v1 = str(hashes.v1)
         if not hashes.has_v2():
             log.error(f"[TORRENT] Torrent '{torrent_name}' did not generate a v2 hash, it has been removed")
-            os.unlink(torrent_file_path)
+            os.unlink(output_torrent_file)
             return None
         torrent_hash_v2 = str(hashes.v2)
 
         # get the number of files in the torrent
         file_count = info.num_files()
     except Exception as e:
-        log.error(f"[TORRENT] Failed to read hash for '{torrent_name}', it has been removed: {e}")
-        os.unlink(torrent_file_path)
+        log.error(f"[TORRENT] Failed to read hash for '{output_torrent_file}', it has been removed: {e}")
+        os.unlink(output_torrent_file)
         return None
 
     size = os.path.getsize(media_file_path)
     category_id = detect_torznab_category(media_file_path)
 
-    return {"name": torrent_name, "size": size, "media_path": media_file_path, "torrent_path": torrent_file_path, "uploaded": False, "files": file_count,
+    return {"name": torrent_name, "size": size, "media_path": media_file_path, "torrent_path": output_torrent_file, "uploaded": False, "files": file_count,
             "category": category_id, "hash_v1": torrent_hash_v1, "hash_v2": torrent_hash_v2}
 
 
-def create_torrent_threadsafe(file_path: str):
+def create_torrent_threadsafe(file_path: str, output_torrent_file: str):
     """
     Wraps the create_torrent() routine in a try/accept to catch all runtime errors
     """
     try:
-        return create_torrent(file_path)
+        return create_torrent(file_path, output_torrent_file)
     except Exception as e:
         log.error(f"[TORRENT] Failed to create torrent for '{file_path}': {e}")
         return None
@@ -203,7 +234,7 @@ def create_torrent_threadsafe(file_path: str):
 
 def find_existing_torrent(media_path: str) -> str | None:
     """
-    Given a media path, check if a torrent already exists in TORRENTS_DIR with the same name
+    Given a media path, check if a torrent already exists in TORRENTS_DIR with the same name or hash
     Returns the existing torrent path if found, otherwise None
     """
     # get just the name of file or directory without the path
@@ -237,6 +268,33 @@ def find_existing_torrent(media_path: str) -> str | None:
 
     log.debug(f"[TORRENT] Couldn't find torrent file for: '{media_path}")
     return None
+
+
+async def add_torrent_to_database(name: str, size: int, torrent_path: str, uploaded: bool, files: int, category: int, media_path: str = None, download_path: str = None,
+                                  hash_v1: str = None, hash_v2: str = None):
+    """
+    Add torrent metadata into the database or update upon duplicate torrent_path
+    """
+    await database.execute(
+        "INSERT INTO torrents (name, size, torrent_path, uploaded, files, category, media_path, download_path, hash_v1, hash_v2)"
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+        "ON CONFLICT(torrent_path) DO UPDATE SET name=excluded.name, size=excluded.size, uploaded=excluded.uploaded, files=excluded.files, category=excluded.category, media_path=excluded.media_path, download_path=excluded.download_path, hash_v1=excluded.hash_v1, hash_v2=excluded.hash_v2",
+        (name, size, torrent_path, uploaded, files, category, media_path, download_path, hash_v1, hash_v2,))
+
+
+def process_fastresume_file(fastresume_path: str, hash_v1: str, torrent_path: str | None):
+    """
+    Thread-safe way to read fastresume file bytes, returns raw data to main thread
+    """
+    try:
+        # read bytes from fastresume file
+        with open(fastresume_path, "rb") as f:
+            data = f.read()
+        log.debug(f"[FASTRESUME] Loaded fastresume file for hash: {hash_v1}")
+        return data, hash_v1, torrent_path
+    except Exception as e:
+        log.error(f"[FASTRESUME] Failed to read fastresume file for hash: {hash_v1}: {e}")
+        return None, hash_v1, torrent_path
 
 
 def generate_sid(api_key: str) -> str:

@@ -5,8 +5,8 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 from privateindexer_client.core import torrent_client, scan, api, gui, httpx_request, database
-from privateindexer_client.core.config import TORRENTS_DIR, SCAN_INTERVAL, SCANNER_THREADS, MOVIE_DIR, TORZNAB_CATEGORY_PATHS, INDEXER_API_URL, API_KEY, TORRENTING_PORT, \
-    DOWNLOADS_DIR, FASTRESUME_DIR, APP_VERSION
+from privateindexer_client.core.config import TORRENTS_DIR, SCAN_INTERVAL, MOVIE_DIR, TORZNAB_CATEGORY_PATHS, INDEXER_API_URL, API_KEY, TORRENTING_PORT, \
+    DOWNLOADS_DIR, FASTRESUME_DIR, APP_VERSION, MAX_THREADS, FASTRESUME_INTERVAL
 from privateindexer_client.core.logger import log
 
 
@@ -29,9 +29,10 @@ async def lifespan(_: FastAPI):
         log.error(f"[APP] Downloads directory doesn't exist or not accessible: {DOWNLOADS_DIR}")
         exit(1)
 
-    # create the multi-thread executor with user-defined number of threads
     log.info(f"[APP] Scan interval: {SCAN_INTERVAL} seconds")
-    log.info(f"[APP] Scanner threads: {SCANNER_THREADS}")
+    log.info(f"[APP] Fastresume interval: {FASTRESUME_INTERVAL} seconds")
+
+    log.info(f"[APP] Maximum threads: {MAX_THREADS}")
 
     # make sure media directory exists and index it with ID in the category paths
     if MOVIE_DIR.lower() != "false":
@@ -66,8 +67,8 @@ async def lifespan(_: FastAPI):
     torrent_client.create_libtorrent_session(APP_VERSION)
 
     log.info("[APP] Loading fastresume data into torrent client")
-    # load the fastresume data into the client session
-    await torrent_client.load_fastresume_data()
+    # load the fastresume data into the client session using background task
+    asyncio.create_task(torrent_client.load_fastresume_data())
 
     log.info("[APP] Starting periodic tasks")
 
@@ -96,7 +97,19 @@ async def lifespan(_: FastAPI):
     alerts_task.cancel()
 
     log.info("[APP] Saving fastresume data")
-    await torrent_client.save_all_fastresume_data()
+
+    # send the fastresume
+    save_task = asyncio.create_task(asyncio.to_thread(torrent_client.save_all_fastresume_data))
+
+    while not save_task.done():
+        try:
+            # wait for the task to finish at 60 second intervals
+            await asyncio.wait_for(asyncio.shield(save_task), timeout=60)
+        except asyncio.TimeoutError:
+            log.info("[APP] Still saving fastresume data...")
+
+    # ensure any exceptions from save_task are raised
+    await save_task
 
     log.info("[APP] Shutdown complete")
 
