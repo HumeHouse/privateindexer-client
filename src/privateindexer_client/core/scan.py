@@ -1,13 +1,11 @@
 import asyncio
 import datetime
 import os
-from concurrent.futures import ProcessPoolExecutor
 
 from privateindexer_client.core import torrent_client, database, utils
-from privateindexer_client.core.config import SCAN_INTERVAL, SCANNER_THREADS, TORZNAB_CATEGORY_PATHS, MOVIE_EXTENSIONS, DOWNLOADS_DIR
+from privateindexer_client.core.config import SCAN_INTERVAL, TORZNAB_CATEGORY_PATHS, MOVIE_EXTENSIONS
 from privateindexer_client.core.logger import log
-
-EXECUTOR = ProcessPoolExecutor(max_workers=SCANNER_THREADS)
+from privateindexer_client.core.thread_executor import EXECUTOR
 
 
 async def scan_media_library():
@@ -25,7 +23,7 @@ async def scan_media_library():
     ignored_files = 0
     created_files = 0
 
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
     futures = []
 
     # loop through all files in the media directories
@@ -48,6 +46,7 @@ async def scan_media_library():
                         ignored_files += 1
                         continue
 
+                log.debug(f"[SCAN] Trying to locate torrent file for: '{file_path}'")
                 # ignore the media file if we can find a matching torrent file for it
                 torrent_file = utils.find_existing_torrent(file_path)
                 if torrent_file:
@@ -59,34 +58,28 @@ async def scan_media_library():
                         # update the old media location to match current location
                         await database.execute("UPDATE torrents SET media_path = ?, category = ? WHERE id = ?", (file_path, category_id, result["id"],))
                         log.info(f"[SCAN] Updated the media path for '{result["name"]}'")
-                    else:
-                        log.warning(f"[SCAN] Couldn't to update media path, retrying download: '{torrent_file}'")
-                        await torrent_client.add_torrent_for_download(torrent_file, DOWNLOADS_DIR)
-                    continue
 
+                log.debug(f"[SCAN] Queueing for torrent creation: '{file_path}'")
                 # dispatch the torrent creation to the pool of worker threads
-                future = loop.run_in_executor(EXECUTOR, utils.create_torrent_threadsafe, file_path)
+                future = loop.run_in_executor(EXECUTOR, utils.create_torrent_threadsafe, file_path, torrent_file)
                 futures.append(future)
 
     if len(futures) > 0:
         log.info(f"[SCAN] Queued {len(futures)} torrents for creation")
 
     # collect the workers as they finish and process their output
-    for future in asyncio.as_completed(futures):
+    async for future in asyncio.as_completed(futures):
         try:
             metadata = await future
             if metadata:
                 created_files += 1
 
                 # attempt to send torrent file to indexer server
-                metadata["uploaded"] = await utils.send_torrent_to_indexer(metadata)
+                uploaded = await utils.send_torrent_to_indexer(metadata)
 
-                # add the torrent metadata to the database
-                await database.execute(
-                    "INSERT INTO torrents (name, size, media_path, torrent_path, uploaded, files, category, hash_v1, hash_v2) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
-                    "ON CONFLICT(torrent_path) DO UPDATE SET name=excluded.name, size=excluded.size, media_path=excluded.media_path, uploaded=excluded.uploaded, files=excluded.files, category=excluded.category, hash_v1=excluded.hash_v1, hash_v2=excluded.hash_v2",
-                    (metadata["name"], metadata["size"], metadata["media_path"], metadata["torrent_path"], metadata["uploaded"], metadata["files"], metadata["category"],
-                     metadata["hash_v1"], metadata["hash_v2"],))
+                # add the data for the torrent to the database
+                await utils.add_torrent_to_database(metadata["name"], metadata["size"], metadata["torrent_path"], uploaded, metadata["files"], metadata["category"],
+                                                    media_path=metadata["media_path"], hash_v1=metadata["hash_v1"], hash_v2=metadata["hash_v2"])
 
                 # attempt to add the torrent to the libtorrent session right away for immediate seeding
                 await torrent_client.add_torrent_for_seeding(metadata["torrent_path"], metadata["media_path"])
@@ -115,12 +108,6 @@ async def scan_media_library():
         elif media_path and not os.path.exists(media_path):
             await database.execute("UPDATE torrents SET media_path = NULL WHERE id = ?", (torrent["id"],))
 
-    # TODO: keep this legacy code in here until the next version to let the client build/save fastresume data
-    log.info(f"[SCAN] Legacy-mode: adding all torrents to torrent client for seeding")
-    # add all torrents to the torrent client if they aren't already
-    torrents = await database.fetch_all("SELECT * FROM torrents")
-    torrent_client.add_torrents_for_seeding(torrents)
-
     return total_files, ignored_files, created_files, removed_entries
 
 
@@ -132,27 +119,27 @@ async def periodic_scan_task():
     log.debug("[SCAN] Task loop started")
     while True:
         try:
-            log.info("[SCAN] Running media library scan")
+            log.info("[SCAN] Scanning media library for new or updated files")
             before = datetime.datetime.now()
 
             total_files, ignored_files, created_files, removed_entries = await scan_media_library()
 
             delta = datetime.datetime.now() - before
-            log.info(f"[SCAN] Media library scan complete ({delta}): "
+            log.info(f"[SCAN] Media library scan completed ({delta}): "
                      f"total {total_files} files, {ignored_files} ignored, {created_files} created, {removed_entries} removed")
 
             # attempt to resend all failed uploads to indexer server
             failed_upload_torrents = await database.fetch_all("SELECT * FROM torrents WHERE uploaded = FALSE")
-            for torrent in failed_upload_torrents:
-                torrent_file = torrent["torrent_path"]
+            for torrent_metadata in failed_upload_torrents:
+                torrent_file = torrent_metadata["torrent_path"]
                 if os.path.exists(torrent_file):
-                    log.info(f"[SCAN] Attempting to resend torrent to indexer: '{torrent["name"]}'")
-                    if await utils.send_torrent_to_indexer(torrent):
-                        await database.execute("UPDATE torrents SET uploaded = TRUE WHERE id = ?", (torrent["id"],))
+                    log.info(f"[SCAN] Attempting to resend torrent to indexer: '{torrent_metadata["name"]}'")
+                    if await utils.send_torrent_to_indexer(torrent_metadata):
+                        await database.execute("UPDATE torrents SET uploaded = TRUE WHERE id = ?", (torrent_metadata["id"],))
 
                 # torrent file is missing, remove the entry from database so it can be regenerated on next scan
                 else:
-                    await database.execute("DELETE FROM torrents WHERE id = ?", (torrent["id"],))
+                    await database.execute("DELETE FROM torrents WHERE id = ?", (torrent_metadata["id"],))
                     log.warning(f"[SCAN] Torrent file doesn't exist, removed from database: '{torrent_file}'")
 
         except Exception as e:

@@ -3,5 +3,5 @@ import os
 
 # initialize the app logger
 log = logging.getLogger("privateindexer")
-LOG_LEVEL = os.getenv("LOG_LEVEL")
+LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
 log.setLevel(logging.getLevelName(LOG_LEVEL))

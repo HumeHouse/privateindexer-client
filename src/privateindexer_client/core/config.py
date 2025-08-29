@@ -4,12 +4,10 @@ import threading
 
 from privateindexer_client.core.logger import log
 
-APP_VERSION = "1.2.0"
+APP_VERSION = "1.2.2"
 
 # gather/set environment variables for usage later
 DATABASE_FILE = "/app/data/torrents.db"
-# TODO: remove this key in a few versions or once everyone is updated to SQLite
-TORRENTS_FILE = "/app/data/torrents.json"
 TORRENTS_DIR = "/app/data/torrents"
 FASTRESUME_DIR = os.path.join(TORRENTS_DIR, "fastresume")
 
@@ -21,8 +19,10 @@ TORZNAB_CATEGORY_PATHS = {}
 
 INDEXER_API_URL = "https://indexer.humehouse.com"
 
-SCANNER_THREADS = int(os.getenv("SCANNER_THREADS", "16"))
-SCAN_INTERVAL = 60 * int(os.getenv("SCAN_INTERVAL", "5"))
+MAX_THREADS = int(os.getenv("MAX_THREADS", "8"))
+
+SCAN_INTERVAL = 60 * int(os.getenv("SCAN_INTERVAL", "30"))
+FASTRESUME_INTERVAL = 60 * int(os.getenv("FASTRESUME_INTERVAL", "60"))
 
 MOVIE_DIR = os.getenv("MOVIE_DIR", "false")
 MOVIE_EXTENSIONS = os.getenv("MOVIE_EXTENSIONS", "mp4,mkv,m4v,avi").split(",")
