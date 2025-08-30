@@ -47,7 +47,8 @@ def load_config():
         if not os.path.exists(CONFIG_FILE):
             # create the file if it doesn't exist and return empty config
             _config_cache = {}
-            save_config(_config_cache)
+            with open(CONFIG_FILE, "w") as f:
+                json.dump(_config_cache, f, indent=2)
             return _config_cache
 
         try:
@@ -63,8 +64,8 @@ def save_config(config):
     global _config_cache
     with config_lock:
         try:
+            _config_cache = config
             with open(CONFIG_FILE, "w") as f:
                 json.dump(config, f, indent=2)
-            _config_cache = config
         except Exception as e:
             log.error(f"[CONFIG] Failed to write config.json: {e}")
