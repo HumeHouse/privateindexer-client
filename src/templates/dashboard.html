@@ -197,12 +197,16 @@
 <script>
     let selectedTorrentId = null;
 
+    // catch ready event on document
     $(document).ready(() => {
+        // start loops
         fetchTorrents();
-        updateUserStats();
+        fetchUserStats();
+        // lisetn on the filter box for user input
         $('#filter-name').on('input', applyNameFilter);
     });
 
+    // loops through all
     function applyNameFilter() {
         const filter = $('#filter-name').val().toLowerCase();
         $('#torrents-container tr').each(function () {
@@ -214,26 +218,42 @@
     }
 
     async function fetchTorrents() {
-        try {
-            const r = await fetch("/dashboard/torrents");
-            const data = await r.json();
+        fetch("/dashboard/torrents")
+            .then(r => r.json())
+            .then(data => {
+                // display the torrent data in the page
+                renderTable(data);
 
-            renderTable(data);
+                // update selected torrent info panel
+                if (selectedTorrentId) {
+                    const updatedTorrent = data.find(t => t["infohash_v1"] === selectedTorrentId);
+                    if (updatedTorrent) populateInfoPanel(updatedTorrent);
+                }
 
-            // update selected torrent info panel
-            if (selectedTorrentId) {
-                const updatedTorrent = data.find(t => t["infohash_v1"] === selectedTorrentId);
-                if (updatedTorrent) populateInfoPanel(updatedTorrent);
-            }
+                // update client-visible stats
+                updateClientStats(data);
+            })
+            .catch(e => console.error("Error fetching torrents:", e));
 
-            // update client-visible stats
-            updateClientStats(data);
-
-        } catch (e) {
-            console.error("Error fetching torrents:", e);
-        }
-
+        // 5 second interval
         setTimeout(fetchTorrents, 5000);
+    }
+
+    async function fetchUserStats() {
+        fetch("/dashboard/user")
+            .then(r => r.json())
+            .then(data => {
+                // update user stats elements
+                $("#torrents-added").text(data["torrents_added_total"]);
+                $("#currently-seeding").text(data["currently_seeding"]);
+                $("#currently-leeching").text(data["currently_leeching"]);
+                $("#peers-total").text(data["peers_on_user_torrents"]);
+                $("#grabs-total").text(data["grabs_total"]);
+            })
+            .catch(e => console.error("Error fetching user stats:", e));
+
+        // 10 second interval
+        setTimeout(fetchUserStats, 10000);
     }
 
     function updateClientStats(torrents) {
@@ -249,21 +269,6 @@
         $("#client-leeching").text(leeching);
         $("#client-total").text(torrents.length);
         $("#client-peers").text(totalPeers);
-    }
-
-    async function updateUserStats() {
-        fetch("/dashboard/user")
-            .then(r => r.json())
-            .then(data => {
-                $("#torrents-added").text(data["torrents_added_total"]);
-                $("#currently-seeding").text(data["currently_seeding"]);
-                $("#currently-leeching").text(data["currently_leeching"]);
-                $("#peers-total").text(data["peers_on_user_torrents"]);
-                $("#grabs-total").text(data["grabs_total"]);
-            })
-            .catch(e => console.error("Error fetching user stats:", e));
-
-        setTimeout(updateUserStats, 10000);
     }
 
     function formatBytes(bytes) {
