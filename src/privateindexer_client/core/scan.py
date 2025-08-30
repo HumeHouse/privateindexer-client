@@ -102,11 +102,12 @@ async def scan_media_library():
             await torrent_client.remove_torrent_by_hash(torrent.get("hash_v2"))
             # remove from database
             await database.execute("DELETE FROM torrents WHERE id = ?", (torrent["id"],))
-            log.info(f"[SCAN] All files missing for '{torrent["name"]}', removed it from database and torrent client")
+            log.info(f"[SCAN] All files missing for '{torrent["name"]}', removed torrent from database and torrent client")
 
         # case where only the media data is missing, remove the media_path in the database
         elif media_path and not os.path.exists(media_path):
             await database.execute("UPDATE torrents SET media_path = NULL WHERE id = ?", (torrent["id"],))
+            log.info(f"[SCAN] Media files missing for '{torrent["name"]}', purged media path from database")
 
     return total_files, ignored_files, created_files, removed_entries
 

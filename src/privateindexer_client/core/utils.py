@@ -8,7 +8,7 @@ import time
 import libtorrent as lt
 
 from privateindexer_client.core import config, httpx_request, database
-from privateindexer_client.core.config import TORZNAB_CATEGORY_PATHS, API_KEY, INDEXER_API_URL, TORRENTS_DIR
+from privateindexer_client.core.config import TORZNAB_CATEGORY_PATHS, API_KEY, INDEXER_API_URL, TORRENTS_DIR, FASTRESUME_DIR
 from privateindexer_client.core.logger import log
 
 _file_piece_hash_cache: dict[str, dict[int, list[bytes]]] = {}
@@ -295,6 +295,49 @@ def process_fastresume_file(fastresume_path: str, hash_v1: str, torrent_path: st
     except Exception as e:
         log.error(f"[FASTRESUME] Failed to read fastresume file for hash: {hash_v1}: {e}")
         return None, hash_v1, torrent_path
+
+
+def fastresume_ignore_exists(torrent_hash: str) -> bool:
+    ignore_file = os.path.join(FASTRESUME_DIR, f"{torrent_hash}.fastresume.ignore")
+
+    # skip saving data if a fastresume-ignore file exists for this hash
+    exists = os.path.exists(ignore_file)
+    if exists:
+        log.debug(f"[FASTRESUME] Found fastresume-ignore file for hash: {torrent_hash}")
+        return True
+    return False
+
+
+def save_fastresume_to_disk(alert: lt.save_resume_data_alert) -> str | None:
+    """
+    Takes the alert from libtorrent and processes the fastresume data into a file on the disk
+    Creates fastresume-ignore file to skip saving the file if it is already seeding
+    """
+    try:
+        torrent_handle = alert.handle
+
+        status = torrent_handle.status()
+        # we only use v1_hash for storing fastresume data
+        torrent_hash = status.info_hashes.v1.to_bytes().hex()
+
+        log.debug(f"[FASTRESUME] Writing fastresume file for hash: {torrent_hash}")
+        # save the fastresume data
+        fastresume_file = os.path.join(FASTRESUME_DIR, f"{torrent_hash}.fastresume")
+        with open(fastresume_file, "wb") as f:
+            f.write(lt.bencode(alert.resume_data))
+
+        ignore_file = f"{fastresume_file}.ignore"
+        # add ignore file for next auto-save if this torrent is seeding if it doesn't already exist
+        if status.state == lt.torrent_status.seeding and not os.path.exists(ignore_file):
+            log.debug(f"[FASTRESUME] Creating fastresume-ignore file due to seeding status for hash: {torrent_hash}")
+            with open(ignore_file, mode='a'):
+                pass
+    except Exception as e:
+        log.error(f"[FASTRESUME] Failed to save fastresume data: {e}")
+        return None
+
+    log.debug(f"[FASTRESUME] Saved fastresume data for hash: {torrent_hash}")
+    return torrent_hash
 
 
 def generate_sid(api_key: str) -> str:
