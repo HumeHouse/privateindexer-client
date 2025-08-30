@@ -136,7 +136,7 @@ async def add_torrent_for_download(torrent_file: str, save_path: str) -> bool:
 
         # add to the libtorrent session
         torrent_handle = libtorrent_session.add_torrent(params)
-        # trigger a fastresume save task
+        # trigger a fastresume save task only
         torrent_handle.save_resume_data()
     except Exception as e:
         log.error(f"[TORCLIENT] Failed to add new torrent: {e}")
@@ -160,41 +160,18 @@ async def remove_torrent_by_hash(torrent_hash: str, remove_downloads: bool = Fal
     if existing.is_valid():
         libtorrent_session.remove_torrent(existing)
 
-    # remove the fastresume data if it exists
+    # remove the fastresume/fastresume-ignore files if either exists
     fastresume_file = os.path.join(FASTRESUME_DIR, f"{torrent_hash}.fastresume")
-    if os.path.exists(fastresume_file):
-        os.unlink(fastresume_file)
+    ignore_file = f"{fastresume_file}.ignore"
+    for file in [fastresume_file, ignore_file]:
+        if os.path.exists(file):
+            os.unlink(file)
 
     if remove_downloads:
         # try to remove the downloaded files if any exist
         result = await database.fetch_one("SELECT download_path FROM torrents WHERE hash_v1 = ? or hash_v2 = ?", (torrent_hash, torrent_hash,))
         if result and result.get("download_path"):
             os.unlink(result["download_path"])
-
-
-def save_fastresume_to_disk(alert: lt.save_resume_data_alert) -> str | None:
-    """
-    Takes the alert from libtorrent and processes the fastresume data into a file on the disk
-    """
-    try:
-        torrent_handle = alert.handle
-
-        status = torrent_handle.status()
-        infohash_v1 = status.info_hashes.v1.to_bytes().hex() if status.info_hashes.has_v1() else None
-        infohash_v2 = status.info_hashes.v2.to_bytes().hex() if status.info_hashes.has_v2() else None
-        # try using the v1 otherwise fall back to v2
-        torrent_hash = infohash_v1 or infohash_v2
-
-        # save the fastresume data
-        fastresume_file = os.path.join(FASTRESUME_DIR, f"{torrent_hash}.fastresume")
-        with open(fastresume_file, "wb") as f:
-            f.write(lt.bencode(alert.resume_data))
-    except Exception as e:
-        log.error(f"[FASTRESUME] Failed to save fastresume data: {e}")
-        return None
-
-    log.debug(f"[FASTRESUME] Saved fastresume data for hash: {torrent_hash}")
-    return torrent_hash
 
 
 async def load_fastresume_data():
@@ -253,9 +230,15 @@ def save_all_fastresume_data():
             try:
                 status = torrent.status()
 
-                torrent.save_resume_data()
                 infohash_v1 = status.info_hashes.v1.to_bytes().hex() if status.info_hashes.has_v1() else None
                 infohash_v2 = status.info_hashes.v2.to_bytes().hex() if status.info_hashes.has_v2() else None
+
+                # trigger a fastresume save task only if no ignore file exists
+                if utils.fastresume_ignore_exists(infohash_v1):
+                    continue
+
+                torrent.save_resume_data()
+
                 # try using the v1 otherwise fall back to v2
                 torrent_hash = infohash_v1 or infohash_v2
                 hashes_to_await.add(torrent_hash)
@@ -266,7 +249,7 @@ def save_all_fastresume_data():
             alerts = libtorrent_session.pop_alerts()
             for alert in alerts:
                 if isinstance(alert, lt.save_resume_data_alert):
-                    torrent_hash = save_fastresume_to_disk(alert)
+                    torrent_hash = utils.save_fastresume_to_disk(alert)
                     if torrent_hash and torrent_hash in hashes_to_await:
                         hashes_to_await.remove(torrent_hash)
             # let the thread sleep so libtorrent has time to generate alerts
@@ -322,7 +305,7 @@ async def periodic_alerts_task():
 
                 # process fastresume available alerts
                 if isinstance(alert, lt.save_resume_data_alert):
-                    save_fastresume_to_disk(alert)
+                    utils.save_fastresume_to_disk(alert)
 
         except Exception as e:
             log.error(f"[ALERTS] Error in torrent alerts loop: {e}")
