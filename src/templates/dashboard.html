@@ -1,13 +1,16 @@
 <!DOCTYPE html>
 <html lang="en" data-bs-theme="dark">
+
 <head>
     <meta charset="UTF-8">
     <title>PrivateIndexer Dashboard</title>
     <link rel="icon" type="image/x-icon" href="/static/favicon.ico">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.7/dist/css/bootstrap.min.css"
           integrity="sha256-zRgmWB5PK4CvTx4FiXsxbHaYRBBjz/rvu97sOC7kzXI=" crossorigin="anonymous">
+    <!--suppress CssUnusedSymbol -->
     <style>
-        html, body {
+        html,
+        body {
             height: 100%;
             margin: 0;
         }
@@ -45,7 +48,10 @@
         #info-panel .tab-content {
             max-height: calc(50vh - 50px);
         }
+    </style>
 
+    <!--suppress CssUnusedSymbol -->
+    <style>
         .state-downloading {
             background-color: rgba(0, 123, 255, 0.1) !important;
             color: #007bff !important;
@@ -61,7 +67,8 @@
             color: #856404 !important;
         }
 
-        .state-checkingDL, .state-checkingResumeData {
+        .state-checkingDL,
+        .state-checkingResumeData {
             background-color: rgba(23, 162, 184, 0.1) !important;
             color: #17a2b8 !important;
         }
@@ -88,6 +95,7 @@
         }
     </style>
 </head>
+
 <body class="bg-body">
 <div id="main-container" class="container-fluid d-flex flex-column g-0">
     <div class="d-flex justify-content-between align-items-center my-1">
@@ -138,26 +146,45 @@
         </div>
     </div>
 
-
     <div id="torrents-table-container" class="table-responsive flex-grow-1">
         <table class="table table-striped table-bordered table-hover">
             <thead>
             <tr>
-                <th class="d-flex">
-                    Name
-                    <input type="text" id="filter-name" class="ms-1 form-control form-control-sm"
-                           placeholder="Filter name...">
+                <th data-column="name" class="sortable d-flex align-items-center">
+                    <span class="sort-label flex-grow-1">Name</span>
+                    <input type="text" id="filter-name" class="ms-1 form-control form-control-sm flex-grow-0"
+                           style="width: 50%; min-width: 120px;" placeholder="Filter name...">
                 </th>
-                <th>Size</th>
-                <th>Progress</th>
-                <th>Status</th>
-                <th>Seeds</th>
-                <th>Peers</th>
-                <th>Download Speed</th>
-                <th>Upload Speed</th>
-                <th>ETA</th>
-                <th>Ratio</th>
-                <th>Added On</th>
+                <th data-column="size" class="sortable">
+                    <span class="sort-label flex-grow-1">Size</span>
+                </th>
+                <th data-column="progress" class="sortable">
+                    <span class="sort-label flex-grow-1">Progress</span>
+                </th>
+                <th data-column="status" class="sortable">
+                    <span class="sort-label flex-grow-1">Status</span>
+                </th>
+                <th data-column="seeds" class="sortable">
+                    <span class="sort-label flex-grow-1">Seeds</span>
+                </th>
+                <th data-column="peers" class="sortable">
+                    <span class="sort-label flex-grow-1">Peers</span>
+                </th>
+                <th data-column="download_speed" class="sortable">
+                    <span class="sort-label flex-grow-1">DL Speed</span>
+                </th>
+                <th data-column="upload_speed" class="sortable">
+                    <span class="sort-label flex-grow-1">UL Speed</span>
+                </th>
+                <th data-column="eta" class="sortable">
+                    <span class="sort-label flex-grow-1">ETA</span>
+                </th>
+                <th data-column="ratio" class="sortable">
+                    <span class="sort-label flex-grow-1">Ratio</span>
+                </th>
+                <th data-column="added_on" class="sortable">
+                    <span class="sort-label flex-grow-1">Added</span>
+                </th>
             </tr>
             </thead>
             <tbody id="torrents-container">
@@ -181,7 +208,8 @@
                 </button>
             </li>
             <li class="nav-item" role="presentation">
-                <button class="nav-link" id="peers-tab" data-bs-toggle="tab" data-bs-target="#tab-peers" type="button">
+                <button class="nav-link" id="peers-tab" data-bs-toggle="tab" data-bs-target="#tab-peers"
+                        type="button">
                     Peers
                 </button>
             </li>
@@ -207,14 +235,40 @@
         integrity="sha256-lel57Jim1/CW4I1iEkaHexK/J9h/ZRneeORKiQuNOIg=" crossorigin="anonymous"></script>
 <script>
     let selectedTorrentId = null;
+    let sortConfig = {column: null, direction: null};
+    let torrentsCache = [];
 
     // catch ready event on document
     $(document).ready(() => {
         // start loops
         fetchTorrents();
         fetchUserStats();
+
         // lisetn on the filter box for user input
         $('#filter-name').on('input', applyNameFilter);
+
+        //listen for header clicks to trigger sorting
+        $(".sortable .sort-label").css("cursor", "pointer").click(function (e) {
+            e.stopPropagation();
+            const column = $(this).closest("th").data("column");
+
+            if (sortConfig.column === column) {
+                if (sortConfig.direction === "asc") {
+                    sortConfig.direction = "desc";
+                } else if (sortConfig.direction === "desc") {
+                    sortConfig.column = null;
+                    sortConfig.direction = null;
+                } else {
+                    sortConfig.direction = "asc";
+                }
+            } else {
+                sortConfig.column = column;
+                sortConfig.direction = "asc";
+            }
+
+            // sort then display the torrent data in the page
+            applySortingAndRender();
+        });
     });
 
     // loops through all
@@ -232,8 +286,11 @@
         fetch("/dashboard/torrents")
             .then(r => r.json())
             .then(data => {
-                // display the torrent data in the page
-                renderTable(data);
+                // keep the data stored in variable for later use
+                torrentsCache = data;
+
+                // sort then display the torrent data in the page
+                applySortingAndRender();
 
                 // update selected torrent info panel
                 if (selectedTorrentId) {
@@ -267,6 +324,19 @@
         setTimeout(fetchUserStats, 10000);
     }
 
+    // adds up/down arrows to columns when sorting
+    function updateSortIndicators() {
+        $("table thead th.sortable").each(function () {
+            const $label = $(this).find(".sort-label");
+            let text = $label.text().trim().replace(/ ▲| ▼/, "  ");
+            if (sortConfig.column === $(this).data("column")) {
+                if (sortConfig.direction === "asc") text += " ▲";
+                else if (sortConfig.direction === "desc") text += " ▼";
+            }
+            $label.text(text);
+        });
+    }
+
     function updateClientStats(torrents) {
         let seeding = 0, leeching = 0, totalPeers = 0;
 
@@ -280,6 +350,43 @@
         $("#client-leeching").text(leeching);
         $("#client-total").text(torrents.length);
         $("#client-peers").text(totalPeers);
+    }
+
+    function applySortingAndRender() {
+        let data = [...torrentsCache];
+
+        // sort data by actively sorted columns in sortConfig
+        const sortExtractors = {
+            name: row => row["name"].toLowerCase(),
+            size: row => row["size"],
+            progress: row => row["progress"],
+            status: row => row["state"],
+            seeds: row => row["num_seeds"] + row["num_complete"],
+            peers: row => row["num_leechs"] + row["num_incomplete"],
+            download_speed: row => row["dlspeed"],
+            upload_speed: row => row["upspeed"],
+            eta: row => row["eta"],
+            ratio: row => row["ratio"],
+            added_on: row => row["added_on"]
+        };
+
+        if (sortConfig.column && sortConfig.direction) {
+            const extractor = sortExtractors[sortConfig.column];
+            if (extractor) {
+                data.sort((a, b) => {
+                    const valA = extractor(a);
+                    const valB = extractor(b);
+
+                    if (valA < valB) return sortConfig.direction === "asc" ? -1 : 1;
+                    if (valA > valB) return sortConfig.direction === "asc" ? 1 : -1;
+                    return 0;
+                });
+            }
+        }
+
+        // add data to table and update the arrows in headers
+        updateSortIndicators();
+        renderTable(data);
     }
 
     function formatBytes(bytes) {
@@ -323,8 +430,7 @@
                 <td>${formatBytes(torrent["size"])}</td>
                 <td>
                     <div class="progress" style="height:1.5rem;">
-                        <div class="progress-bar bg-success" role="progressbar" style="width: ${progress}%"
-                             aria-valuenow="${progress}" aria-valuemin="0" aria-valuemax="100">${progress}%</div>
+                        <div class="progress-bar bg-success" role="progressbar" style="width: ${progress}%">${progress}%</div>
                     </div>
                 </td>
                 <td class="${rowClass}">${torrent["state"]}</td>
@@ -413,8 +519,7 @@
             <td>${formatSpeed(peer["up_speed"])}</td>
             <td>
                 <div class="progress" style="height:1.5rem;">
-                <div class="progress-bar bg-success" role="progressbar" style="width: ${progress}%"
-                     aria-valuenow="${progress}" aria-valuemin="0" aria-valuemax="100">${progress}%</div>
+                <div class="progress-bar bg-success" role="progressbar" style="width: ${progress}%">${progress}%</div>
                 </div>
             </td>
         </tr>`;
@@ -424,4 +529,5 @@
     }
 </script>
 </body>
+
 </html>
