@@ -3,6 +3,7 @@ from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 
 from privateindexer_client.core import torrent_client, utils
+from privateindexer_client.core.logger import log
 
 router = APIRouter()
 templates = Jinja2Templates(directory="/app/src/templates")
