@@ -65,7 +65,7 @@ async def auth_login(request: Request, username: str = Form(), password: str = F
     sid = utils.generate_sid(API_KEY)
     SESSIONS[sid] = time.time() + SESSION_TTL
 
-    log.info(f"[API] API login successful ({request.headers.get("user-agent")})")
+    log.debug(f"[API] API login successful ({request.headers.get("user-agent")})")
 
     response = PlainTextResponse("Ok.")
     response.set_cookie(key="SID", value=sid, httponly=True, secure=False, path="/")

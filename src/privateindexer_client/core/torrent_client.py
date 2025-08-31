@@ -1,4 +1,5 @@
 import asyncio
+import datetime
 import os
 import shutil
 import time
@@ -244,6 +245,7 @@ def save_all_fastresume_data():
                 hashes_to_await.add(torrent_hash)
             except Exception as e:
                 log.error(f"[FASTRESUME] Error saving fastresume data for torrent: {e}")
+        total = len(hashes_to_await)
 
         while hashes_to_await:
             alerts = libtorrent_session.pop_alerts()
@@ -254,9 +256,10 @@ def save_all_fastresume_data():
                         hashes_to_await.remove(torrent_hash)
             # let the thread sleep so libtorrent has time to generate alerts
             time.sleep(0.1)
-
+        return total
     except Exception as e:
         log.error(f"[FASTRESUME] Error saving fastresume data for all torrents: {e}")
+        return 0
 
 
 async def periodic_torrent_status_task():
@@ -288,7 +291,13 @@ async def periodic_fastresume_task():
     while True:
         await asyncio.sleep(FASTRESUME_INTERVAL)
         try:
-            save_all_fastresume_data()
+            log.info("[FASTRESUME] Saving all fastresume data")
+            before = datetime.datetime.now()
+
+            total = save_all_fastresume_data()
+
+            delta = datetime.datetime.now() - before
+            log.info(f"[FASTRESUME] Fastresume task completed for {total} torrents ({delta})")
         except Exception as e:
             log.error(f"[FASTRESUME] Error in torrent fastresume loop: {e}")
 
