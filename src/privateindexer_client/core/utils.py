@@ -64,7 +64,7 @@ async def fetch_indexer_user_data():
     """
     try:
         async with httpx_request.get_client() as client:
-            response = await client.get(INDEXER_API_URL + "/user/stats", params={"apikey": API_KEY})
+            response = await client.get(INDEXER_API_URL + "/user/stats", params={"apikey": API_KEY}, timeout=30)
             return response.json()
     except Exception as e:
         log.error(f"[INDEXER] Failed to fetch user stats: {e}")
