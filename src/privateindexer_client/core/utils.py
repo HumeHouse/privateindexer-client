@@ -245,9 +245,9 @@ def find_existing_torrent(media_path: str) -> str | None:
         log.debug(f"[TORRENT] Matched '{media_path}' to '{torrent_file}' by name")
         return torrent_file
 
-    # if this media is a file, we can try to strip the extension off and find a match
+    # if this media is a file, we can try to strip the extension off and find a match for the filename
     if os.path.isfile(media_path):
-        filename = os.path.splitext(os.path.basename(media_path))[0]
+        filename, _ = os.path.splitext(os.path.basename(media_path))
         torrent_file = os.path.join(TORRENTS_DIR, filename + ".torrent")
         if os.path.exists(torrent_file):
             log.debug(f"[TORRENT] Matched '{media_path}' to '{torrent_file}' by filename")
