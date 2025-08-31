@@ -29,13 +29,14 @@ async def scan_media_library():
     # loop through all files in the media directories
     for category_key, cat_info in TORZNAB_CATEGORY_PATHS.items():
         for root, _, files in os.walk(cat_info["path"]):
-            for f in files:
-                # skip files that have non-whitelisted extensions
-                file_path = os.path.join(root, f)
-                extension = os.path.splitext(os.path.basename(file_path))[1].replace(".", "")
-                if extension not in MOVIE_EXTENSIONS:
+            for file in files:
+                # skip the file if user doesn't include its extension in configuration
+                filename, extension = os.path.splitext(os.path.basename(file))
+                if extension.replace(".", "") not in MOVIE_EXTENSIONS:
                     log.debug(f"[SCAN] Skipping file with {extension} extension")
                     continue
+
+                file_path = os.path.join(root, file)
                 total_files += 1
 
                 # ignore the media file if the current path is matches what is in the database
@@ -94,9 +95,11 @@ async def scan_media_library():
     for torrent in torrents:
         media_path = torrent.get("media_path")
         download_path = torrent.get("download_path")
+        media_exists = os.path.exists(media_path) if media_path else False
+        download_exists = os.path.exists(download_path) if download_path else False
 
         # case where both the media and the downloaded data are missing, we assume the user deleted them and purge it
-        if (not media_path or (media_path and not os.path.exists(media_path))) and (not download_path or (download_path and not os.path.exists(download_path))):
+        if not media_exists and not download_exists:
             removed_entries += 1
             # remove from torrent client
             await torrent_client.remove_torrent_by_hash(torrent.get("hash_v2"))
@@ -105,7 +108,7 @@ async def scan_media_library():
             log.info(f"[SCAN] All files missing for '{torrent["name"]}', removed torrent from database and torrent client")
 
         # case where only the media data is missing, remove the media_path in the database
-        elif media_path and not os.path.exists(media_path):
+        elif not media_exists:
             await database.execute("UPDATE torrents SET media_path = NULL WHERE id = ?", (torrent["id"],))
             log.info(f"[SCAN] Media files missing for '{torrent["name"]}', purged media path from database")
 
