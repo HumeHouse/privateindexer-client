@@ -1,5 +1,5 @@
 from fastapi import Request, APIRouter
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
 from privateindexer_client.core import torrent_client, utils
@@ -7,6 +7,11 @@ from privateindexer_client.core.logger import log
 
 router = APIRouter()
 templates = Jinja2Templates(directory="/app/src/templates")
+
+
+@router.get("/")
+async def root():
+    return RedirectResponse("/dashboard")
 
 
 @router.get("/dashboard", response_class=HTMLResponse)
