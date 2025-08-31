@@ -70,7 +70,7 @@ async def add_torrent_for_seeding(torrent_file: str, save_path: str):
             return
 
         # skip torrent if torrent already exists in libtorrent session
-        if libtorrent_session.find_torrent(info.info_hash()).is_valid():
+        if await torrent_exists_in_session(info.info_hash()):
             return
 
         # add the tracker URL
@@ -120,8 +120,7 @@ async def add_torrent_for_download(torrent_file: str, save_path: str) -> bool:
             return None
         torrent_hash_v2 = str(hashes.v2)
 
-        existing = libtorrent_session.find_torrent(info.info_hash())
-        if existing.is_valid():
+        if await torrent_exists_in_session(info.info_hash()):
             log.warning(f"[TORCLIENT] Torrent already exists on client: {torrent_name}")
             return False
 
@@ -149,6 +148,22 @@ async def add_torrent_for_download(torrent_file: str, save_path: str) -> bool:
 
     log.info(f"[TORCLIENT] Added new torrent for download: {torrent_name}")
     return True
+
+
+async def torrent_exists_in_session(info_hash: str | bytes) -> bool:
+    """
+    Checks for a torrent hash in the libtorrent session
+    """
+    # convert str hex to bytes hash
+    try:
+        if isinstance(info_hash, str):
+            info_hash = lt.sha1_hash(bytes.fromhex(info_hash))
+
+        existing = libtorrent_session.find_torrent(info_hash)
+        return existing.is_valid()
+    except Exception as e:
+        log.error(f"[TORCLIENT] Failed to check if torrent exists: {e}")
+        return False
 
 
 async def remove_torrent_by_hash(torrent_hash: str, remove_downloads: bool = False):
