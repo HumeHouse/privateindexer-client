@@ -171,23 +171,35 @@ async def remove_torrent_by_hash(torrent_hash: str, remove_downloads: bool = Fal
     Remove a torrent from the libtorrent session if it exists
     Also removes fastresume data from the disk if it exists
     """
-    info_hash = lt.sha1_hash(bytes.fromhex(torrent_hash))
-    existing = libtorrent_session.find_torrent(info_hash)
-    if existing.is_valid():
-        libtorrent_session.remove_torrent(existing)
+    try:
+        info_hash = lt.sha1_hash(bytes.fromhex(torrent_hash))
+        existing = libtorrent_session.find_torrent(info_hash)
+        if existing.is_valid():
+            libtorrent_session.remove_torrent(existing)
+    except Exception as e:
+        log.error(f"[TORCLIENT] Failed to remove torrent: {e}")
+        return False
 
     # remove the fastresume/fastresume-ignore files if either exists
-    fastresume_file = os.path.join(FASTRESUME_DIR, f"{torrent_hash}.fastresume")
-    ignore_file = f"{fastresume_file}.ignore"
-    for file in [fastresume_file, ignore_file]:
-        if os.path.exists(file):
-            os.unlink(file)
+    try:
+        fastresume_file = os.path.join(FASTRESUME_DIR, f"{torrent_hash}.fastresume")
+        ignore_file = f"{fastresume_file}.ignore"
+        for file in [fastresume_file, ignore_file]:
+            if os.path.exists(file):
+                os.unlink(file)
+    except Exception as e:
+        log.error(f"[TORCLIENT] Failed to remove fastresume data when removing torrent: {e}")
+        return False
 
-    if remove_downloads:
-        # try to remove the downloaded files if any exist
-        result = await database.fetch_one("SELECT download_path FROM torrents WHERE hash_v1 = ? or hash_v2 = ?", (torrent_hash, torrent_hash,))
-        if result and result.get("download_path"):
-            os.unlink(result["download_path"])
+    try:
+        if remove_downloads:
+            # try to remove the downloaded files if any exist
+            result = await database.fetch_one("SELECT download_path FROM torrents WHERE hash_v1 = ? or hash_v2 = ?", (torrent_hash, torrent_hash,))
+            if result and result.get("download_path"):
+                os.unlink(result["download_path"])
+    except Exception as e:
+        log.error(f"[TORCLIENT] Failed to remove downloads when removing torrent: {e}")
+        return False
 
 
 async def load_fastresume_data():
