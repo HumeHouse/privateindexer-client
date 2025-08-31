@@ -67,7 +67,6 @@ async def lifespan(_: FastAPI):
     # init the libtorrent client session
     torrent_client.create_libtorrent_session(APP_VERSION)
 
-    log.info("[APP] Loading fastresume data into torrent client")
     # load the fastresume data into the client session using background task
     asyncio.create_task(torrent_client.load_fastresume_data())
 

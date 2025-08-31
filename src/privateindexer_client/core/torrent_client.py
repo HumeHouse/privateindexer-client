@@ -206,6 +206,9 @@ async def load_fastresume_data():
     """
     Load fastresume and torrent files from torrents dir into the session
     """
+    log.info("[FASTRESUME] Loading fastresume data into torrent client")
+    before = datetime.datetime.now()
+
     # build a map of all the hashes and their respective torrent files
     torrents = await database.fetch_all("SELECT hash_v1, torrent_path FROM torrents")
     torrent_hash_path_map = {t["hash_v1"]: t["torrent_path"] for t in torrents}
@@ -244,6 +247,9 @@ async def load_fastresume_data():
                 libtorrent_session.add_torrent(atp)
         except Exception as e:
             log.error(f"[FASTRESUME] Error in fastresume data post-processing: {e}")
+
+    delta = datetime.datetime.now() - before
+    log.info(f"[FASTRESUME] Finished loading fastresume data ({delta})")
 
 
 def save_all_fastresume_data():
