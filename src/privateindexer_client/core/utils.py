@@ -64,7 +64,7 @@ async def fetch_indexer_user_data():
     """
     try:
         async with httpx_request.get_client() as client:
-            response = await client.get(INDEXER_API_URL + "/user/stats", params={"apikey": API_KEY}, timeout=30)
+            response = await client.get(INDEXER_API_URL + "/user/stats", headers={"X-API-Key": API_KEY}, timeout=30)
             return response.json()
     except Exception as e:
         log.error(f"[INDEXER] Failed to fetch user stats: {e}")
@@ -81,12 +81,12 @@ async def send_torrent_to_indexer(metadata):
         with open(torrent_file, "rb") as f:
             # build the request with all the necessary torrent metadata required by indexer
             files = {"torrent_file": (os.path.basename(torrent_file), f, "application/x-bittorrent")}
-            data = {"apikey": API_KEY, "metadata": json.dumps(
+            data = {"metadata": json.dumps(
                 {"name": metadata["name"], "size": metadata["size"], "category": metadata["category"], "hash_v1": metadata.get("hash_v1"),
                  "hash_v2": metadata.get("hash_v2"), "files": metadata["files"]})}
 
             async with httpx_request.get_client() as client:
-                response = await client.post(INDEXER_API_URL + "/create", data=data, files=files)
+                response = await client.post(INDEXER_API_URL + "/create", headers={"X-API-Key": API_KEY}, data=data, files=files)
 
                 # based on the response from API, we will know status of upload
                 if response.status_code == 200:

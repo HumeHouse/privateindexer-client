@@ -48,7 +48,7 @@ async def lifespan(_: FastAPI):
         status_code = None
         while status_code not in (403, 200):
             async with httpx_request.get_client() as client:
-                indexer_response = await client.get(INDEXER_API_URL + "/user", params={"apikey": API_KEY, "v": APP_VERSION})
+                indexer_response = await client.get(INDEXER_API_URL + "/user", headers={"X-API-Key": API_KEY}, params={"v": APP_VERSION})
                 status_code = indexer_response.status_code
                 if status_code == 200:
                     TORRENT_SIGNER = indexer_response.text
