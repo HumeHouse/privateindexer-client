@@ -4,30 +4,29 @@ This is the client container for the HumeHouse PrivateIndexer.
 It scans your local media library, creates torrents, and communicates with the PrivateIndexer server.
 There is also a built-in torrent client that will automatically start seeding all your media for you.
 The build-in torrent client also provides qBittorrent-compatible API endpoints for usage with the *arr suite apps.
-You can view a basic dashboard by visiting `http://container-ip:80/dashboard` from a browser.
+You can view a basic dashboard by visiting `http://hostname:8080/dashboard` from a browser if you use the example.
 
 ---
 
 ## Building
 
-Simply run the following command in the directory with the `Dockerfile` and your image will be built
+Clone this repository and simply run the following command in the directory with the `Dockerfile` and your image will be
+built
 
 ```bash
 docker compose build
 ```
 
 You can also use the hosted pre-built image on at `ghcr.io/humehouse/privateindexer-client:latest`
-(See [Releases](https://github.com/HumeHouse/privateindexer-client/releases) for all tags)
+(See [GitHub](https://github.com/HumeHouse/privateindexer-client/tags) for all version tags)
 
 ---
 
-## Quick Start
+## Quick Start (using Docker)
 
-### 1. Modify the `docker-compose.yml`
+### Use the provided `docker-compose.yml` and adjust paths and environment variables to match your setup.
 
-Use the provided `docker-compose.yml` and adjust paths and environment variables to match your setup.
-
-### 2. Configure Environment Variables
+### 1. Configure Environment Variables
 
 | Variable              | Default Value     | Description                                                                                                                            | Example              |
 |-----------------------|-------------------|----------------------------------------------------------------------------------------------------------------------------------------|----------------------|
@@ -41,7 +40,7 @@ Use the provided `docker-compose.yml` and adjust paths and environment variables
 | `TORRENTING_PORT`     | `6881`            | Port accepting connections from other torrent clients. (Make sure to bind this to host and forward in router.)                         |                      |
 | `LOG_LEVEL`           | `INFO`            | Lowest log level to show in console. Can be `DEBUG`, `INFO`, `WARNING`, `ERROR`, or `CRITICAL` where `DEBUG` shows most amount of logs |                      |
 
-### 3. Configure Volumes
+### 2. Configure Volumes
 
 | Volume      | Description                                                                                                              | Example                                           |
 |-------------|:-------------------------------------------------------------------------------------------------------------------------|---------------------------------------------------|
@@ -49,17 +48,22 @@ Use the provided `docker-compose.yml` and adjust paths and environment variables
 | *Downloads* | Directory where downloads will be stored. `DOWNLOADS_DIR` MUST be accessible from this directory (Try to match them.)    | `/data/downloads:/data/downloads`                 |
 | *Movies*    | Movie library location. `MOVIE_DIR` MUST be accessible from this directory (Try to match them.)                          | `/data/media/movies:/data/media/movies`           |
 
-### 4. Port forwarding
+### 3. Port forwarding
 
-You should bind and port forward the TORRENTING_PORT to your Docker host to allow incoming connections for seeding.
+- The Torrenting Port
+    - You should bind **and port forward** the `TORRENTING_PORT` to your Docker host to allow incoming connections for
+      seeding.
+    - When you forward the port at your router, make sure to use **both UDP and TCP** to maximize connection potential.
+    - NOTE: Map the same port you're using **INSIDE** the container to the port **OUTSIDE** the container on the host.
+      Otherwise the client will start advertising a different port than it's actually reachable on.
 
-### NOTE: Map the same port you're using **INSIDE** the container to the port **OUTSIDE** the container on the host
+- The Webserver Port
+    - The built-in torrent client runs a web server on port 80 inside the container for RESTful API control of the
+      client.
+    - You can map the web server port to any port on the host or none at all if you connect from within the Docker
+      network like if using nginx reverse proxy.
 
-Otherwise the client will start advertising a different port than it's actually reachable on.
-
-The built-in torrent client runs a webserver on port 80 inside the container for RESTful API control of the client
-
-### 5. Start Client
+### 4. Start Client
 
 Start container:
 
@@ -73,7 +77,26 @@ View logs of client:
 docker logs -f privateindexer-client
 ```
 
-### 6. Connect to Prowlarr/Radarr/Sonarr
+### 5. Connect the indexer to Prowlarr
+
+This is required if you would like to have PrivateIndexer torrents show up in your torrent search results.
+You can still add the indexer to your *arr suite of apps individually, but Prowlarr is much easier as it will sync
+automatically.
+
+1. Navigate to the `Indexers` section of the settings in Prowlarr.
+2. Click `+ Add Indexer` to add new indexer.
+3. Find `Generic Torznab` in the list.
+4. Change the name to something you can identify it with like `PrivateIndexer`.
+5. Set the `URL` to `https://indexer.humehouse.com`
+6. Enter your assigned API key in the `API Key` section. This is the same as `API_KEY` in your environment variables.
+7. Give the app a unique category like `radarr`/`sonarr`/`prowlarr` etc.
+8. Click the gear at the bottom to show advanced settings and set the `Indexer Priority` to something `lower` than your
+   other indexers so your apps will generally prefer torrents from PrivateIndexer **before** using torrents from other
+   indexers.
+9. Click `Test` to make sure the connection is working
+10. Click `Save` to add the client
+
+### 6. Connect the download client to Radarr/Sonarr/*arr
 
 The API was derived from the qBittorrent API and mocks all of the endpoints used by the *arr suite of apps.
 
@@ -83,27 +106,28 @@ The API was derived from the qBittorrent API and mocks all of the endpoints used
 4. Change the name to something you can identify it with like `PrivateIndexer`.
 5. Set the host to the name of your `privateindexer-client` container or a hostname that points to it (like via reverse
    proxy).
-6. Set the port to `8080` (or whatever port you've mapped to port 80 inside the container).
-7. Enter any username and the password is your assigned API key. The key is called `API_KEY` in your environment
+6. Set the port to whatever port you've mapped to the webserver port, default is 8080 if using the example below
+7. Enter **any username** and the password is your assigned API key. This is the same as `API_KEY` in your environment
    variables.
-8. Give the app a unique category like `radarr`/`sonarr`/`prowlarr` etc.
+8. Give the app a unique category like `radarr`/`sonarr` etc.
 9. You may want to click the gear at the bottom to show advanced settings and set the `Client Priority` to something
-   higher than your default download client
-10. **Uncheck** both `Remove Completed` and `Remove Failed` - the app has no sense of either of these options and will
+   `higher` than your default download client so it doesn't try to download random torrents
+10. **Uncheck** both `Remove Completed` and `Remove Failed` - the client has no sense of either of these options and
+    will
     only cause errors if you leave these on.
 11. Click `Test` to make sure the connection is working
 12. Click `Save` to add the client
 
-Now you are ready to configure your indexers to use **ONLY** this client **ONLY** for PrivateIndexer downloads
+Now you are ready to configure your indexer to use your PrivateIndexer torrent client.
+Make sure to use **ONLY** this client **ONLY** for PrivateIndexer downloads.
+Downloads from any other source will be rejected by the PrivateIndexer download client.
 
 1. Navigate to the `Indexers` section of the settings in your app.
-2. Find your `PrivateIndexer` indexer entry
+2. Find your `PrivateIndexer (Prowlarr)` indexer entry or whatever you named it
 3. Click the gear at the bottom to show advanced settings and set the `Download Client` to your newly created client
 4. Click `Save`
 5. For every other indexer in your app, make sure to select a **different** download client, otherwise the indexer may
-   try to use `PrivateIndexer` to download non-private torrents or cause other problems
-
-You're done!
+   try to use `PrivateIndexer` to download non-PrivateIndexer torrents
 
 ### 7. Visit the web interface
 
