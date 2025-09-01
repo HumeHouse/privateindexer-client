@@ -17,7 +17,7 @@ async def periodic_resend_task():
             before = datetime.datetime.now()
 
             # attempt to resend all failed uploads to indexer server
-            failed_upload_torrents = await database.fetch_all("SELECT id, name, category FROM torrents WHERE uploaded = FALSE")
+            failed_upload_torrents = await database.fetch_all("SELECT id, name, torrent_path, category FROM torrents WHERE uploaded = FALSE")
 
             total = len(failed_upload_torrents)
 
