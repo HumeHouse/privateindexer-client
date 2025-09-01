@@ -114,6 +114,35 @@ async def get_torrent_info(request: Request, category: str = Query(None)):
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
+@router.get("/sync/maindata")
+async def get_main_data(request: Request):
+    """
+    Mimics qBittorrent endpoint /api/v2/sync/maindata
+    """
+    log.debug(f"[API] Main data requested ({request.headers.get("user-agent")})")
+
+    main_data = {}
+
+    try:
+        torrents = torrent_client.get_all_torrents()
+        mapped = [utils.map_torrent_to_qbit(t) for t in torrents]
+
+        main_data["torrents"] = mapped
+    except Exception as e:
+        log.error(f"[API] Failed to get torrent list: {e}")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    try:
+        stats_now, time_now, stats_prev, time_prev = torrent_client.get_session_stats()
+        all_time_download, all_time_upload = torrent_client.get_all_time_stats()
+
+        main_data["server_state"] = utils.map_stats_to_qbit(stats_now, time_now, stats_prev, time_prev, all_time_download, all_time_upload)
+    except Exception as e:
+        log.error(f"[API] Failed to get session info: {e}")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    return JSONResponse(main_data)
+
+
 @router.get("/torrents/categories", dependencies=[Depends(cookie_required)])
 async def get_categories(request: Request):
     """

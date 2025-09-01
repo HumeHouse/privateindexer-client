@@ -5,7 +5,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
-from privateindexer_client.core import torrent_client, scan, api, gui, httpx_request, database, resend
+from privateindexer_client.core import torrent_client, scan, api, gui, httpx_request, database, resend, utils
 from privateindexer_client.core.config import TORRENTS_DIR, SCAN_INTERVAL, MOVIE_DIR, TORZNAB_CATEGORY_PATHS, INDEXER_API_URL, API_KEY, TORRENTING_PORT, \
     DOWNLOADS_DIR, FASTRESUME_DIR, APP_VERSION, MAX_THREADS, FASTRESUME_INTERVAL
 from privateindexer_client.core.logger import log
@@ -92,6 +92,10 @@ async def lifespan(_: FastAPI):
     yield
 
     log.info("[APP] Shutting down PrivateIndexer client")
+
+    log.info("[APP] Saving all-time stats")
+    all_time_download, all_time_upload = torrent_client.get_all_time_stats()
+    utils.save_persistent_stats(all_time_download, all_time_upload)
 
     log.info(f"[APP] Stopping tasks")
     scan_task.cancel()
