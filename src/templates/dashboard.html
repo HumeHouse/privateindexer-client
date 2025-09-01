@@ -106,17 +106,31 @@
 
         <!-- Client-visible stats -->
         <div id="client-stats" class="d-flex gap-3 align-items-center my-2">
-            <div class="text-center">
-                <small class="text-muted d-block">Client Torrents</small>
+            <div class="text-center text-info">
+                <span class="fw-bold" id="client-leeching">0</span><br><small>Downloading</small>
+            </div>
+            <div class="text-center text-info">
+                <span class="fw-bold" id="session-dl">0</span> (<span class="fw-bold" id="dl-rate"> B/s</span>)
+                <br><small>Session DL (Rate)</small>
+            </div>
+            <div class="text-center text-info">
+                <span class="fw-bold" id="total-dl">0</span><br><small>Total DL</small>
             </div>
             <div class="text-center text-success">
                 <span class="fw-bold" id="client-seeding">0</span><br><small>Uploading</small>
             </div>
-            <div class="text-center text-info">
-                <span class="fw-bold" id="client-leeching">0</span><br><small>Downloading</small>
+            <div class="text-center text-success">
+                <span class="fw-bold" id="session-ul">0</span> (<span class="fw-bold" id="ul-rate">0 B/s</span>)
+                <br><small>Session UL (Rate)</small>
+            </div>
+            <div class="text-center text-success">
+                <span class="fw-bold" id="total-ul">0</span><br><small>Total UL</small>
             </div>
             <div class="text-center">
-                <span class="fw-bold" id="client-total">0</span><br><small>Total</small>
+                <span class="fw-bold" id="global-ratio">0.00</span><br><small>Ratio</small>
+            </div>
+            <div class="text-center">
+                <span class="fw-bold" id="client-total">0</span><br><small>Torrents</small>
             </div>
             <div class="text-center">
                 <span class="fw-bold" id="client-peers">0</span><br><small>Peers</small>
@@ -131,11 +145,11 @@
             <div class="text-center text-info">
                 <span class="fw-bold" id="torrents-added">0</span><br><small>Uploaded</small>
             </div>
-            <div class="text-center text-success">
-                <span class="fw-bold" id="currently-seeding">0</span><br><small>S</small>
-            </div>
             <div class="text-center text-danger">
                 <span class="fw-bold" id="currently-leeching">0</span><br><small>L</small>
+            </div>
+            <div class="text-center text-success">
+                <span class="fw-bold" id="currently-seeding">0</span><br><small>S</small>
             </div>
             <div class="text-center">
                 <span class="fw-bold" id="peers-total">0</span><br><small>Swarm</small>
@@ -241,7 +255,7 @@
     // catch ready event on document
     $(document).ready(() => {
         // start loops
-        fetchTorrents();
+        fetchMainData();
         fetchUserStats();
 
         // lisetn on the filter box for user input
@@ -282,29 +296,29 @@
         });
     }
 
-    async function fetchTorrents() {
-        fetch("/dashboard/torrents")
+    async function fetchMainData() {
+        fetch("/dashboard/maindata")
             .then(r => r.json())
             .then(data => {
                 // keep the data stored in variable for later use
-                torrentsCache = data;
+                torrentsCache = data["torrents"];
 
                 // sort then display the torrent data in the page
                 applySortingAndRender();
 
                 // update selected torrent info panel
                 if (selectedTorrentId) {
-                    const updatedTorrent = data.find(t => t["infohash_v1"] === selectedTorrentId);
+                    const updatedTorrent = data["torrents"].find(t => t["infohash_v1"] === selectedTorrentId);
                     if (updatedTorrent) populateInfoPanel(updatedTorrent);
                 }
 
                 // update client-visible stats
-                updateClientStats(data);
+                updateClientStats(data["torrents"], data["server_state"]);
             })
-            .catch(e => console.error("Error fetching torrents:", e));
+            .catch(e => console.error("Error fetching main data:", e));
 
         // 5 second interval
-        setTimeout(fetchTorrents, 5000);
+        setTimeout(fetchMainData, 5000);
     }
 
     async function fetchUserStats() {
@@ -337,7 +351,7 @@
         });
     }
 
-    function updateClientStats(torrents) {
+    function updateClientStats(torrents, stats) {
         let seeding = 0, leeching = 0, totalPeers = 0;
 
         torrents.forEach(torrent => {
@@ -346,10 +360,20 @@
             totalPeers += (torrent["num_seeds"] || 0) + (torrent["num_leechs"] || 0);
         });
 
+        // update torrent counts
         $("#client-seeding").text(seeding);
         $("#client-leeching").text(leeching);
         $("#client-total").text(torrents.length);
         $("#client-peers").text(totalPeers);
+
+        // update session stats
+        $("#session-dl").text(formatBytes(stats["dl_info_data"]));
+        $("#total-dl").text(formatBytes(stats["alltime_dl"]));
+        $("#dl-rate").text(formatSpeed(stats["dl_info_speed"]));
+        $("#session-ul").text(formatBytes(stats["up_info_data"]));
+        $("#total-ul").text(formatBytes(stats["alltime_ul"]));
+        $("#ul-rate").text(formatSpeed(stats["ul_info_speed"]));
+        $("#global-ratio").text(stats["global_ratio"].toFixed(2));
     }
 
     function applySortingAndRender() {
