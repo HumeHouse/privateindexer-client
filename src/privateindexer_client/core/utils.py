@@ -70,33 +70,33 @@ async def fetch_indexer_user_data():
         return None
 
 
-async def send_torrent_to_indexer(metadata):
+async def send_torrent_to_indexer(torrent_path: str, category: str):
     """
     Attempt to upload the torrent file along with the category to the PrivateIndexer server
     Will mark a file as uploaded in the database if the server API returns a 409 status code
     """
     try:
-        torrent_file = metadata["torrent_path"]
-        with open(torrent_file, "rb") as f:
+        with open(torrent_path, "rb") as file:
+            torrent_basename = os.path.basename(torrent_path)
             # build the request with all the necessary torrent metadata required by indexer
-            files = {"torrent_file": (os.path.basename(torrent_file), f, "application/x-bittorrent")}
-            data = {"category": metadata["category"]}
+            files = {"torrent_file": (torrent_basename, file, "application/x-bittorrent")}
+            data = {"category": category}
 
             async with httpx_request.get_client() as client:
                 response = await client.post(INDEXER_API_URL + "/upload", headers={"X-API-Key": API_KEY}, data=data, files=files)
 
                 # based on the response from API, we will know status of upload
                 if response.status_code == 200:
-                    log.info(f"[INDEXER] Successfully sent '{metadata["name"]}' to indexer")
+                    log.info(f"[INDEXER] Successfully sent '{torrent_basename}' to indexer")
                     return True
                 elif response.status_code == 409:
-                    log.info(f"[INDEXER] Torrent {metadata.get('name')} already exists on indexer, marking as uploaded")
+                    log.info(f"[INDEXER] Torrent {torrent_basename} already exists on indexer, marking as uploaded")
                     return True
                 else:
-                    log.error(f"[INDEXER] Failed to send '{metadata["name"]}' to indexer, will retry later: {response.status_code}")
+                    log.warning(f"[INDEXER] Failed to send '{torrent_basename}' to indexer, will retry later: {response.status_code} - {response.text}")
                     return False
     except Exception as e:
-        log.error(f"[INDEXER] Exception while sending '{metadata["name"]}' to indexer, will retry later: {e}")
+        log.error(f"[INDEXER] Exception while sending '{torrent_basename}' to indexer, will retry later: {e}")
         return False
 
 

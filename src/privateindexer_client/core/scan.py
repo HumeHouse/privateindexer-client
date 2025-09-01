@@ -76,7 +76,7 @@ async def scan_media_library():
                 created_files += 1
 
                 # attempt to send torrent file to indexer server
-                uploaded = await utils.send_torrent_to_indexer(metadata)
+                uploaded = await utils.send_torrent_to_indexer(metadata["torrent_path"], metadata["category"])
 
                 # add the data for the torrent to the database
                 await utils.add_torrent_to_database(metadata["name"], metadata["size"], metadata["torrent_path"], uploaded, metadata["files"], metadata["category"],
