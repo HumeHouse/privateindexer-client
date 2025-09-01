@@ -157,32 +157,62 @@ def torrent_matches_file(torrent_path: str, media_path: str) -> bool:
     return False
 
 
-def create_torrent(media_file_path: str, output_torrent_file: str):
+def create_torrent(media_path: str, output_torrent_file: str):
     """
-    Main synchronous routine to build and generate a complete torrent file from the media passed in as file_path
+    Synchronous routine to build and generate a complete torrent file from the media passed in as media_path
+    Checks if output torrent file already exists and skips the torrent generation process
     Will fail if v1/v2 hash checks do not succeeed
     Removes the torrent file if any failures occur so a new one can be generated
     """
+    # get size of media
+    total_media_size = os.path.getsize(media_path)
+
     # check if the torrent file supplied exists
     if output_torrent_file and os.path.exists(output_torrent_file):
+        is_new_file = False
         # skip generation if torrent exists
         log.debug(f"[TORRENT] Torrent file '{output_torrent_file}' already exists, generation will be skipped")
 
     else:
-        log.debug(f"[TORRENT] Torrent file '{output_torrent_file}' does not exist, generating one")
-        # split the extension off the filename, this will become the name of the new torrent
-        torrent_name, _ = os.path.splitext(os.path.basename(media_file_path))
-        output_torrent_file = os.path.join(TORRENTS_DIR, f"{torrent_name}.torrent")
-        # use libtorrent to initialize temporary storage, add the media, sign the torrent, set to private, and encode data to the torrent file
-        log.info(f"[TORRENT] Creating torrent for '{torrent_name}'")
+        is_new_file = True
+        log.debug(f"[TORRENT] Torrent for '{media_path}' does not exist, generating one")
+
+        log.info(f"[TORRENT] Creating torrent for '{os.path.basename(media_path)}'")
+
+        # create the file storage object
         fs = lt.file_storage()
-        fs.set_name(torrent_name)
-        lt.add_files(fs, media_file_path)
+
+        # if this is a single file torrent, just add it to the filestorage
+        if os.path.isfile(media_path):
+            lt.add_files(fs, media_path)
+        else:
+            # otherwise walk the directory and collect all the files
+            for root, _, files in os.walk(media_path):
+                # sort the files so they are in a standard order every time
+                for file in sorted(files, key=lambda f: f.lower()):
+                    # skip the file if user doesn't include its extension in configuration
+                    _, extension = os.path.splitext(os.path.basename(file))
+                    if extension.replace(".", "") not in MOVIE_EXTENSIONS:
+                        log.debug(f"[TORRENT] Skipping file with {extension} extension")
+                        continue
+
+                    # put the file inside the torernt under a relative directory based on the media_path directory name
+                    file_path = os.path.join(root, file)
+                    relative_path = os.path.relpath(file_path, media_path)
+
+                    file_size = os.path.getsize(file_path)
+                    fs.add_file(relative_path, file_size)
+
+        # create the torrent from the file storage object
         t = lt.create_torrent(fs)
-        t.set_creator("PrivateIndexer Client")
+        t.set_creator(f"PrivateIndexer Client v{APP_VERSION}")
         t.set_priv(True)
-        lt.set_piece_hashes(t, os.path.dirname(media_file_path))
+        lt.set_piece_hashes(t, os.path.dirname(media_path))
         torrent_data = t.generate()
+
+        # this will become the name of the new torrent, if it's a file, split off the extension
+        torrent_name, _ = os.path.splitext(os.path.basename(media_path)) if os.path.isfile(media_path) else os.path.basename(media_path)
+        output_torrent_file = os.path.join(TORRENTS_DIR, f"{torrent_name}.torrent")
 
         with open(output_torrent_file, "wb") as f:
             f.write(lt.bencode(torrent_data))
@@ -195,12 +225,12 @@ def create_torrent(media_file_path: str, output_torrent_file: str):
         if not hashes.has_v1():
             log.error(f"[TORRENT] Torrent '{torrent_name}' did not generate a v1 hash, it has been removed")
             os.unlink(output_torrent_file)
-            return None
+            return None, False
         torrent_hash_v1 = str(hashes.v1)
         if not hashes.has_v2():
             log.error(f"[TORRENT] Torrent '{torrent_name}' did not generate a v2 hash, it has been removed")
             os.unlink(output_torrent_file)
-            return None
+            return None, False
         torrent_hash_v2 = str(hashes.v2)
 
         # get the number of files in the torrent
@@ -210,21 +240,21 @@ def create_torrent(media_file_path: str, output_torrent_file: str):
         os.unlink(output_torrent_file)
         return None
 
-    size = os.path.getsize(media_file_path)
-    category_id = detect_torznab_category(media_file_path)
+    category_id = detect_torznab_category(media_path)
 
-    return {"name": torrent_name, "size": size, "media_path": media_file_path, "torrent_path": output_torrent_file, "uploaded": False, "files": file_count,
-            "category": category_id, "hash_v1": torrent_hash_v1, "hash_v2": torrent_hash_v2}
+    return ({"name": torrent_name, "size": total_media_size, "media_path": media_path, "torrent_path": output_torrent_file, "uploaded": False,
+             "files": file_count, "category": category_id, "hash_v1": torrent_hash_v1, "hash_v2": torrent_hash_v2},
+            is_new_file)
 
 
-def create_torrent_threadsafe(file_path: str, output_torrent_file: str):
+def create_torrent_threadsafe(media_path: str, output_torrent_file: str):
     """
     Wraps the create_torrent() routine in a try/accept to catch all runtime errors
     """
     try:
-        return create_torrent(file_path, output_torrent_file)
+        return create_torrent(media_path, output_torrent_file)
     except Exception as e:
-        log.error(f"[TORRENT] Failed to create torrent for '{file_path}': {e}")
+        log.error(f"[TORRENT] Failed to create torrent for '{media_path}': {e}")
         return None
 
 
