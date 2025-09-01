@@ -75,7 +75,6 @@ async def scan_media_library():
         try:
             metadata, is_new_file = await future
             if metadata:
-                created_files += 1
 
                 # attempt to send torrent file to indexer server
                 uploaded = await utils.send_torrent_to_indexer(metadata["torrent_path"], metadata["category"])
@@ -85,6 +84,7 @@ async def scan_media_library():
                                                     media_path=metadata["media_path"], hash_v1=metadata["hash_v1"], hash_v2=metadata["hash_v2"])
 
                 if is_new_file:
+                    created_files += 1
                     # attempt to add the torrent to the libtorrent session right away for immediate seeding
                     await torrent_client.add_torrent_for_seeding(metadata["torrent_path"], metadata["media_path"])
 
