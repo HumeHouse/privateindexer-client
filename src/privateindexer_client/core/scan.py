@@ -71,7 +71,7 @@ async def scan_media_library():
     # collect the workers as they finish and process their output
     async for future in asyncio.as_completed(futures):
         try:
-            metadata = await future
+            metadata, is_new_file = await future
             if metadata:
                 created_files += 1
 
@@ -82,10 +82,13 @@ async def scan_media_library():
                 await utils.add_torrent_to_database(metadata["name"], metadata["size"], metadata["torrent_path"], uploaded, metadata["files"], metadata["category"],
                                                     media_path=metadata["media_path"], hash_v1=metadata["hash_v1"], hash_v2=metadata["hash_v2"])
 
-                # attempt to add the torrent to the libtorrent session right away for immediate seeding
-                await torrent_client.add_torrent_for_seeding(metadata["torrent_path"], metadata["media_path"])
+                if is_new_file:
+                    # attempt to add the torrent to the libtorrent session right away for immediate seeding
+                    await torrent_client.add_torrent_for_seeding(metadata["torrent_path"], metadata["media_path"])
 
-                log.info(f"[SCAN] Created or updated torrent: {metadata["name"]}")
+                    log.info(f"[SCAN] Created and started seeding new torrent: {metadata["name"]}")
+                else:
+                    log.debug(f"[SCAN] Updated existing torrent: {metadata["name"]}")
         except Exception as e:
             log.error(f"[SCAN] Error in torrent post-torrent-creation process: {e}")
 
