@@ -588,8 +588,8 @@ def map_stats_to_qbit(
     mapped = {}
 
     # session totals
-    total_download = stats_now["net.recv_bytes"] + stats_now["net.recv_ip_overhead_bytes"]
-    total_upload = stats_now["net.sent_bytes"] + stats_now["net.sent_ip_overhead_bytes"]
+    total_download = stats_now["net.recv_bytes"]
+    total_upload = stats_now["net.sent_bytes"]
     mapped["dl_info_data"] = total_download
     mapped["up_info_data"] = total_upload
 
@@ -597,9 +597,9 @@ def map_stats_to_qbit(
     mapped["alltime_dl"] = all_time_download
     mapped["alltime_ul"] = all_time_upload
 
-    # global ratio is DL/UL if UL>0
+    # global ratio is UL/DL if UL>0
     if all_time_upload > 0:
-        mapped["global_ratio"] = round(all_time_download / all_time_upload, 2)
+        mapped["global_ratio"] = round(all_time_upload / all_time_download, 2)
     else:
         mapped["global_ratio"] = 0.0
 
@@ -608,8 +608,8 @@ def map_stats_to_qbit(
         # offset the interval based on the previous timestamp
         interval = max(time_now - time_prev, 1e-6)
 
-        prev_download = stats_prev["net.recv_bytes"] + stats_prev["net.recv_ip_overhead_bytes"]
-        prev_upload = stats_prev["net.sent_bytes"] + stats_prev["net.sent_ip_overhead_bytes"]
+        prev_download = stats_prev["net.recv_bytes"]
+        prev_upload = stats_prev["net.sent_bytes"]
 
         mapped["dl_info_speed"] = int((total_download - prev_download) / interval)
         mapped["up_info_speed"] = int((total_upload - prev_upload) / interval)
