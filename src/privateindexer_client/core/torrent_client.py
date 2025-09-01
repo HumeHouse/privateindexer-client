@@ -210,7 +210,7 @@ async def load_fastresume_data():
     before = datetime.datetime.now()
 
     # build a map of all the hashes and their respective torrent files
-    torrents = await database.fetch_all("SELECT hash_v1, torrent_path FROM torrents")
+    torrents = await database.fetch_all("SELECT * FROM torrents")
     torrent_hash_path_map = {t["hash_v1"]: t["torrent_path"] for t in torrents}
 
     loop = asyncio.get_running_loop()
@@ -247,6 +247,23 @@ async def load_fastresume_data():
                 libtorrent_session.add_torrent(atp)
         except Exception as e:
             log.error(f"[FASTRESUME] Error in fastresume data post-processing: {e}")
+
+    # loop through the torrents in the database
+    for torrent in torrents:
+        # skip the torrent if it's already in the torrent client
+        if await torrent_exists_in_session(torrent.get("hash_v1")):
+            continue
+
+        download_path = torrent.get("download_path")
+        download_exists = os.path.exists(download_path) if download_path else False
+        media_path = torrent.get("media_path")
+        media_exists = os.path.exists(media_path) if media_path else False
+
+        # try to seed the download media first, then fall back to media path
+        seed_path = download_path if download_exists else (media_path if media_exists else None)
+        if seed_path:
+            await add_torrent_for_seeding(torrent["torrent_path"], seed_path)
+            log.info(f"[SCAN] Re-added '{torrent["name"]}' for seeding from {"download" if download_exists else "media"} path")
 
     delta = datetime.datetime.now() - before
     log.info(f"[FASTRESUME] Finished loading fastresume data ({delta})")
