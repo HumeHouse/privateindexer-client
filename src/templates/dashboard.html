@@ -1,14 +1,25 @@
 <!DOCTYPE html>
 <html lang="en" data-bs-theme="dark">
+
 <head>
     <meta charset="UTF-8">
     <title>PrivateIndexer Dashboard</title>
+    <link rel="icon" type="image/x-icon" href="/static/favicon.ico">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.7/dist/css/bootstrap.min.css"
           integrity="sha256-zRgmWB5PK4CvTx4FiXsxbHaYRBBjz/rvu97sOC7kzXI=" crossorigin="anonymous">
+    <!--suppress CssUnusedSymbol -->
     <style>
-        html, body {
+        html,
+        body {
             height: 100%;
             margin: 0;
+        }
+
+        .logo {
+            width: 55px;
+            height: 55px;
+            border-radius: 50%;
+            object-fit: cover;
         }
 
         #main-container {
@@ -37,7 +48,10 @@
         #info-panel .tab-content {
             max-height: calc(50vh - 50px);
         }
+    </style>
 
+    <!--suppress CssUnusedSymbol -->
+    <style>
         .state-downloading {
             background-color: rgba(0, 123, 255, 0.1) !important;
             color: #007bff !important;
@@ -53,7 +67,8 @@
             color: #856404 !important;
         }
 
-        .state-checkingDL, .state-checkingResumeData {
+        .state-checkingDL,
+        .state-checkingResumeData {
             background-color: rgba(23, 162, 184, 0.1) !important;
             color: #17a2b8 !important;
         }
@@ -80,24 +95,42 @@
         }
     </style>
 </head>
+
 <body class="bg-body">
 <div id="main-container" class="container-fluid d-flex flex-column g-0">
     <div class="d-flex justify-content-between align-items-center my-1">
-        <h3 class="ms-2">PrivateIndexer Dashboard</h3>
+        <div class="d-flex align-items-center">
+            <img class="logo" src="/static/logo.png" alt="logo">
+            <h3 class="ms-2">PrivateIndexer Dashboard</h3>
+        </div>
 
         <!-- Client-visible stats -->
         <div id="client-stats" class="d-flex gap-3 align-items-center my-2">
-            <div class="text-center">
-                <small class="text-muted d-block">Client Torrents</small>
+            <div class="text-center text-info">
+                <span class="fw-bold" id="client-leeching">0</span><br><small>Downloading</small>
+            </div>
+            <div class="text-center text-info">
+                <span class="fw-bold" id="session-dl">0</span> (<span class="fw-bold" id="dl-rate"> B/s</span>)
+                <br><small>Session DL (Rate)</small>
+            </div>
+            <div class="text-center text-info">
+                <span class="fw-bold" id="total-dl">0</span><br><small>Total DL</small>
             </div>
             <div class="text-center text-success">
                 <span class="fw-bold" id="client-seeding">0</span><br><small>Uploading</small>
             </div>
-            <div class="text-center text-info">
-                <span class="fw-bold" id="client-leeching">0</span><br><small>Downloading</small>
+            <div class="text-center text-success">
+                <span class="fw-bold" id="session-ul">0</span> (<span class="fw-bold" id="ul-rate">0 B/s</span>)
+                <br><small>Session UL (Rate)</small>
+            </div>
+            <div class="text-center text-success">
+                <span class="fw-bold" id="total-ul">0</span><br><small>Total UL</small>
             </div>
             <div class="text-center">
-                <span class="fw-bold" id="client-total">0</span><br><small>Total</small>
+                <span class="fw-bold" id="global-ratio">0.00</span><br><small>Ratio</small>
+            </div>
+            <div class="text-center">
+                <span class="fw-bold" id="client-total">0</span><br><small>Torrents</small>
             </div>
             <div class="text-center">
                 <span class="fw-bold" id="client-peers">0</span><br><small>Peers</small>
@@ -112,11 +145,11 @@
             <div class="text-center text-info">
                 <span class="fw-bold" id="torrents-added">0</span><br><small>Uploaded</small>
             </div>
-            <div class="text-center text-success">
-                <span class="fw-bold" id="currently-seeding">0</span><br><small>S</small>
-            </div>
             <div class="text-center text-danger">
                 <span class="fw-bold" id="currently-leeching">0</span><br><small>L</small>
+            </div>
+            <div class="text-center text-success">
+                <span class="fw-bold" id="currently-seeding">0</span><br><small>S</small>
             </div>
             <div class="text-center">
                 <span class="fw-bold" id="peers-total">0</span><br><small>Swarm</small>
@@ -127,26 +160,45 @@
         </div>
     </div>
 
-
     <div id="torrents-table-container" class="table-responsive flex-grow-1">
         <table class="table table-striped table-bordered table-hover">
             <thead>
             <tr>
-                <th class="d-flex">
-                    Name
-                    <input type="text" id="filter-name" class="ms-1 form-control form-control-sm"
-                           placeholder="Filter name...">
+                <th data-column="name" class="sortable d-flex align-items-center">
+                    <span class="sort-label flex-grow-1">Name</span>
+                    <input type="text" id="filter-name" class="ms-1 form-control form-control-sm flex-grow-0"
+                           style="width: 50%; min-width: 120px;" placeholder="Filter name...">
                 </th>
-                <th>Size</th>
-                <th>Progress</th>
-                <th>Status</th>
-                <th>Seeds</th>
-                <th>Peers</th>
-                <th>Download Speed</th>
-                <th>Upload Speed</th>
-                <th>ETA</th>
-                <th>Ratio</th>
-                <th>Added On</th>
+                <th data-column="size" class="sortable">
+                    <span class="sort-label flex-grow-1">Size</span>
+                </th>
+                <th data-column="progress" class="sortable">
+                    <span class="sort-label flex-grow-1">Progress</span>
+                </th>
+                <th data-column="status" class="sortable">
+                    <span class="sort-label flex-grow-1">Status</span>
+                </th>
+                <th data-column="seeds" class="sortable">
+                    <span class="sort-label flex-grow-1">Seeds</span>
+                </th>
+                <th data-column="peers" class="sortable">
+                    <span class="sort-label flex-grow-1">Peers</span>
+                </th>
+                <th data-column="download_speed" class="sortable">
+                    <span class="sort-label flex-grow-1">DL Speed</span>
+                </th>
+                <th data-column="upload_speed" class="sortable">
+                    <span class="sort-label flex-grow-1">UL Speed</span>
+                </th>
+                <th data-column="eta" class="sortable">
+                    <span class="sort-label flex-grow-1">ETA</span>
+                </th>
+                <th data-column="ratio" class="sortable">
+                    <span class="sort-label flex-grow-1">Ratio</span>
+                </th>
+                <th data-column="added_on" class="sortable">
+                    <span class="sort-label flex-grow-1">Added</span>
+                </th>
             </tr>
             </thead>
             <tbody id="torrents-container">
@@ -170,7 +222,8 @@
                 </button>
             </li>
             <li class="nav-item" role="presentation">
-                <button class="nav-link" id="peers-tab" data-bs-toggle="tab" data-bs-target="#tab-peers" type="button">
+                <button class="nav-link" id="peers-tab" data-bs-toggle="tab" data-bs-target="#tab-peers"
+                        type="button">
                     Peers
                 </button>
             </li>
@@ -196,14 +249,40 @@
         integrity="sha256-lel57Jim1/CW4I1iEkaHexK/J9h/ZRneeORKiQuNOIg=" crossorigin="anonymous"></script>
 <script>
     let selectedTorrentId = null;
+    let sortConfig = {column: null, direction: null};
+    let torrentsCache = [];
 
     // catch ready event on document
     $(document).ready(() => {
         // start loops
-        fetchTorrents();
+        fetchMainData();
         fetchUserStats();
+
         // lisetn on the filter box for user input
         $('#filter-name').on('input', applyNameFilter);
+
+        //listen for header clicks to trigger sorting
+        $(".sortable .sort-label").css("cursor", "pointer").click(function (e) {
+            e.stopPropagation();
+            const column = $(this).closest("th").data("column");
+
+            if (sortConfig.column === column) {
+                if (sortConfig.direction === "asc") {
+                    sortConfig.direction = "desc";
+                } else if (sortConfig.direction === "desc") {
+                    sortConfig.column = null;
+                    sortConfig.direction = null;
+                } else {
+                    sortConfig.direction = "asc";
+                }
+            } else {
+                sortConfig.column = column;
+                sortConfig.direction = "asc";
+            }
+
+            // sort then display the torrent data in the page
+            applySortingAndRender();
+        });
     });
 
     // loops through all
@@ -217,26 +296,29 @@
         });
     }
 
-    async function fetchTorrents() {
-        fetch("/dashboard/torrents")
+    async function fetchMainData() {
+        fetch("/dashboard/maindata")
             .then(r => r.json())
             .then(data => {
-                // display the torrent data in the page
-                renderTable(data);
+                // keep the data stored in variable for later use
+                torrentsCache = data["torrents"];
+
+                // sort then display the torrent data in the page
+                applySortingAndRender();
 
                 // update selected torrent info panel
                 if (selectedTorrentId) {
-                    const updatedTorrent = data.find(t => t["infohash_v1"] === selectedTorrentId);
+                    const updatedTorrent = data["torrents"].find(t => t["infohash_v1"] === selectedTorrentId);
                     if (updatedTorrent) populateInfoPanel(updatedTorrent);
                 }
 
                 // update client-visible stats
-                updateClientStats(data);
+                updateClientStats(data["torrents"], data["server_state"]);
             })
-            .catch(e => console.error("Error fetching torrents:", e));
+            .catch(e => console.error("Error fetching main data:", e));
 
         // 5 second interval
-        setTimeout(fetchTorrents, 5000);
+        setTimeout(fetchMainData, 5000);
     }
 
     async function fetchUserStats() {
@@ -256,7 +338,20 @@
         setTimeout(fetchUserStats, 10000);
     }
 
-    function updateClientStats(torrents) {
+    // adds up/down arrows to columns when sorting
+    function updateSortIndicators() {
+        $("table thead th.sortable").each(function () {
+            const $label = $(this).find(".sort-label");
+            let text = $label.text().trim().replace(/ ▲| ▼/, "  ");
+            if (sortConfig.column === $(this).data("column")) {
+                if (sortConfig.direction === "asc") text += " ▲";
+                else if (sortConfig.direction === "desc") text += " ▼";
+            }
+            $label.text(text);
+        });
+    }
+
+    function updateClientStats(torrents, stats) {
         let seeding = 0, leeching = 0, totalPeers = 0;
 
         torrents.forEach(torrent => {
@@ -265,10 +360,57 @@
             totalPeers += (torrent["num_seeds"] || 0) + (torrent["num_leechs"] || 0);
         });
 
+        // update torrent counts
         $("#client-seeding").text(seeding);
         $("#client-leeching").text(leeching);
         $("#client-total").text(torrents.length);
         $("#client-peers").text(totalPeers);
+
+        // update session stats
+        $("#session-dl").text(formatBytes(stats["dl_info_data"]));
+        $("#total-dl").text(formatBytes(stats["alltime_dl"]));
+        $("#dl-rate").text(formatSpeed(stats["dl_info_speed"]));
+        $("#session-ul").text(formatBytes(stats["up_info_data"]));
+        $("#total-ul").text(formatBytes(stats["alltime_ul"]));
+        $("#ul-rate").text(formatSpeed(stats["ul_info_speed"]));
+        $("#global-ratio").text(stats["global_ratio"].toFixed(2));
+    }
+
+    function applySortingAndRender() {
+        let data = [...torrentsCache];
+
+        // sort data by actively sorted columns in sortConfig
+        const sortExtractors = {
+            name: row => row["name"].toLowerCase(),
+            size: row => row["size"],
+            progress: row => row["progress"],
+            status: row => row["state"],
+            seeds: row => row["num_seeds"] + row["num_complete"],
+            peers: row => row["num_leechs"] + row["num_incomplete"],
+            download_speed: row => row["dlspeed"],
+            upload_speed: row => row["upspeed"],
+            eta: row => row["eta"],
+            ratio: row => row["ratio"],
+            added_on: row => row["added_on"]
+        };
+
+        if (sortConfig.column && sortConfig.direction) {
+            const extractor = sortExtractors[sortConfig.column];
+            if (extractor) {
+                data.sort((a, b) => {
+                    const valA = extractor(a);
+                    const valB = extractor(b);
+
+                    if (valA < valB) return sortConfig.direction === "asc" ? -1 : 1;
+                    if (valA > valB) return sortConfig.direction === "asc" ? 1 : -1;
+                    return 0;
+                });
+            }
+        }
+
+        // add data to table and update the arrows in headers
+        updateSortIndicators();
+        renderTable(data);
     }
 
     function formatBytes(bytes) {
@@ -312,8 +454,7 @@
                 <td>${formatBytes(torrent["size"])}</td>
                 <td>
                     <div class="progress" style="height:1.5rem;">
-                        <div class="progress-bar bg-success" role="progressbar" style="width: ${progress}%"
-                             aria-valuenow="${progress}" aria-valuemin="0" aria-valuemax="100">${progress}%</div>
+                        <div class="progress-bar bg-success" role="progressbar" style="width: ${progress}%">${progress}%</div>
                     </div>
                 </td>
                 <td class="${rowClass}">${torrent["state"]}</td>
@@ -402,8 +543,7 @@
             <td>${formatSpeed(peer["up_speed"])}</td>
             <td>
                 <div class="progress" style="height:1.5rem;">
-                <div class="progress-bar bg-success" role="progressbar" style="width: ${progress}%"
-                     aria-valuenow="${progress}" aria-valuemin="0" aria-valuemax="100">${progress}%</div>
+                <div class="progress-bar bg-success" role="progressbar" style="width: ${progress}%">${progress}%</div>
                 </div>
             </td>
         </tr>`;
@@ -413,4 +553,5 @@
     }
 </script>
 </body>
+
 </html>

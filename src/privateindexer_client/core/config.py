@@ -4,7 +4,7 @@ import threading
 
 from privateindexer_client.core.logger import log
 
-APP_VERSION = "1.2.3"
+APP_VERSION = "1.2.4"
 
 # gather/set environment variables for usage later
 DATABASE_FILE = "/app/data/torrents.db"
@@ -12,6 +12,8 @@ TORRENTS_DIR = "/app/data/torrents"
 FASTRESUME_DIR = os.path.join(TORRENTS_DIR, "fastresume")
 
 DOWNLOADS_DIR = os.getenv("DOWNLOADS_DIR")
+
+STATS_FILE = "/app/data/stats.json"
 
 CONFIG_FILE = "/app/data/config.json"
 
@@ -31,6 +33,8 @@ API_KEY = os.getenv("API_KEY")
 ANNOUNCE_TRACKER_URL = "https://tracker.humehouse.com/announce" + "?apikey=" + API_KEY
 
 TORRENTING_PORT = int(os.getenv("TORRENTING_PORT", "6881"))
+
+RESEND_INTERVAL = 60 * 5
 
 config_lock = threading.Lock()
 _config_cache = None

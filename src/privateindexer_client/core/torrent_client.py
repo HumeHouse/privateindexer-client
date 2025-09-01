@@ -1,4 +1,5 @@
 import asyncio
+import datetime
 import os
 import shutil
 import time
@@ -12,13 +13,19 @@ from privateindexer_client.core.thread_executor import EXECUTOR
 from privateindexer_client.core.utils import process_fastresume_file
 
 libtorrent_session: lt.session
+_session_stats_now: dict[str, int] = None
+_session_stats_prev: dict[str, int] = None
+_session_stats_time_now: float = None
+_session_stats_time_prev: float = None
+_all_time_download: int = 0
+_all_time_upload: int = 0
 
 
 def create_libtorrent_session(app_version: str):
     """
     Initialize a libtorrent session with custom settings
     """
-    global libtorrent_session
+    global libtorrent_session, _all_time_download, _all_time_upload
     settings = {"listen_interfaces": f"0.0.0.0:{TORRENTING_PORT}",  # listen on all IPv4 interfaces
                 "active_downloads": -1,  # allow unlimited downloads
                 "active_seeds": -1,  # allow unlimited seeds
@@ -36,6 +43,31 @@ def create_libtorrent_session(app_version: str):
                 "seed_choking_algorithm": lt.seed_choking_algorithm_t.fastest_upload,  # choke based on upload speed
                 }
     libtorrent_session = lt.session(settings)
+    _all_time_download, _all_time_upload = utils.load_persistent_stats()
+
+
+def get_session_stats() -> tuple[
+    dict[str, int] | None,
+    float | None,
+    dict[str, int] | None,
+    float | None,
+]:
+    """
+    Returns a 4-tuple of the current session stats including the timestamps they were gathered at
+    """
+    return (
+        _session_stats_now.copy() if _session_stats_now else None,
+        _session_stats_time_now,
+        _session_stats_prev.copy() if _session_stats_prev else None,
+        _session_stats_time_prev,
+    )
+
+
+def get_all_time_stats() -> tuple[int, int,]:
+    """
+    Returns a tuple of the current all-time download and upload stats
+    """
+    return _all_time_download, _all_time_upload
 
 
 def get_all_torrents() -> list:
@@ -69,7 +101,7 @@ async def add_torrent_for_seeding(torrent_file: str, save_path: str):
             return
 
         # skip torrent if torrent already exists in libtorrent session
-        if libtorrent_session.find_torrent(info.info_hash()).is_valid():
+        if await torrent_exists_in_session(info.info_hash()):
             return
 
         # add the tracker URL
@@ -119,8 +151,7 @@ async def add_torrent_for_download(torrent_file: str, save_path: str) -> bool:
             return None
         torrent_hash_v2 = str(hashes.v2)
 
-        existing = libtorrent_session.find_torrent(info.info_hash())
-        if existing.is_valid():
+        if await torrent_exists_in_session(info.info_hash()):
             log.warning(f"[TORCLIENT] Torrent already exists on client: {torrent_name}")
             return False
 
@@ -150,36 +181,67 @@ async def add_torrent_for_download(torrent_file: str, save_path: str) -> bool:
     return True
 
 
+async def torrent_exists_in_session(info_hash: str | bytes) -> bool:
+    """
+    Checks for a torrent hash in the libtorrent session
+    """
+    # convert str hex to bytes hash
+    try:
+        if isinstance(info_hash, str):
+            info_hash = lt.sha1_hash(bytes.fromhex(info_hash))
+
+        existing = libtorrent_session.find_torrent(info_hash)
+        return existing.is_valid()
+    except Exception as e:
+        log.error(f"[TORCLIENT] Failed to check if torrent exists: {e}")
+        return False
+
+
 async def remove_torrent_by_hash(torrent_hash: str, remove_downloads: bool = False):
     """
     Remove a torrent from the libtorrent session if it exists
     Also removes fastresume data from the disk if it exists
     """
-    info_hash = lt.sha1_hash(bytes.fromhex(torrent_hash))
-    existing = libtorrent_session.find_torrent(info_hash)
-    if existing.is_valid():
-        libtorrent_session.remove_torrent(existing)
+    try:
+        info_hash = lt.sha1_hash(bytes.fromhex(torrent_hash))
+        existing = libtorrent_session.find_torrent(info_hash)
+        if existing.is_valid():
+            libtorrent_session.remove_torrent(existing)
+    except Exception as e:
+        log.error(f"[TORCLIENT] Failed to remove torrent: {e}")
+        return False
 
     # remove the fastresume/fastresume-ignore files if either exists
-    fastresume_file = os.path.join(FASTRESUME_DIR, f"{torrent_hash}.fastresume")
-    ignore_file = f"{fastresume_file}.ignore"
-    for file in [fastresume_file, ignore_file]:
-        if os.path.exists(file):
-            os.unlink(file)
+    try:
+        fastresume_file = os.path.join(FASTRESUME_DIR, f"{torrent_hash}.fastresume")
+        ignore_file = f"{fastresume_file}.ignore"
+        for file in [fastresume_file, ignore_file]:
+            if os.path.exists(file):
+                os.unlink(file)
+    except Exception as e:
+        log.error(f"[TORCLIENT] Failed to remove fastresume data when removing torrent: {e}")
+        return False
 
-    if remove_downloads:
-        # try to remove the downloaded files if any exist
-        result = await database.fetch_one("SELECT download_path FROM torrents WHERE hash_v1 = ? or hash_v2 = ?", (torrent_hash, torrent_hash,))
-        if result and result.get("download_path"):
-            os.unlink(result["download_path"])
+    try:
+        if remove_downloads:
+            # try to remove the downloaded files if any exist
+            result = await database.fetch_one("SELECT download_path FROM torrents WHERE hash_v1 = ? or hash_v2 = ?", (torrent_hash, torrent_hash,))
+            if result and result.get("download_path"):
+                os.unlink(result["download_path"])
+    except Exception as e:
+        log.error(f"[TORCLIENT] Failed to remove downloads when removing torrent: {e}")
+        return False
 
 
 async def load_fastresume_data():
     """
     Load fastresume and torrent files from torrents dir into the session
     """
+    log.info("[FASTRESUME] Loading fastresume data into torrent client")
+    before = datetime.datetime.now()
+
     # build a map of all the hashes and their respective torrent files
-    torrents = await database.fetch_all("SELECT hash_v1, torrent_path FROM torrents")
+    torrents = await database.fetch_all("SELECT * FROM torrents")
     torrent_hash_path_map = {t["hash_v1"]: t["torrent_path"] for t in torrents}
 
     loop = asyncio.get_running_loop()
@@ -217,14 +279,36 @@ async def load_fastresume_data():
         except Exception as e:
             log.error(f"[FASTRESUME] Error in fastresume data post-processing: {e}")
 
+    # loop through the torrents in the database
+    for torrent in torrents:
+        # skip the torrent if it's already in the torrent client
+        if await torrent_exists_in_session(torrent.get("hash_v1")):
+            continue
 
-def save_all_fastresume_data():
+        download_path = torrent.get("download_path")
+        download_exists = os.path.exists(download_path) if download_path else False
+        media_path = torrent.get("media_path")
+        media_exists = os.path.exists(media_path) if media_path else False
+
+        # try to seed the download media first, then fall back to media path
+        seed_path = download_path if download_exists else (media_path if media_exists else None)
+        if seed_path:
+            await add_torrent_for_seeding(torrent["torrent_path"], seed_path)
+            log.info(f"[SCAN] Re-added '{torrent["name"]}' for seeding from {"download" if download_exists else "media"} path")
+
+    delta = datetime.datetime.now() - before
+    log.info(f"[FASTRESUME] Finished loading fastresume data ({delta})")
+
+
+def save_all_fastresume_data() -> tuple[int, int]:
     """
     Immediately schedules a save of fastresume data for all torrents in the session
     This function waits for all alerts to clear before finishing
     """
+    torrents = libtorrent_session.get_torrents()
+    total = len(torrents)
+    completed = 0
     try:
-        torrents = libtorrent_session.get_torrents()
         hashes_to_await = set()
         for torrent in torrents:
             try:
@@ -252,20 +336,26 @@ def save_all_fastresume_data():
                     torrent_hash = utils.save_fastresume_to_disk(alert)
                     if torrent_hash and torrent_hash in hashes_to_await:
                         hashes_to_await.remove(torrent_hash)
+                        completed += 1
             # let the thread sleep so libtorrent has time to generate alerts
             time.sleep(0.1)
-
     except Exception as e:
         log.error(f"[FASTRESUME] Error saving fastresume data for all torrents: {e}")
+    return completed, total
 
 
 async def periodic_torrent_status_task():
     """
     Periodically check torrent status and validate error status every 5 seconds.
+    Also sends a request to the libtorrent session to obtain session stats (async, caught during periodic_alerts_task)
     """
     log.debug("[STATUS] Task loop started")
     while True:
         try:
+            # request session stats async
+            libtorrent_session.post_session_stats()
+
+            # loop through torrents and check their status
             torrents = libtorrent_session.get_torrents()
             for torrent in torrents:
                 status = torrent.status()
@@ -288,7 +378,13 @@ async def periodic_fastresume_task():
     while True:
         await asyncio.sleep(FASTRESUME_INTERVAL)
         try:
-            save_all_fastresume_data()
+            log.info("[FASTRESUME] Saving all fastresume data")
+            before = datetime.datetime.now()
+
+            completed, total = save_all_fastresume_data()
+
+            delta = datetime.datetime.now() - before
+            log.info(f"[FASTRESUME] Fastresume task completed, {completed} saved, {total} total torrents ({delta})")
         except Exception as e:
             log.error(f"[FASTRESUME] Error in torrent fastresume loop: {e}")
 
@@ -298,6 +394,10 @@ async def periodic_alerts_task():
     Periodically check for alerts and process them every 5 seconds
     """
     log.debug("[ALERTS] Task loop started")
+    global _session_stats_now, _session_stats_prev
+    global _session_stats_time_now, _session_stats_time_prev
+    global _all_time_download, _all_time_upload
+
     while True:
         try:
             alerts = libtorrent_session.pop_alerts()
@@ -306,6 +406,27 @@ async def periodic_alerts_task():
                 # process fastresume available alerts
                 if isinstance(alert, lt.save_resume_data_alert):
                     utils.save_fastresume_to_disk(alert)
+
+                if isinstance(alert, lt.session_stats_alert):
+                    # shift current snapshot to previous
+                    if _session_stats_now:
+                        _session_stats_prev = _session_stats_now
+                        _session_stats_time_prev = _session_stats_time_now
+
+                    # store new snapshot
+                    _session_stats_now = alert.values
+                    _session_stats_time_now = time.monotonic()
+
+                    # update all-time totals
+                    total_download = _session_stats_now["net.recv_bytes"]
+                    total_upload = _session_stats_now["net.sent_bytes"]
+
+                    _all_time_download += total_download - (_session_stats_prev["net.recv_bytes"]) if _session_stats_prev else 0
+                    _all_time_upload += total_upload - (_session_stats_prev["net.sent_bytes"]) if _session_stats_prev else 0
+
+                    # persist the stats to disk every 60 seconds
+                    if int(time.monotonic()) % 60 == 0:
+                        utils.save_persistent_stats(_all_time_download, _all_time_upload)
 
         except Exception as e:
             log.error(f"[ALERTS] Error in torrent alerts loop: {e}")

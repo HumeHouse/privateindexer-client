@@ -3,8 +3,9 @@ import os
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from fastapi.staticfiles import StaticFiles
 
-from privateindexer_client.core import torrent_client, scan, api, gui, httpx_request, database
+from privateindexer_client.core import torrent_client, scan, api, gui, httpx_request, database, resend, utils
 from privateindexer_client.core.config import TORRENTS_DIR, SCAN_INTERVAL, MOVIE_DIR, TORZNAB_CATEGORY_PATHS, INDEXER_API_URL, API_KEY, TORRENTING_PORT, \
     DOWNLOADS_DIR, FASTRESUME_DIR, APP_VERSION, MAX_THREADS, FASTRESUME_INTERVAL
 from privateindexer_client.core.logger import log
@@ -47,7 +48,7 @@ async def lifespan(_: FastAPI):
         status_code = None
         while status_code not in (403, 200):
             async with httpx_request.get_client() as client:
-                indexer_response = await client.get(INDEXER_API_URL + "/user", params={"apikey": API_KEY, "v": APP_VERSION})
+                indexer_response = await client.get(INDEXER_API_URL + "/user", headers={"X-API-Key": API_KEY}, params={"v": APP_VERSION})
                 status_code = indexer_response.status_code
                 if status_code == 200:
                     TORRENT_SIGNER = indexer_response.text
@@ -66,7 +67,6 @@ async def lifespan(_: FastAPI):
     # init the libtorrent client session
     torrent_client.create_libtorrent_session(APP_VERSION)
 
-    log.info("[APP] Loading fastresume data into torrent client")
     # load the fastresume data into the client session using background task
     asyncio.create_task(torrent_client.load_fastresume_data())
 
@@ -84,17 +84,25 @@ async def lifespan(_: FastAPI):
     # send the torrent alerts task to the asyncio scheduler
     alerts_task = asyncio.create_task(torrent_client.periodic_alerts_task())
 
+    # send the resend task to the asyncio scheduler
+    resend_task = asyncio.create_task(resend.periodic_resend_task())
+
     log.info("[APP] API server started on 0.0.0.0:80")
 
     yield
 
     log.info("[APP] Shutting down PrivateIndexer client")
 
+    log.info("[APP] Saving all-time stats")
+    all_time_download, all_time_upload = torrent_client.get_all_time_stats()
+    utils.save_persistent_stats(all_time_download, all_time_upload)
+
     log.info(f"[APP] Stopping tasks")
     scan_task.cancel()
     status_task.cancel()
     fastresume_task.cancel()
     alerts_task.cancel()
+    resend_task.cancel()
 
     log.info("[APP] Saving fastresume data")
 
@@ -115,6 +123,8 @@ async def lifespan(_: FastAPI):
 
 
 app = FastAPI(lifespan=lifespan)
+# mount the static files directory to fastapi
+app.mount("/static", StaticFiles(directory="/app/src/static"), name="static")
 
 app.include_router(api.router)
 app.include_router(gui.router)
