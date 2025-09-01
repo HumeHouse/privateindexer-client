@@ -28,17 +28,24 @@ You can also use the hosted pre-built image on at `ghcr.io/humehouse/privateinde
 
 ### 1. Configure Environment Variables
 
-| Variable              | Default Value     | Description                                                                                                                            | Example              |
-|-----------------------|-------------------|----------------------------------------------------------------------------------------------------------------------------------------|----------------------|
-| `DOWNLOADS_DIR`       | *None (required)* | Path inside the container to your movie media library. (Make sure to mount it to the host somewhere - step 3.)                         | `/data/downloads`    |
-| `MOVIE_DIR`           | *None (required)* | Path inside the container to your movie media library. (Make sure to mount it to the host somewhere - step 3.)                         | `/data/media/movies` |
-| `MOVIE_EXTENSIONS`    | `mp4,mkv,m4v,avi` | File extensions (comma-separated) to whitelist for torrent creation during scans.                                                      |                      |
-| `MAX_THREADS `        | `8`               | Number of threads to use for CPU & I/O bound tasks. Recommend matching CPU cores.                                                      |                      |
-| `SCAN_INTERVAL`       | `30`              | Minutes between media library scans.                                                                                                   |                      |
-| `FASTRESUME_INTERVAL` | `60`              | How often (in minutes) to save fastresume data. *Setting this too low can negatively impact your disk performance.*                    |                      |
-| `API_KEY`             | *None (required)* | Your assigned API key (contact David if you don’t have one).                                                                           | `abcdef123456`       |
-| `TORRENTING_PORT`     | `6881`            | Port accepting connections from other torrent clients. (Make sure to bind this to host and forward in router.)                         |                      |
-| `LOG_LEVEL`           | `INFO`            | Lowest log level to show in console. Can be `DEBUG`, `INFO`, `WARNING`, `ERROR`, or `CRITICAL` where `DEBUG` shows most amount of logs |                      |
+#### REQURIED VARIABLES
+
+| Variable        | Description                                                                                                    | Example              |
+|-----------------|----------------------------------------------------------------------------------------------------------------|----------------------|
+| `DOWNLOADS_DIR` | Path inside the container that downloads are saved to. (Make sure to mount it to the host somewhere - step 2.) | `/data/downloads`    |
+| `MOVIE_DIR`     | Path inside the container to your movie media library. (Make sure to mount it to the host somewhere - step 2.) | `/data/media/movies` |
+| `API_KEY`       | Your assigned API key (contact David if you don’t have one).                                                   | `abcdef123456`       |
+
+#### OPTIONAL VARIABLES
+
+| Variable              | Default Value     | Description                                                                                                                            |
+|-----------------------|-------------------|----------------------------------------------------------------------------------------------------------------------------------------|
+| `MOVIE_EXTENSIONS`    | `mp4,mkv,m4v,avi` | File extensions (comma-separated) to whitelist for torrent creation during scans.                                                      |
+| `MAX_THREADS `        | `8`               | Number of threads to use for CPU & I/O bound tasks. Recommend matching CPU cores.                                                      |
+| `SCAN_INTERVAL`       | `30`              | Minutes between media library scans.                                                                                                   |
+| `FASTRESUME_INTERVAL` | `60`              | How often (in minutes) to save fastresume data. *Setting this too low can negatively impact your disk performance.*                    |
+| `TORRENTING_PORT`     | `6881`            | Port accepting connections from other torrent clients. (Make sure to bind this to host and forward in router.)                         |
+| `LOG_LEVEL`           | `INFO`            | Lowest log level to show in console. Can be `DEBUG`, `INFO`, `WARNING`, `ERROR`, or `CRITICAL` where `DEBUG` shows most amount of logs |
 
 ### 2. Configure Volumes
 
