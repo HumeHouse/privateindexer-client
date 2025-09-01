@@ -7,7 +7,7 @@ import time
 import libtorrent as lt
 
 from privateindexer_client.core import config, httpx_request, database
-from privateindexer_client.core.config import TORZNAB_CATEGORY_PATHS, API_KEY, INDEXER_API_URL, TORRENTS_DIR, FASTRESUME_DIR, MOVIE_EXTENSIONS, APP_VERSION, DOWNLOADS_DIR
+from privateindexer_client.core.config import TORZNAB_CATEGORY_PATHS, API_KEY, INDEXER_API_URL, TORRENTS_DIR, FASTRESUME_DIR, MOVIE_EXTENSIONS, APP_VERSION
 from privateindexer_client.core.logger import log
 
 _file_piece_hash_cache: dict[str, dict[int, list[bytes]]] = {}
@@ -293,6 +293,28 @@ def find_existing_torrent(media_path: str) -> str | None:
             log.error(f"[TORRENT] Error comparing hash for '{media_path}' to '{torrent_file}': {e}")
 
     log.debug(f"[TORRENT] Couldn't find torrent file for: '{media_path}")
+    return None
+
+
+def find_media_for_torrent(torrent_path: str, media_dir: str) -> str | None:
+    """
+    Effectively an inverse of find_existing_torrent() which tries to locate the media for a torrent
+    Given a torrent file, check if the media already exists in media_dir with the same name or hash
+    Returns the existing path if found, otherwise None
+    """
+    # walk through the media_dir directory to try and find a media file that has matching hash to the torrent file
+    for root, _, files in os.walk(media_dir):
+        for file in files:
+            file_path = os.path.join(root, file)
+            try:
+                # return the media path if it matches the torrent
+                if torrent_matches_file(torrent_path, file_path):
+                    log.debug(f"[TORRENT] Matched '{file_path}' to '{torrent_path}' by hash")
+                    return file_path
+            except Exception as e:
+                log.error(f"[TORRENT] Error comparing hash for '{file_path}' to '{torrent_path}': {e}")
+
+    log.debug(f"[TORRENT] Couldn't find media for: '{torrent_path}")
     return None
 
 

@@ -32,6 +32,8 @@ ANNOUNCE_TRACKER_URL = "https://tracker.humehouse.com/announce" + "?apikey=" + A
 
 TORRENTING_PORT = int(os.getenv("TORRENTING_PORT", "6881"))
 
+RESEND_INTERVAL = 60 * 5
+
 config_lock = threading.Lock()
 _config_cache = None
 
