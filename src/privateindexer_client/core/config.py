@@ -13,6 +13,8 @@ FASTRESUME_DIR = os.path.join(TORRENTS_DIR, "fastresume")
 
 DOWNLOADS_DIR = os.getenv("DOWNLOADS_DIR")
 
+STATS_FILE = "/app/data/stats.json"
+
 CONFIG_FILE = "/app/data/config.json"
 
 TORZNAB_CATEGORY_PATHS = {}

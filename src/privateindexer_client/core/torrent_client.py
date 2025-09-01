@@ -13,13 +13,19 @@ from privateindexer_client.core.thread_executor import EXECUTOR
 from privateindexer_client.core.utils import process_fastresume_file
 
 libtorrent_session: lt.session
+_session_stats_now: dict[str, int] = None
+_session_stats_prev: dict[str, int] = None
+_session_stats_time_now: float = None
+_session_stats_time_prev: float = None
+_all_time_download: int = 0
+_all_time_upload: int = 0
 
 
 def create_libtorrent_session(app_version: str):
     """
     Initialize a libtorrent session with custom settings
     """
-    global libtorrent_session
+    global libtorrent_session, _all_time_download, _all_time_upload
     settings = {"listen_interfaces": f"0.0.0.0:{TORRENTING_PORT}",  # listen on all IPv4 interfaces
                 "active_downloads": -1,  # allow unlimited downloads
                 "active_seeds": -1,  # allow unlimited seeds
@@ -37,6 +43,31 @@ def create_libtorrent_session(app_version: str):
                 "seed_choking_algorithm": lt.seed_choking_algorithm_t.fastest_upload,  # choke based on upload speed
                 }
     libtorrent_session = lt.session(settings)
+    _all_time_download, _all_time_upload = utils.load_persistent_stats()
+
+
+def get_session_stats() -> tuple[
+    dict[str, int] | None,
+    float | None,
+    dict[str, int] | None,
+    float | None,
+]:
+    """
+    Returns a 4-tuple of the current session stats including the timestamps they were gathered at
+    """
+    return (
+        _session_stats_now.copy() if _session_stats_now else None,
+        _session_stats_time_now,
+        _session_stats_prev.copy() if _session_stats_prev else None,
+        _session_stats_time_prev,
+    )
+
+
+def get_all_time_stats() -> tuple[int, int,]:
+    """
+    Returns a tuple of the current all-time download and upload stats
+    """
+    return _all_time_download, _all_time_upload
 
 
 def get_all_torrents() -> list:
@@ -316,10 +347,15 @@ def save_all_fastresume_data() -> tuple[int, int]:
 async def periodic_torrent_status_task():
     """
     Periodically check torrent status and validate error status every 5 seconds.
+    Also sends a request to the libtorrent session to obtain session stats (async, caught during periodic_alerts_task)
     """
     log.debug("[STATUS] Task loop started")
     while True:
         try:
+            # request session stats async
+            libtorrent_session.post_session_stats()
+
+            # loop through torrents and check their status
             torrents = libtorrent_session.get_torrents()
             for torrent in torrents:
                 status = torrent.status()
@@ -358,6 +394,10 @@ async def periodic_alerts_task():
     Periodically check for alerts and process them every 5 seconds
     """
     log.debug("[ALERTS] Task loop started")
+    global _session_stats_now, _session_stats_prev
+    global _session_stats_time_now, _session_stats_time_prev
+    global _all_time_download, _all_time_upload
+
     while True:
         try:
             alerts = libtorrent_session.pop_alerts()
@@ -366,6 +406,24 @@ async def periodic_alerts_task():
                 # process fastresume available alerts
                 if isinstance(alert, lt.save_resume_data_alert):
                     utils.save_fastresume_to_disk(alert)
+
+                if isinstance(alert, lt.session_stats_alert):
+                    # shift current snapshot to previous
+                    if _session_stats_now:
+                        _session_stats_prev = _session_stats_now
+                        _session_stats_time_prev = _session_stats_time_now
+
+                    # store new snapshot
+                    _session_stats_now = alert.values
+                    _session_stats_time_now = time.monotonic()
+
+                    # update all-time totals
+                    _all_time_download += _session_stats_now["net.recv_bytes"] + _session_stats_now["net.recv_ip_overhead_bytes"]
+                    _all_time_upload += _session_stats_now["net.sent_bytes"] + _session_stats_now["net.sent_ip_overhead_bytes"]
+
+                    # persist the stats to disk every 60 seconds
+                    if int(time.monotonic()) % 60 == 0:
+                        utils.save_persistent_stats(_all_time_download, _all_time_upload)
 
         except Exception as e:
             log.error(f"[ALERTS] Error in torrent alerts loop: {e}")

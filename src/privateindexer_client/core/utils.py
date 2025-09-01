@@ -1,5 +1,6 @@
 import datetime
 import hashlib
+import json
 import os
 import secrets
 import time
@@ -7,7 +8,7 @@ import time
 import libtorrent as lt
 
 from privateindexer_client.core import config, httpx_request, database
-from privateindexer_client.core.config import TORZNAB_CATEGORY_PATHS, API_KEY, INDEXER_API_URL, TORRENTS_DIR, FASTRESUME_DIR, MOVIE_EXTENSIONS, APP_VERSION
+from privateindexer_client.core.config import TORZNAB_CATEGORY_PATHS, API_KEY, INDEXER_API_URL, TORRENTS_DIR, FASTRESUME_DIR, MOVIE_EXTENSIONS, APP_VERSION, STATS_FILE
 from privateindexer_client.core.logger import log
 
 _file_piece_hash_cache: dict[str, dict[int, list[bytes]]] = {}
@@ -346,6 +347,9 @@ def process_fastresume_file(fastresume_path: str, hash_v1: str, torrent_path: st
 
 
 def fastresume_ignore_exists(torrent_hash: str) -> bool:
+    """
+    Checks if a fastresume ignore file exists in the FASTRESUME_DIR for the given torrent hash
+    """
     ignore_file = os.path.join(FASTRESUME_DIR, f"{torrent_hash}.fastresume.ignore")
 
     # skip saving data if a fastresume-ignore file exists for this hash
@@ -540,5 +544,83 @@ def map_torrent_to_qbit(torrent: lt.torrent_handle) -> dict:
             "min_announce": t.get("min_announce")
         })
     mapped["trackers"] = trackers_list
+
+    return mapped
+
+
+def load_persistent_stats() -> tuple[int, int]:
+    """
+    Load the all-time download and upload stats from the stats file if it exists
+    """
+    if os.path.exists(STATS_FILE):
+        try:
+            with open(STATS_FILE, "r") as file:
+                data = json.loads(file.read())
+            return data.get("all_time_download", 0), data.get("all_time_upload", 0)
+        except Exception:
+            return 0, 0
+    return 0, 0
+
+
+def save_persistent_stats(all_time_download: int, all_time_upload: int):
+    """
+    Save the all-time download and upload stats to the stats file
+    """
+    data = {
+        "all_time_download": all_time_download,
+        "all_time_upload": all_time_upload
+    }
+    with open(STATS_FILE, "w") as file:
+        file.write(json.dumps(data))
+
+
+def map_stats_to_qbit(
+        stats_now: dict[str, int],
+        time_now: float,
+        stats_prev: dict[str, int] | None,
+        time_prev: float | None,
+        all_time_download: int,
+        all_time_upload: int,
+) -> dict[str, int | str]:
+    """
+    Converts the raw data from a current and previous update of libtorrent stats to match what qbit would normally return in an API request
+    """
+    mapped = {}
+
+    # session totals
+    total_download = stats_now["net.recv_bytes"] + stats_now["net.recv_ip_overhead_bytes"]
+    total_upload = stats_now["net.sent_bytes"] + stats_now["net.sent_ip_overhead_bytes"]
+    mapped["dl_info_data"] = total_download
+    mapped["up_info_data"] = total_upload
+
+    # all-time totals
+    mapped["alltime_dl"] = all_time_download
+    mapped["alltime_ul"] = all_time_upload
+
+    # global ratio is DL/UL if UL>0
+    if all_time_upload > 0:
+        mapped["global_ratio"] = round(all_time_download / all_time_upload, 2)
+    else:
+        mapped["global_ratio"] = 0.0
+
+    # rates (compare with prev snapshot if available)
+    if stats_prev and time_prev:
+        # offset the interval based on the previous timestamp
+        interval = max(time_now - time_prev, 1e-6)
+
+        prev_download = stats_prev["net.recv_bytes"] + stats_prev["net.recv_ip_overhead_bytes"]
+        prev_upload = stats_prev["net.sent_bytes"] + stats_prev["net.sent_ip_overhead_bytes"]
+
+        mapped["dl_info_speed"] = int((total_download - prev_download) / interval)
+        mapped["up_info_speed"] = int((total_upload - prev_upload) / interval)
+    else:
+        mapped["dl_info_speed"] = 0
+        mapped["up_info_speed"] = 0
+
+    # base the connection status on the number of connections or if there is incoming traffic
+    if stats_now.get("net.has_incoming_connections", 0) or mapped["up_info_speed"] > 0:
+        mapped["connection_status"] = "connected"
+    else:
+        mapped["connection_status"] = "disconnected"
 
     return mapped
