@@ -70,7 +70,7 @@ async def fetch_indexer_user_data():
         return None
 
 
-async def send_torrent_to_indexer(torrent_path: str, category: str):
+async def send_torrent_to_indexer(torrent_path: str, category: int):
     """
     Attempt to upload the torrent file along with the category to the PrivateIndexer server
     Will mark a file as uploaded in the database if the server API returns a 409 status code
