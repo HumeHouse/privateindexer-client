@@ -3,7 +3,7 @@ import datetime
 import os
 
 from privateindexer_client.core import torrent_client, database, utils
-from privateindexer_client.core.config import SCAN_INTERVAL, TORZNAB_CATEGORY_PATHS, MOVIE_EXTENSIONS
+from privateindexer_client.core.config import SCAN_INTERVAL, TORZNAB_CATEGORY_PATHS, MOVIE_EXTENSIONS, DOWNLOADS_DIR
 from privateindexer_client.core.logger import log
 from privateindexer_client.core.thread_executor import EXECUTOR
 
@@ -135,14 +135,18 @@ async def periodic_scan_task():
             log.info(f"[SCAN] Media library scan completed ({delta}): "
                      f"total {total_files} files, {ignored_files} ignored, {created_files} created, {removed_entries} removed")
 
-            # attempt to resend all failed uploads to indexer server
-            failed_upload_torrents = await database.fetch_all("SELECT * FROM torrents WHERE uploaded = FALSE")
-            for torrent_metadata in failed_upload_torrents:
-                torrent_file = torrent_metadata["torrent_path"]
-                if os.path.exists(torrent_file):
-                    log.info(f"[SCAN] Attempting to resend torrent to indexer: '{torrent_metadata["name"]}'")
-                    if await utils.send_torrent_to_indexer(torrent_metadata):
-                        await database.execute("UPDATE torrents SET uploaded = TRUE WHERE id = ?", (torrent_metadata["id"],))
+            # run a check on multiple factors of each torrent in the database
+            torrents = await database.fetch_all("SELECT * FROM torrents")
+            for torrent in torrents:
+                torrent_path = torrent["torrent_path"]
+                # remove torrent files that don't exist on the disk from the database
+                if not os.path.exists(torrent_path):
+                    await database.execute("DELETE FROM torrents WHERE id = ?", (torrent["id"],))
+                    log.warning(f"[SCAN] Torrent file doesn't exist, removed from database: '{torrent_path}'")
+                    continue
+
+                media_path = torrent.get("media_path")
+                download_path = torrent.get("download_path")
 
                 # torrent file is missing, remove the entry from database so it can be regenerated on next scan
                 else:
