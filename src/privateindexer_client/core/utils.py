@@ -1,6 +1,5 @@
 import datetime
 import hashlib
-import json
 import os
 import secrets
 import time
@@ -8,7 +7,7 @@ import time
 import libtorrent as lt
 
 from privateindexer_client.core import config, httpx_request, database
-from privateindexer_client.core.config import TORZNAB_CATEGORY_PATHS, API_KEY, INDEXER_API_URL, TORRENTS_DIR, FASTRESUME_DIR
+from privateindexer_client.core.config import TORZNAB_CATEGORY_PATHS, API_KEY, INDEXER_API_URL, TORRENTS_DIR, FASTRESUME_DIR, MOVIE_EXTENSIONS, APP_VERSION, DOWNLOADS_DIR
 from privateindexer_client.core.logger import log
 
 _file_piece_hash_cache: dict[str, dict[int, list[bytes]]] = {}
@@ -73,7 +72,7 @@ async def fetch_indexer_user_data():
 
 async def send_torrent_to_indexer(metadata):
     """
-    Attempt to upload the torrent file along with its metadata to the PrivateIndexer server
+    Attempt to upload the torrent file along with the category to the PrivateIndexer server
     Will mark a file as uploaded in the database if the server API returns a 409 status code
     """
     try:
@@ -81,12 +80,10 @@ async def send_torrent_to_indexer(metadata):
         with open(torrent_file, "rb") as f:
             # build the request with all the necessary torrent metadata required by indexer
             files = {"torrent_file": (os.path.basename(torrent_file), f, "application/x-bittorrent")}
-            data = {"metadata": json.dumps(
-                {"name": metadata["name"], "size": metadata["size"], "category": metadata["category"], "hash_v1": metadata.get("hash_v1"),
-                 "hash_v2": metadata.get("hash_v2"), "files": metadata["files"]})}
+            data = {"category": metadata["category"]}
 
             async with httpx_request.get_client() as client:
-                response = await client.post(INDEXER_API_URL + "/create", headers={"X-API-Key": API_KEY}, data=data, files=files)
+                response = await client.post(INDEXER_API_URL + "/upload", headers={"X-API-Key": API_KEY}, data=data, files=files)
 
                 # based on the response from API, we will know status of upload
                 if response.status_code == 200:
