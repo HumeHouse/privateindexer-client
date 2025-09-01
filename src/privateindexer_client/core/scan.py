@@ -22,6 +22,7 @@ async def scan_media_library():
     total_files = 0
     ignored_files = 0
     created_files = 0
+    updated_files = 0
 
     loop = asyncio.get_running_loop()
     futures = []
@@ -54,6 +55,7 @@ async def scan_media_library():
                     # try to update the media path in the database to match the current path
                     result = await database.fetch_one("SELECT id, name FROM torrents WHERE torrent_path = ?", (torrent_file,))
                     if result and result.get("id") is not None:
+                        updated_files += 1
                         # detect category in case it's not matching in the database
                         category_id = utils.detect_torznab_category(file_path)
                         # update the old media location to match current location
@@ -112,10 +114,11 @@ async def scan_media_library():
 
         # case where only the media data is missing, remove the media_path in the database
         elif not media_exists:
+            updated_files += 1
             await database.execute("UPDATE torrents SET media_path = NULL WHERE id = ?", (torrent["id"],))
             log.info(f"[SCAN] Media files missing for '{torrent["name"]}', purged media path from database")
 
-    return total_files, ignored_files, created_files, removed_entries
+    return total_files, ignored_files, updated_files, created_files, removed_entries
 
 
 async def periodic_scan_task():
@@ -129,11 +132,7 @@ async def periodic_scan_task():
             log.info("[SCAN] Scanning media library for new or updated files")
             before = datetime.datetime.now()
 
-            total_files, ignored_files, created_files, removed_entries = await scan_media_library()
-
-            delta = datetime.datetime.now() - before
-            log.info(f"[SCAN] Media library scan completed ({delta}): "
-                     f"total {total_files} files, {ignored_files} ignored, {created_files} created, {removed_entries} removed")
+            total_files, ignored_files, updated_files, created_files, removed_entries = await scan_media_library()
 
             # run a check on multiple factors of each torrent in the database
             torrents = await database.fetch_all("SELECT * FROM torrents")
@@ -141,17 +140,29 @@ async def periodic_scan_task():
                 torrent_path = torrent["torrent_path"]
                 # remove torrent files that don't exist on the disk from the database
                 if not os.path.exists(torrent_path):
+                    removed_entries += 1
                     await database.execute("DELETE FROM torrents WHERE id = ?", (torrent["id"],))
                     log.warning(f"[SCAN] Torrent file doesn't exist, removed from database: '{torrent_path}'")
                     continue
 
-                media_path = torrent.get("media_path")
                 download_path = torrent.get("download_path")
+                download_exists = os.path.exists(download_path) if download_path else False
 
-                # torrent file is missing, remove the entry from database so it can be regenerated on next scan
-                else:
-                    await database.execute("DELETE FROM torrents WHERE id = ?", (torrent_metadata["id"],))
-                    log.warning(f"[SCAN] Torrent file doesn't exist, removed from database: '{torrent_file}'")
+                # if this is an external torrent (should have a download path), try to locate the download media if it's missing
+                if download_path and not download_exists:
+                    log.debug(f"[SCAN] Trying to locate download media for: '{torrent_path}'")
+                    download_path = utils.find_media_for_torrent(torrent_path, DOWNLOADS_DIR)
+                    download_exists = os.path.exists(download_path) if download_path else False
+
+                    # update the database if the download path exists
+                    if download_exists:
+                        updated_files += 1
+                        await database.execute("UPDATE torrents SET download_path = ? WHERE id = ?", (download_path, torrent["id"],))
+                        log.info(f"[SCAN] Updated the download path for '{torrent["name"]}'")
+
+            delta = datetime.datetime.now() - before
+            log.info(f"[SCAN] Media library scan completed ({delta}): "
+                     f"total {total_files} files, {ignored_files} ignored, {updated_files} updated, {created_files} created, {removed_entries} removed")
 
         except Exception as e:
             log.error(f"[SCAN] Error during periodic scan: {e}")
