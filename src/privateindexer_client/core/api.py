@@ -65,7 +65,7 @@ async def auth_login(request: Request, username: str = Form(), password: str = F
     sid = utils.generate_sid(API_KEY)
     SESSIONS[sid] = time.time() + SESSION_TTL
 
-    log.info(f"[API] API login successful ({request.headers.get("user-agent")})")
+    log.debug(f"[API] API login successful ({request.headers.get("user-agent")})")
 
     response = PlainTextResponse("Ok.")
     response.set_cookie(key="SID", value=sid, httponly=True, secure=False, path="/")
@@ -112,6 +112,35 @@ async def get_torrent_info(request: Request, category: str = Query(None)):
     except Exception as e:
         log.error(f"[API] Failed to get torrent status: {e}")
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@router.get("/sync/maindata")
+async def get_main_data(request: Request):
+    """
+    Mimics qBittorrent endpoint /api/v2/sync/maindata
+    """
+    log.debug(f"[API] Main data requested ({request.headers.get("user-agent")})")
+
+    main_data = {}
+
+    try:
+        torrents = torrent_client.get_all_torrents()
+        mapped = [utils.map_torrent_to_qbit(t) for t in torrents]
+
+        main_data["torrents"] = mapped
+    except Exception as e:
+        log.error(f"[API] Failed to get torrent list: {e}")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    try:
+        stats_now, time_now, stats_prev, time_prev = torrent_client.get_session_stats()
+        all_time_download, all_time_upload = torrent_client.get_all_time_stats()
+
+        main_data["server_state"] = utils.map_stats_to_qbit(stats_now, time_now, stats_prev, time_prev, all_time_download, all_time_upload)
+    except Exception as e:
+        log.error(f"[API] Failed to get session info: {e}")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    return JSONResponse(main_data)
 
 
 @router.get("/torrents/categories", dependencies=[Depends(cookie_required)])
@@ -218,7 +247,7 @@ async def add_torrent(
 
         # check with the server to validate that this is a torrent from PrivateIndexer
         async with httpx_request.get_client() as client:
-            response = await client.get(f"{INDEXER_API_URL}/torrents?hash_v2={torrent_hash_v2}&apikey={API_KEY}&nograb=true")
+            response = await client.get(f"{INDEXER_API_URL}/grab?hash_v2={torrent_hash_v2}&nograb=true", headers={"X-API-Key": API_KEY})
             # based on the response from API, we will know if torrent exists on server
             if response.status_code == 200:
                 # this means the torrent exists in the server database

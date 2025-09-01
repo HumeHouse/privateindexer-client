@@ -8,7 +8,7 @@ import time
 import libtorrent as lt
 
 from privateindexer_client.core import config, httpx_request, database
-from privateindexer_client.core.config import TORZNAB_CATEGORY_PATHS, API_KEY, INDEXER_API_URL, TORRENTS_DIR, FASTRESUME_DIR
+from privateindexer_client.core.config import TORZNAB_CATEGORY_PATHS, API_KEY, INDEXER_API_URL, TORRENTS_DIR, FASTRESUME_DIR, MOVIE_EXTENSIONS, APP_VERSION, STATS_FILE
 from privateindexer_client.core.logger import log
 
 _file_piece_hash_cache: dict[str, dict[int, list[bytes]]] = {}
@@ -64,43 +64,40 @@ async def fetch_indexer_user_data():
     """
     try:
         async with httpx_request.get_client() as client:
-            response = await client.get(INDEXER_API_URL + "/user/stats", params={"apikey": API_KEY})
-            response.raise_for_status()
+            response = await client.get(INDEXER_API_URL + "/user/stats", headers={"X-API-Key": API_KEY}, timeout=30)
             return response.json()
     except Exception as e:
         log.error(f"[INDEXER] Failed to fetch user stats: {e}")
         return None
 
 
-async def send_torrent_to_indexer(metadata):
+async def send_torrent_to_indexer(torrent_path: str, category: int):
     """
-    Attempt to upload the torrent file along with its metadata to the PrivateIndexer server
+    Attempt to upload the torrent file along with the category to the PrivateIndexer server
     Will mark a file as uploaded in the database if the server API returns a 409 status code
     """
     try:
-        torrent_file = metadata["torrent_path"]
-        with open(torrent_file, "rb") as f:
+        with open(torrent_path, "rb") as file:
+            torrent_basename = os.path.basename(torrent_path)
             # build the request with all the necessary torrent metadata required by indexer
-            files = {"torrent_file": (os.path.basename(torrent_file), f, "application/x-bittorrent")}
-            data = {"apikey": API_KEY, "metadata": json.dumps(
-                {"name": metadata["name"], "size": metadata["size"], "category": metadata["category"], "hash_v1": metadata.get("hash_v1"),
-                 "hash_v2": metadata.get("hash_v2"), "files": metadata["files"]})}
+            files = {"torrent_file": (torrent_basename, file, "application/x-bittorrent")}
+            data = {"category": category}
 
             async with httpx_request.get_client() as client:
-                response = await client.post(INDEXER_API_URL + "/create", data=data, files=files)
+                response = await client.post(INDEXER_API_URL + "/upload", headers={"X-API-Key": API_KEY}, data=data, files=files)
 
                 # based on the response from API, we will know status of upload
                 if response.status_code == 200:
-                    log.info(f"[INDEXER] Successfully sent '{metadata["name"]}' to indexer")
+                    log.info(f"[INDEXER] Successfully sent '{torrent_basename}' to indexer")
                     return True
                 elif response.status_code == 409:
-                    log.info(f"[INDEXER] Torrent {metadata.get('name')} already exists on indexer, marking as uploaded")
+                    log.info(f"[INDEXER] Torrent {torrent_basename} already exists on indexer, marking as uploaded")
                     return True
                 else:
-                    log.error(f"[INDEXER] Failed to send '{metadata["name"]}' to indexer, will retry later: {response.status_code}")
+                    log.warning(f"[INDEXER] Failed to send '{torrent_basename}' to indexer, will retry later: {response.status_code} - {response.text}")
                     return False
     except Exception as e:
-        log.error(f"[INDEXER] Exception while sending '{metadata["name"]}' to indexer, will retry later: {e}")
+        log.error(f"[INDEXER] Exception while sending '{torrent_basename}' to indexer, will retry later: {e}")
         return False
 
 
@@ -161,32 +158,62 @@ def torrent_matches_file(torrent_path: str, media_path: str) -> bool:
     return False
 
 
-def create_torrent(media_file_path: str, output_torrent_file: str):
+def create_torrent(media_path: str, output_torrent_file: str):
     """
-    Main synchronous routine to build and generate a complete torrent file from the media passed in as file_path
+    Synchronous routine to build and generate a complete torrent file from the media passed in as media_path
+    Checks if output torrent file already exists and skips the torrent generation process
     Will fail if v1/v2 hash checks do not succeeed
     Removes the torrent file if any failures occur so a new one can be generated
     """
+    # get size of media
+    total_media_size = os.path.getsize(media_path)
+
     # check if the torrent file supplied exists
     if output_torrent_file and os.path.exists(output_torrent_file):
+        is_new_file = False
         # skip generation if torrent exists
         log.debug(f"[TORRENT] Torrent file '{output_torrent_file}' already exists, generation will be skipped")
 
     else:
-        log.debug(f"[TORRENT] Torrent file '{output_torrent_file}' does not exist, generating one")
-        # split the extension off the filename, this will become the name of the new torrent
-        torrent_name, _ = os.path.splitext(os.path.basename(media_file_path))
-        output_torrent_file = os.path.join(TORRENTS_DIR, f"{torrent_name}.torrent")
-        # use libtorrent to initialize temporary storage, add the media, sign the torrent, set to private, and encode data to the torrent file
-        log.info(f"[TORRENT] Creating torrent for '{torrent_name}'")
+        is_new_file = True
+        log.debug(f"[TORRENT] Torrent for '{media_path}' does not exist, generating one")
+
+        log.info(f"[TORRENT] Creating torrent for '{os.path.basename(media_path)}'")
+
+        # create the file storage object
         fs = lt.file_storage()
-        fs.set_name(torrent_name)
-        lt.add_files(fs, media_file_path)
+
+        # if this is a single file torrent, just add it to the filestorage
+        if os.path.isfile(media_path):
+            lt.add_files(fs, media_path)
+        else:
+            # otherwise walk the directory and collect all the files
+            for root, _, files in os.walk(media_path):
+                # sort the files so they are in a standard order every time
+                for file in sorted(files, key=lambda f: f.lower()):
+                    # skip the file if user doesn't include its extension in configuration
+                    _, extension = os.path.splitext(os.path.basename(file))
+                    if extension.replace(".", "") not in MOVIE_EXTENSIONS:
+                        log.debug(f"[TORRENT] Skipping file with {extension} extension")
+                        continue
+
+                    # put the file inside the torernt under a relative directory based on the media_path directory name
+                    file_path = os.path.join(root, file)
+                    relative_path = os.path.relpath(file_path, media_path)
+
+                    file_size = os.path.getsize(file_path)
+                    fs.add_file(relative_path, file_size)
+
+        # create the torrent from the file storage object
         t = lt.create_torrent(fs)
-        t.set_creator("PrivateIndexer Client")
+        t.set_creator(f"PrivateIndexer Client v{APP_VERSION}")
         t.set_priv(True)
-        lt.set_piece_hashes(t, os.path.dirname(media_file_path))
+        lt.set_piece_hashes(t, os.path.dirname(media_path))
         torrent_data = t.generate()
+
+        # this will become the name of the new torrent, if it's a file, split off the extension
+        torrent_name, _ = os.path.splitext(os.path.basename(media_path)) if os.path.isfile(media_path) else os.path.basename(media_path)
+        output_torrent_file = os.path.join(TORRENTS_DIR, f"{torrent_name}.torrent")
 
         with open(output_torrent_file, "wb") as f:
             f.write(lt.bencode(torrent_data))
@@ -199,12 +226,12 @@ def create_torrent(media_file_path: str, output_torrent_file: str):
         if not hashes.has_v1():
             log.error(f"[TORRENT] Torrent '{torrent_name}' did not generate a v1 hash, it has been removed")
             os.unlink(output_torrent_file)
-            return None
+            return None, False
         torrent_hash_v1 = str(hashes.v1)
         if not hashes.has_v2():
             log.error(f"[TORRENT] Torrent '{torrent_name}' did not generate a v2 hash, it has been removed")
             os.unlink(output_torrent_file)
-            return None
+            return None, False
         torrent_hash_v2 = str(hashes.v2)
 
         # get the number of files in the torrent
@@ -214,21 +241,21 @@ def create_torrent(media_file_path: str, output_torrent_file: str):
         os.unlink(output_torrent_file)
         return None
 
-    size = os.path.getsize(media_file_path)
-    category_id = detect_torznab_category(media_file_path)
+    category_id = detect_torznab_category(media_path)
 
-    return {"name": torrent_name, "size": size, "media_path": media_file_path, "torrent_path": output_torrent_file, "uploaded": False, "files": file_count,
-            "category": category_id, "hash_v1": torrent_hash_v1, "hash_v2": torrent_hash_v2}
+    return ({"name": torrent_name, "size": total_media_size, "media_path": media_path, "torrent_path": output_torrent_file, "uploaded": False,
+             "files": file_count, "category": category_id, "hash_v1": torrent_hash_v1, "hash_v2": torrent_hash_v2},
+            is_new_file)
 
 
-def create_torrent_threadsafe(file_path: str, output_torrent_file: str):
+def create_torrent_threadsafe(media_path: str, output_torrent_file: str):
     """
     Wraps the create_torrent() routine in a try/accept to catch all runtime errors
     """
     try:
-        return create_torrent(file_path, output_torrent_file)
+        return create_torrent(media_path, output_torrent_file)
     except Exception as e:
-        log.error(f"[TORRENT] Failed to create torrent for '{file_path}': {e}")
+        log.error(f"[TORRENT] Failed to create torrent for '{media_path}': {e}")
         return None
 
 
@@ -246,9 +273,9 @@ def find_existing_torrent(media_path: str) -> str | None:
         log.debug(f"[TORRENT] Matched '{media_path}' to '{torrent_file}' by name")
         return torrent_file
 
-    # if this media is a file, we can try to strip the extension off and find a match
+    # if this media is a file, we can try to strip the extension off and find a match for the filename
     if os.path.isfile(media_path):
-        filename = os.path.splitext(os.path.basename(media_path))[0]
+        filename, _ = os.path.splitext(os.path.basename(media_path))
         torrent_file = os.path.join(TORRENTS_DIR, filename + ".torrent")
         if os.path.exists(torrent_file):
             log.debug(f"[TORRENT] Matched '{media_path}' to '{torrent_file}' by filename")
@@ -267,6 +294,28 @@ def find_existing_torrent(media_path: str) -> str | None:
             log.error(f"[TORRENT] Error comparing hash for '{media_path}' to '{torrent_file}': {e}")
 
     log.debug(f"[TORRENT] Couldn't find torrent file for: '{media_path}")
+    return None
+
+
+def find_media_for_torrent(torrent_path: str, media_dir: str) -> str | None:
+    """
+    Effectively an inverse of find_existing_torrent() which tries to locate the media for a torrent
+    Given a torrent file, check if the media already exists in media_dir with the same name or hash
+    Returns the existing path if found, otherwise None
+    """
+    # walk through the media_dir directory to try and find a media file that has matching hash to the torrent file
+    for root, _, files in os.walk(media_dir):
+        for file in files:
+            file_path = os.path.join(root, file)
+            try:
+                # return the media path if it matches the torrent
+                if torrent_matches_file(torrent_path, file_path):
+                    log.debug(f"[TORRENT] Matched '{file_path}' to '{torrent_path}' by hash")
+                    return file_path
+            except Exception as e:
+                log.error(f"[TORRENT] Error comparing hash for '{file_path}' to '{torrent_path}': {e}")
+
+    log.debug(f"[TORRENT] Couldn't find media for: '{torrent_path}")
     return None
 
 
@@ -298,6 +347,9 @@ def process_fastresume_file(fastresume_path: str, hash_v1: str, torrent_path: st
 
 
 def fastresume_ignore_exists(torrent_hash: str) -> bool:
+    """
+    Checks if a fastresume ignore file exists in the FASTRESUME_DIR for the given torrent hash
+    """
     ignore_file = os.path.join(FASTRESUME_DIR, f"{torrent_hash}.fastresume.ignore")
 
     # skip saving data if a fastresume-ignore file exists for this hash
@@ -492,5 +544,83 @@ def map_torrent_to_qbit(torrent: lt.torrent_handle) -> dict:
             "min_announce": t.get("min_announce")
         })
     mapped["trackers"] = trackers_list
+
+    return mapped
+
+
+def load_persistent_stats() -> tuple[int, int]:
+    """
+    Load the all-time download and upload stats from the stats file if it exists
+    """
+    if os.path.exists(STATS_FILE):
+        try:
+            with open(STATS_FILE, "r") as file:
+                data = json.loads(file.read())
+            return data.get("all_time_download", 0), data.get("all_time_upload", 0)
+        except Exception:
+            return 0, 0
+    return 0, 0
+
+
+def save_persistent_stats(all_time_download: int, all_time_upload: int):
+    """
+    Save the all-time download and upload stats to the stats file
+    """
+    data = {
+        "all_time_download": all_time_download,
+        "all_time_upload": all_time_upload
+    }
+    with open(STATS_FILE, "w") as file:
+        file.write(json.dumps(data))
+
+
+def map_stats_to_qbit(
+        stats_now: dict[str, int],
+        time_now: float,
+        stats_prev: dict[str, int] | None,
+        time_prev: float | None,
+        all_time_download: int,
+        all_time_upload: int,
+) -> dict[str, int | str]:
+    """
+    Converts the raw data from a current and previous update of libtorrent stats to match what qbit would normally return in an API request
+    """
+    mapped = {}
+
+    # session totals
+    total_download = stats_now["net.recv_bytes"]
+    total_upload = stats_now["net.sent_bytes"]
+    mapped["dl_info_data"] = total_download
+    mapped["up_info_data"] = total_upload
+
+    # all-time totals
+    mapped["alltime_dl"] = all_time_download
+    mapped["alltime_ul"] = all_time_upload
+
+    # global ratio is UL/DL if UL>0
+    if all_time_upload > 0:
+        mapped["global_ratio"] = round(all_time_upload / all_time_download, 2)
+    else:
+        mapped["global_ratio"] = 0.0
+
+    # rates (compare with prev snapshot if available)
+    if stats_prev and time_prev:
+        # offset the interval based on the previous timestamp
+        interval = max(time_now - time_prev, 1e-6)
+
+        prev_download = stats_prev["net.recv_bytes"]
+        prev_upload = stats_prev["net.sent_bytes"]
+
+        mapped["dl_info_speed"] = int((total_download - prev_download) / interval)
+        mapped["up_info_speed"] = int((total_upload - prev_upload) / interval)
+    else:
+        mapped["dl_info_speed"] = 0
+        mapped["up_info_speed"] = 0
+
+    # base the connection status on the number of connections or if there is incoming traffic
+    if stats_now.get("net.has_incoming_connections", 0) or mapped["up_info_speed"] > 0:
+        mapped["connection_status"] = "connected"
+    else:
+        mapped["connection_status"] = "disconnected"
 
     return mapped
