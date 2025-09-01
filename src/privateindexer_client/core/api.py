@@ -218,7 +218,7 @@ async def add_torrent(
 
         # check with the server to validate that this is a torrent from PrivateIndexer
         async with httpx_request.get_client() as client:
-            response = await client.get(f"{INDEXER_API_URL}/torrents?hash_v2={torrent_hash_v2}&nograb=true", headers={"X-API-Key": API_KEY})
+            response = await client.get(f"{INDEXER_API_URL}/grab?hash_v2={torrent_hash_v2}&nograb=true", headers={"X-API-Key": API_KEY})
             # based on the response from API, we will know if torrent exists on server
             if response.status_code == 200:
                 # this means the torrent exists in the server database
