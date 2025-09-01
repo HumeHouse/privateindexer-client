@@ -96,12 +96,11 @@ automatically.
 4. Change the name to something you can identify it with like `PrivateIndexer`.
 5. Set the `URL` to `https://indexer.humehouse.com`
 6. Enter your assigned API key in the `API Key` section. This is the same as `API_KEY` in your environment variables.
-7. Give the app a unique category like `radarr`/`sonarr`/`prowlarr` etc.
-8. Click the gear at the bottom to show advanced settings and set the `Indexer Priority` to something `lower` than your
+7. Click the gear at the bottom to show advanced settings and set the `Indexer Priority` to something `lower` than your
    other indexers so your apps will generally prefer torrents from PrivateIndexer **before** using torrents from other
    indexers.
-9. Click `Test` to make sure the connection is working
-10. Click `Save` to add the client
+8. Click `Test` to make sure the connection is working
+9. Click `Save` to add the client
 
 ### 6. Connect the download client to Radarr/Sonarr/*arr
 
