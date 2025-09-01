@@ -252,13 +252,15 @@ async def load_fastresume_data():
     log.info(f"[FASTRESUME] Finished loading fastresume data ({delta})")
 
 
-def save_all_fastresume_data():
+def save_all_fastresume_data() -> tuple[int, int]:
     """
     Immediately schedules a save of fastresume data for all torrents in the session
     This function waits for all alerts to clear before finishing
     """
+    torrents = libtorrent_session.get_torrents()
+    total = len(torrents)
+    completed = 0
     try:
-        torrents = libtorrent_session.get_torrents()
         hashes_to_await = set()
         for torrent in torrents:
             try:
@@ -278,7 +280,6 @@ def save_all_fastresume_data():
                 hashes_to_await.add(torrent_hash)
             except Exception as e:
                 log.error(f"[FASTRESUME] Error saving fastresume data for torrent: {e}")
-        total = len(hashes_to_await)
 
         while hashes_to_await:
             alerts = libtorrent_session.pop_alerts()
@@ -287,12 +288,12 @@ def save_all_fastresume_data():
                     torrent_hash = utils.save_fastresume_to_disk(alert)
                     if torrent_hash and torrent_hash in hashes_to_await:
                         hashes_to_await.remove(torrent_hash)
+                        completed += 1
             # let the thread sleep so libtorrent has time to generate alerts
             time.sleep(0.1)
-        return total
     except Exception as e:
         log.error(f"[FASTRESUME] Error saving fastresume data for all torrents: {e}")
-        return 0
+    return completed, total
 
 
 async def periodic_torrent_status_task():
@@ -327,10 +328,10 @@ async def periodic_fastresume_task():
             log.info("[FASTRESUME] Saving all fastresume data")
             before = datetime.datetime.now()
 
-            total = save_all_fastresume_data()
+            completed, total = save_all_fastresume_data()
 
             delta = datetime.datetime.now() - before
-            log.info(f"[FASTRESUME] Fastresume task completed for {total} torrents ({delta})")
+            log.info(f"[FASTRESUME] Fastresume task completed, {completed} saved, {total} total torrents ({delta})")
         except Exception as e:
             log.error(f"[FASTRESUME] Error in torrent fastresume loop: {e}")
 
