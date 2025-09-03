@@ -109,7 +109,9 @@ def hash_file_by_pieces(file_path: str, piece_length: int) -> list[str]:
     # try to return a value from the peice length cache
     if file_path in _file_piece_hash_cache:
         if piece_length in _file_piece_hash_cache[file_path]:
+            log.debug(f"[TORRENT] Cache hit for file '{file_path}'")
             return _file_piece_hash_cache[file_path][piece_length]
+    log.debug(f"[TORRENT] Cache miss for file '{file_path}'")
 
     hashes = []
     before = datetime.datetime.now()
