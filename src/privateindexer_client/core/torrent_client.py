@@ -7,7 +7,7 @@ import time
 import libtorrent as lt
 
 from privateindexer_client.core import database, utils
-from privateindexer_client.core.config import TORRENTING_PORT, TORRENTS_DIR, ANNOUNCE_TRACKER_URL, FASTRESUME_DIR, FASTRESUME_INTERVAL, DOWNLOADS_DIR
+from privateindexer_client.core.config import TORRENTING_PORT, TORRENTS_DIR, ANNOUNCE_TRACKER_URL, FASTRESUME_DIR, FASTRESUME_INTERVAL
 from privateindexer_client.core.logger import log
 from privateindexer_client.core.thread_executor import EXECUTOR
 from privateindexer_client.core.utils import process_fastresume_file
@@ -177,7 +177,7 @@ async def add_torrent_for_download(torrent_file: str, save_path: str) -> bool:
 
     # add the data for the torrent to the database
     await utils.add_torrent_to_database(name=torrent_name, size=total_size, torrent_path=torrent_file_out, uploaded=True, files=file_count, category=0,
-                                        media_path=save_path, download_path=DOWNLOADS_DIR, hash_v1=torrent_hash_v1, hash_v2=torrent_hash_v2)
+                                        media_path=save_path, download_path=save_path, hash_v1=torrent_hash_v1, hash_v2=torrent_hash_v2)
 
     log.info(f"[TORCLIENT] Added new torrent for download: {torrent_name}")
     return True
