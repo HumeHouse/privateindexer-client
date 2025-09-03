@@ -77,13 +77,13 @@ def get_all_torrents() -> list:
     return libtorrent_session.get_torrents()
 
 
-async def add_torrent_for_seeding(torrent_file: str, save_path: str):
+async def add_torrent_for_seeding(torrent_file: str, save_path: str) -> bool:
     """
     Adds a single torrent file to libtorrent session in seed mode
     """
     if not os.path.exists(torrent_file):
         log.error(f"[TORCLIENT] Torrent file not found: {torrent_file}")
-        return
+        return False
 
     try:
         info = lt.torrent_info(torrent_file)
@@ -92,17 +92,17 @@ async def add_torrent_for_seeding(torrent_file: str, save_path: str):
         # make sure the torrent we're trying to seed has a v1 and a v2 hash
         hashes = info.info_hashes()
         if not hashes.has_v1():
-            log.error(f"[TORRENT] Torrent '{torrent_name}' did not generate a v1 hash, it has been removed")
+            log.error(f"[TORCLIENT] Torrent '{torrent_name}' did not generate a v1 hash, it has been removed")
             os.unlink(torrent_file)
-            return
+            return False
         if not hashes.has_v2():
-            log.error(f"[TORRENT] Torrent '{torrent_name}' did not generate a v2 hash, it has been removed")
+            log.error(f"[TORCLIENT] Torrent '{torrent_name}' did not generate a v2 hash, it has been removed")
             os.unlink(torrent_file)
-            return
+            return False
 
         # skip torrent if torrent already exists in libtorrent session
         if await torrent_exists_in_session(info.info_hash()):
-            return
+            return False
 
         # add the tracker URL
         info.add_tracker(ANNOUNCE_TRACKER_URL)
@@ -115,8 +115,10 @@ async def add_torrent_for_seeding(torrent_file: str, save_path: str):
         # add to the libtorrent session
         libtorrent_session.add_torrent(params)
         log.info(f"[TORCLIENT] Added torrent for seeding: {torrent_name}")
+        return True
     except Exception as e:
         log.error(f"[TORCLIENT] Failed to add torrent '{torrent_file}': {e}")
+        return False
 
 
 async def add_torrent_for_download(torrent_file: str, save_path: str) -> bool:
