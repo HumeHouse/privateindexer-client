@@ -5,7 +5,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
-from privateindexer_client.core import torrent_client, scan, api, gui, httpx_request, database, resend, utils
+from privateindexer_client.core import torrent_client, scan, api, gui, httpx_request, database, utils, sync
 from privateindexer_client.core.config import TORRENTS_DIR, SCAN_INTERVAL, MOVIE_DIR, TORZNAB_CATEGORY_PATHS, INDEXER_API_URL, API_KEY, TORRENTING_PORT, \
     DOWNLOADS_DIR, FASTRESUME_DIR, APP_VERSION, MAX_THREADS, FASTRESUME_INTERVAL
 from privateindexer_client.core.logger import log
@@ -84,8 +84,8 @@ async def lifespan(_: FastAPI):
     # send the torrent alerts task to the asyncio scheduler
     alerts_task = asyncio.create_task(torrent_client.periodic_alerts_task())
 
-    # send the resend task to the asyncio scheduler
-    resend_task = asyncio.create_task(resend.periodic_resend_task())
+    # send the sync task to the asyncio scheduler
+    sync_task = asyncio.create_task(sync.periodic_sync_task())
 
     log.info("[APP] API server started on 0.0.0.0:80")
 
@@ -98,11 +98,12 @@ async def lifespan(_: FastAPI):
     utils.save_persistent_stats(all_time_download, all_time_upload)
 
     log.info(f"[APP] Stopping tasks")
+
     scan_task.cancel()
     status_task.cancel()
     fastresume_task.cancel()
     alerts_task.cancel()
-    resend_task.cancel()
+    sync_task.cancel()
 
     log.info("[APP] Saving fastresume data")
 

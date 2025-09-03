@@ -23,6 +23,7 @@ INDEXER_API_URL = "https://indexer.humehouse.com"
 
 MAX_THREADS = int(os.getenv("MAX_THREADS", "8"))
 
+SYNC_INTERVAL = 60 * 60
 SCAN_INTERVAL = 60 * int(os.getenv("SCAN_INTERVAL", "30"))
 FASTRESUME_INTERVAL = 60 * int(os.getenv("FASTRESUME_INTERVAL", "60"))
 
@@ -33,8 +34,6 @@ API_KEY = os.getenv("API_KEY")
 ANNOUNCE_TRACKER_URL = "https://tracker.humehouse.com/announce" + "?apikey=" + API_KEY
 
 TORRENTING_PORT = int(os.getenv("TORRENTING_PORT", "6881"))
-
-RESEND_INTERVAL = 60 * 5
 
 config_lock = threading.Lock()
 _config_cache = None
