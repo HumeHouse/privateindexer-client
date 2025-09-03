@@ -37,6 +37,11 @@ async def scan_media_library():
                     log.debug(f"[SCAN] Skipping file with {extension} extension")
                     continue
 
+                # exclude if filename matches the regex exclusion
+                if utils.exclusion_regex_matches(file):
+                    log.debug(f"[SCAN] Excluding file due to matching regex: {file}")
+                    continue
+
                 file_path = os.path.join(root, file)
                 total_files += 1
 

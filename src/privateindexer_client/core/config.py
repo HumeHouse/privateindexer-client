@@ -30,6 +30,8 @@ FASTRESUME_INTERVAL = 60 * int(os.getenv("FASTRESUME_INTERVAL", "60"))
 MOVIE_DIR = os.getenv("MOVIE_DIR", "false")
 MOVIE_EXTENSIONS = os.getenv("MOVIE_EXTENSIONS", "mp4,mkv,m4v,avi").split(",")
 
+EXCLUDE_REGEX = os.getenv("EXCLUDE_REGEX")
+
 API_KEY = os.getenv("API_KEY")
 ANNOUNCE_TRACKER_URL = "https://tracker.humehouse.com/announce" + "?apikey=" + API_KEY
 
