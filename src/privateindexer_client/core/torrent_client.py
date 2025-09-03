@@ -264,7 +264,7 @@ async def load_fastresume_data():
             for file in [fastresume_path, ignore_file]:
                 if os.path.exists(file):
                     os.unlink(file)
-            log.warning(f"[FASTRESUME] Removed dangling fastresume data with hash: {hash_v1}")
+            log.info(f"[FASTRESUME] Removed dangling fastresume data with hash: {hash_v1}")
             continue
 
         # dispatch the fastresume file to the pool of worker threads
