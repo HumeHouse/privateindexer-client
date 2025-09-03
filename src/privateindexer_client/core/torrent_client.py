@@ -143,12 +143,12 @@ async def add_torrent_for_download(torrent_file: str, save_path: str) -> bool:
         # make sure the torrent we download has a v1 and a v2 hash
         hashes = info.info_hashes()
         if not hashes.has_v1():
-            log.error(f"[TORRENT] Torrent '{torrent_name}' did not generate a v1 hash, it has been removed")
+            log.error(f"[TORCLIENT] Torrent '{torrent_name}' did not generate a v1 hash, it has been removed")
             os.unlink(torrent_file)
             return None
         torrent_hash_v1 = str(hashes.v1)
         if not hashes.has_v2():
-            log.error(f"[TORRENT] Torrent '{torrent_name}' did not generate a v2 hash, it has been removed")
+            log.error(f"[TORCLIENT] Torrent '{torrent_name}' did not generate a v2 hash, it has been removed")
             os.unlink(torrent_file)
             return None
         torrent_hash_v2 = str(hashes.v2)
@@ -295,8 +295,10 @@ async def load_fastresume_data():
         # try to seed the download media first, then fall back to media path
         seed_path = download_path if download_exists else (media_path if media_exists else None)
         if seed_path:
-            await add_torrent_for_seeding(torrent["torrent_path"], seed_path)
-            log.info(f"[SCAN] Re-added '{torrent["name"]}' for seeding from {"download" if download_exists else "media"} path")
+            if await add_torrent_for_seeding(torrent["torrent_path"], seed_path):
+                log.info(f"[FASTRESUME] Re-added '{torrent["name"]}' for seeding from {"download" if download_exists else "media"} path")
+            else:
+                log.warning(f"[FASTRESUME] Unable to re-add '{torrent["name"]}' for seeding from {"download" if download_exists else "media"} path")
 
     delta = datetime.datetime.now() - before
     log.info(f"[FASTRESUME] Finished loading fastresume data ({delta})")

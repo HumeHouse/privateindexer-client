@@ -86,9 +86,10 @@ async def scan_media_library():
                 if is_new_file:
                     created_files += 1
                     # attempt to add the torrent to the libtorrent session right away for immediate seeding
-                    await torrent_client.add_torrent_for_seeding(metadata["torrent_path"], metadata["media_path"])
-
-                    log.info(f"[SCAN] Created and started seeding new torrent: {metadata["name"]}")
+                    if await torrent_client.add_torrent_for_seeding(metadata["torrent_path"], metadata["media_path"]):
+                        log.info(f"[SCAN] Created and started seeding new torrent: {metadata["name"]}")
+                    else:
+                        log.warning(f"[SCAN] Created but failed to start seeding new torrent: {metadata["name"]}")
                 else:
                     log.debug(f"[SCAN] Updated existing torrent: {metadata["name"]}")
         except Exception as e:
