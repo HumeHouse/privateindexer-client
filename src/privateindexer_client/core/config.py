@@ -4,7 +4,7 @@ import threading
 
 from privateindexer_client.core.logger import log
 
-APP_VERSION = "1.2.4"
+APP_VERSION = "1.2.5"
 
 # gather/set environment variables for usage later
 DATABASE_FILE = "/app/data/torrents.db"
