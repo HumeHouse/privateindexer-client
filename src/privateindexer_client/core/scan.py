@@ -101,35 +101,7 @@ async def scan_media_library():
         except Exception as e:
             log.error(f"[SCAN] Error in torrent post-torrent-creation process: {e}")
 
-    # here we check to make sure the media files for a torrent still exist on the disk, otherwise remove the torrent from the database
-    torrents = await database.fetch_all("SELECT * FROM torrents")
-    removed_entries = 0
-    for torrent in torrents:
-        torrent_path = torrent["torrent_path"]
-        media_path = torrent.get("media_path")
-        download_path = torrent.get("download_path")
-        media_exists = os.path.exists(media_path) if media_path else False
-        download_exists = os.path.exists(download_path) if download_path else False
-
-        # case where both the media and the downloaded data are missing, we assume the user deleted them and purge it
-        if not media_exists and not download_exists:
-            removed_entries += 1
-            # remove from torrent client
-            await torrent_client.remove_torrent_by_hash(torrent.get("hash_v2"))
-            # remove torrent file
-            if os.path.exists(torrent_path):
-                os.unlink(torrent_path)
-            # remove from database
-            await database.execute("DELETE FROM torrents WHERE id = ?", (torrent["id"],))
-            log.info(f"[SCAN] All files missing for '{torrent["name"]}', removed torrent from database and torrent client")
-
-        # case where only the media data is missing, nullify the media_path in the database
-        elif not media_exists:
-            updated_files += 1
-            await database.execute("UPDATE torrents SET media_path = NULL WHERE id = ?", (torrent["id"],))
-            log.info(f"[SCAN] Media files missing for '{torrent["name"]}', purged media path from database")
-
-    return total_files, ignored_files, updated_files, created_files, removed_entries
+    return total_files, ignored_files, updated_files, created_files
 
 
 async def periodic_scan_task():
@@ -143,21 +115,37 @@ async def periodic_scan_task():
             log.info("[SCAN] Scanning media library for new or updated files")
             before = datetime.datetime.now()
 
-            total_files, ignored_files, updated_files, created_files, removed_entries = await scan_media_library()
+            total_files, ignored_files, updated_files, created_files = await scan_media_library()
 
-            # run a check on multiple factors of each torrent in the database
+            removed_entries = 0
+            # here we check to make sure the media files for a torrent still exist on the disk, otherwise remove the torrent from the database
             torrents = await database.fetch_all("SELECT * FROM torrents")
             for torrent in torrents:
                 torrent_path = torrent["torrent_path"]
-                # remove torrent files that don't exist on the disk from the database
-                if not os.path.exists(torrent_path):
+                torrent_exists = os.path.exists(torrent_path)
+                media_path = torrent.get("media_path")
+                download_path = torrent.get("download_path")
+                media_exists = os.path.exists(media_path) if media_path else False
+                download_exists = os.path.exists(download_path) if download_path else False
+
+                # case where either the torrent is missing or both the media and the downloaded data are missing, purge from database
+                if not torrent_exists or (not media_exists and not download_exists):
                     removed_entries += 1
+                    # remove from torrent client
+                    await torrent_client.remove_torrent_by_hash(torrent.get("hash_v2"))
+                    # remove torrent file
+                    if os.path.exists(torrent_path):
+                        os.unlink(torrent_path)
+                    # remove from database
                     await database.execute("DELETE FROM torrents WHERE id = ?", (torrent["id"],))
-                    log.warning(f"[SCAN] Torrent file doesn't exist, removed from database: '{torrent_path}'")
+                    log.info(f"[SCAN] All files missing for '{torrent["name"]}', removed torrent from database and torrent client")
                     continue
 
-                download_path = torrent.get("download_path")
-                download_exists = os.path.exists(download_path) if download_path else False
+                # case where only the media data is missing, nullify the media_path in the database
+                elif not media_exists:
+                    updated_files += 1
+                    await database.execute("UPDATE torrents SET media_path = NULL WHERE id = ?", (torrent["id"],))
+                    log.info(f"[SCAN] Media files missing for '{torrent["name"]}', purged media path from database")
 
                 # if this is an external torrent (should have a download path), try to locate the download media if it's missing
                 if download_path and not download_exists:
