@@ -13,11 +13,10 @@ services:
       MOVIE_DIR: /path/to/movies
       MOVIE_EXTENSIONS: mp4,mkv,m4v,avi
       MAX_THREADS: 8
-      SCAN_INTERVAL: 15
       FASTRESUME_INTERVAL: 60
+      SCAN_INTERVAL: 15
       API_KEY: keyhere
       TORRENTING_PORT: 6881
-      LOG_LEVEL: INFO
     volumes:
       - /path/to/client/data:/app/data
       - /path/to/movies:/path/to/movies
