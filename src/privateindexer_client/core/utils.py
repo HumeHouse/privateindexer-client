@@ -2,16 +2,19 @@ import datetime
 import hashlib
 import json
 import os
+import re
 import secrets
 import time
 
 import libtorrent as lt
 
 from privateindexer_client.core import config, httpx_request, database
-from privateindexer_client.core.config import TORZNAB_CATEGORY_PATHS, API_KEY, INDEXER_API_URL, TORRENTS_DIR, FASTRESUME_DIR, MOVIE_EXTENSIONS, APP_VERSION, STATS_FILE
+from privateindexer_client.core.config import TORZNAB_CATEGORY_PATHS, API_KEY, INDEXER_API_URL, TORRENTS_DIR, FASTRESUME_DIR, MOVIE_EXTENSIONS, APP_VERSION, STATS_FILE, \
+    EXCLUDE_REGEX
 from privateindexer_client.core.logger import log
 
 _file_piece_hash_cache: dict[str, dict[int, list[bytes]]] = {}
+_exclude_pattern = re.compile(EXCLUDE_REGEX) if EXCLUDE_REGEX else None
 
 
 def detect_torznab_category(file_path: str) -> int:
@@ -259,6 +262,10 @@ def create_torrent_threadsafe(media_path: str, output_torrent_file: str):
     except Exception as e:
         log.error(f"[TORRENT] Failed to create torrent for '{media_path}': {e}")
         return None
+
+
+def exclusion_regex_matches(input_string: str) -> bool:
+    return _exclude_pattern and _exclude_pattern.search(input_string)
 
 
 def find_existing_torrent(media_path: str) -> str | None:

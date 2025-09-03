@@ -7,7 +7,7 @@ from fastapi.staticfiles import StaticFiles
 
 from privateindexer_client.core import torrent_client, scan, api, gui, httpx_request, database, utils, sync
 from privateindexer_client.core.config import TORRENTS_DIR, SCAN_INTERVAL, MOVIE_DIR, TORZNAB_CATEGORY_PATHS, INDEXER_API_URL, API_KEY, TORRENTING_PORT, \
-    DOWNLOADS_DIR, FASTRESUME_DIR, APP_VERSION, MAX_THREADS, FASTRESUME_INTERVAL
+    DOWNLOADS_DIR, FASTRESUME_DIR, APP_VERSION, MAX_THREADS, FASTRESUME_INTERVAL, EXCLUDE_REGEX
 from privateindexer_client.core.logger import log
 
 
@@ -42,6 +42,9 @@ async def lifespan(_: FastAPI):
             exit(1)
         log.info(f"[APP] Using movies directory: {MOVIE_DIR}")
         TORZNAB_CATEGORY_PATHS["movies"] = {"id": 1000, "path": MOVIE_DIR}
+
+    if EXCLUDE_REGEX:
+        log.info(f"[APP] Ignoring files matching: {EXCLUDE_REGEX}")
 
     # try to authenticate with the API to validate the API key, otherwise fail
     try:
