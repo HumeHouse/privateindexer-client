@@ -27,7 +27,7 @@ SYNC_INTERVAL = 60 * 60
 SCAN_INTERVAL = 60 * int(os.getenv("SCAN_INTERVAL", "30"))
 FASTRESUME_INTERVAL = 60 * int(os.getenv("FASTRESUME_INTERVAL", "60"))
 
-MOVIE_DIR = os.getenv("MOVIE_DIR", "false")
+MOVIE_DIR = os.getenv("MOVIE_DIR")
 MOVIE_EXTENSIONS = os.getenv("MOVIE_EXTENSIONS", "mp4,mkv,m4v,avi").split(",")
 
 EXCLUDE_REGEX = os.getenv("EXCLUDE_REGEX")
