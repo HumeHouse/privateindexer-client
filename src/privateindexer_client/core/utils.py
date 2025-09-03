@@ -163,15 +163,13 @@ def torrent_matches_file(torrent_path: str, media_path: str) -> bool:
     return False
 
 
-def create_torrent(media_path: str, output_torrent_file: str):
+def create_torrent(media_path: str, output_torrent_file: str = None):
     """
     Synchronous routine to build and generate a complete torrent file from the media passed in as media_path
     Checks if output torrent file already exists and skips the torrent generation process
     Will fail if v1/v2 hash checks do not succeeed
     Removes the torrent file if any failures occur so a new one can be generated
     """
-    # get size of media
-    total_media_size = os.path.getsize(media_path)
 
     # check if the torrent file supplied exists
     if output_torrent_file and os.path.exists(output_torrent_file):
@@ -247,13 +245,15 @@ def create_torrent(media_path: str, output_torrent_file: str):
         return None
 
     category_id = detect_torznab_category(media_path)
+    # get size of media
+    total_media_size = os.path.getsize(media_path)
 
     return ({"name": torrent_name, "size": total_media_size, "media_path": media_path, "torrent_path": output_torrent_file, "uploaded": False,
              "files": file_count, "category": category_id, "hash_v1": torrent_hash_v1, "hash_v2": torrent_hash_v2},
             is_new_file)
 
 
-def create_torrent_threadsafe(media_path: str, output_torrent_file: str):
+def create_torrent_threadsafe(media_path: str, output_torrent_file: str = None):
     """
     Wraps the create_torrent() routine in a try/accept to catch all runtime errors
     """
