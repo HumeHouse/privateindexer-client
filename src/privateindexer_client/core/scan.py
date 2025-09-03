@@ -3,7 +3,7 @@ import datetime
 import os
 
 from privateindexer_client.core import torrent_client, database, utils
-from privateindexer_client.core.config import SCAN_INTERVAL, TORZNAB_CATEGORY_PATHS, MOVIE_EXTENSIONS, DOWNLOADS_DIR
+from privateindexer_client.core.config import SCAN_INTERVAL, TORZNAB_CATEGORY_PATHS, MOVIE_EXTENSIONS, DOWNLOADS_DIR, TORRENTS_DIR, MOVIE_DIR
 from privateindexer_client.core.logger import log
 from privateindexer_client.core.thread_executor import EXECUTOR
 
@@ -31,9 +31,10 @@ async def scan_media_library():
     for category_key, cat_info in TORZNAB_CATEGORY_PATHS.items():
         for root, _, files in os.walk(cat_info["path"]):
             for file in files:
-                # skip the file if user doesn't include its extension in configuration
                 filename, extension = os.path.splitext(os.path.basename(file))
-                if extension.replace(".", "") not in MOVIE_EXTENSIONS:
+
+                # skip the file if user doesn't include its extension in configuration
+                if cat_info["path"] == MOVIE_DIR and extension.replace(".", "") not in MOVIE_EXTENSIONS:
                     log.debug(f"[SCAN] Skipping file with {extension} extension")
                     continue
 
