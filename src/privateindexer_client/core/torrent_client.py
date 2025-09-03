@@ -260,8 +260,11 @@ async def load_fastresume_data():
 
         # remove fastresume files which do not have a matching torrent file
         if not torrent_path or not os.path.exists(torrent_path):
-            os.unlink(fastresume_path)
-            log.warning(f"[FASTRESUME] Removed dangling fastresume file with hash: {hash_v1}")
+            ignore_file = f"{fastresume_path}.ignore"
+            for file in [fastresume_path, ignore_file]:
+                if os.path.exists(file):
+                    os.unlink(file)
+            log.warning(f"[FASTRESUME] Removed dangling fastresume data with hash: {hash_v1}")
             continue
 
         # dispatch the fastresume file to the pool of worker threads
@@ -271,7 +274,7 @@ async def load_fastresume_data():
     async for future in asyncio.as_completed(futures):
         try:
             raw_data, hash_v1, torrent_path = await future
-            if raw_data:
+            if raw_data and os.path.exists(torrent_path):
                 # assemble the raw data into fastresume add_torrent_params
                 atp = lt.read_resume_data(raw_data)
                 # attach the torrent info to the params
