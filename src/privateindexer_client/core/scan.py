@@ -98,6 +98,7 @@ async def scan_media_library():
     torrents = await database.fetch_all("SELECT * FROM torrents")
     removed_entries = 0
     for torrent in torrents:
+        torrent_path = torrent["torrent_path"]
         media_path = torrent.get("media_path")
         download_path = torrent.get("download_path")
         media_exists = os.path.exists(media_path) if media_path else False
@@ -108,11 +109,14 @@ async def scan_media_library():
             removed_entries += 1
             # remove from torrent client
             await torrent_client.remove_torrent_by_hash(torrent.get("hash_v2"))
+            # remove torrent file
+            if os.path.exists(torrent_path):
+                os.unlink(torrent_path)
             # remove from database
             await database.execute("DELETE FROM torrents WHERE id = ?", (torrent["id"],))
             log.info(f"[SCAN] All files missing for '{torrent["name"]}', removed torrent from database and torrent client")
 
-        # case where only the media data is missing, remove the media_path in the database
+        # case where only the media data is missing, nullify the media_path in the database
         elif not media_exists:
             updated_files += 1
             await database.execute("UPDATE torrents SET media_path = NULL WHERE id = ?", (torrent["id"],))
