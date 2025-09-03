@@ -434,6 +434,7 @@ async def periodic_alerts_task():
                     # persist the stats to disk every 60 seconds
                     if int(time.monotonic()) % 60 == 0:
                         utils.save_persistent_stats(_all_time_download, _all_time_upload)
+                        log.debug("[ALERTS] Saved persistent client stats")
 
         except Exception as e:
             log.error(f"[ALERTS] Error in torrent alerts loop: {e}")
