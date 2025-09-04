@@ -7,7 +7,7 @@ import time
 import libtorrent as lt
 
 from privateindexer_client.core import database, utils
-from privateindexer_client.core.config import TORRENTING_PORT, TORRENTS_DIR, ANNOUNCE_TRACKER_URL, FASTRESUME_DIR, FASTRESUME_INTERVAL, DOWNLOADS_DIR
+from privateindexer_client.core.config import TORRENTING_PORT, TORRENTS_DIR, ANNOUNCE_TRACKER_URL, FASTRESUME_DIR, FASTRESUME_INTERVAL
 from privateindexer_client.core.logger import log
 from privateindexer_client.core.thread_executor import EXECUTOR
 from privateindexer_client.core.utils import process_fastresume_file
@@ -77,13 +77,13 @@ def get_all_torrents() -> list:
     return libtorrent_session.get_torrents()
 
 
-async def add_torrent_for_seeding(torrent_file: str, save_path: str):
+async def add_torrent_for_seeding(torrent_file: str, save_path: str) -> bool:
     """
     Adds a single torrent file to libtorrent session in seed mode
     """
     if not os.path.exists(torrent_file):
         log.error(f"[TORCLIENT] Torrent file not found: {torrent_file}")
-        return
+        return False
 
     try:
         info = lt.torrent_info(torrent_file)
@@ -92,17 +92,17 @@ async def add_torrent_for_seeding(torrent_file: str, save_path: str):
         # make sure the torrent we're trying to seed has a v1 and a v2 hash
         hashes = info.info_hashes()
         if not hashes.has_v1():
-            log.error(f"[TORRENT] Torrent '{torrent_name}' did not generate a v1 hash, it has been removed")
+            log.error(f"[TORCLIENT] Torrent '{torrent_name}' did not generate a v1 hash, it has been removed")
             os.unlink(torrent_file)
-            return
+            return False
         if not hashes.has_v2():
-            log.error(f"[TORRENT] Torrent '{torrent_name}' did not generate a v2 hash, it has been removed")
+            log.error(f"[TORCLIENT] Torrent '{torrent_name}' did not generate a v2 hash, it has been removed")
             os.unlink(torrent_file)
-            return
+            return False
 
         # skip torrent if torrent already exists in libtorrent session
         if await torrent_exists_in_session(info.info_hash()):
-            return
+            return False
 
         # add the tracker URL
         info.add_tracker(ANNOUNCE_TRACKER_URL)
@@ -115,8 +115,10 @@ async def add_torrent_for_seeding(torrent_file: str, save_path: str):
         # add to the libtorrent session
         libtorrent_session.add_torrent(params)
         log.info(f"[TORCLIENT] Added torrent for seeding: {torrent_name}")
+        return True
     except Exception as e:
         log.error(f"[TORCLIENT] Failed to add torrent '{torrent_file}': {e}")
+        return False
 
 
 async def add_torrent_for_download(torrent_file: str, save_path: str) -> bool:
@@ -141,12 +143,12 @@ async def add_torrent_for_download(torrent_file: str, save_path: str) -> bool:
         # make sure the torrent we download has a v1 and a v2 hash
         hashes = info.info_hashes()
         if not hashes.has_v1():
-            log.error(f"[TORRENT] Torrent '{torrent_name}' did not generate a v1 hash, it has been removed")
+            log.error(f"[TORCLIENT] Torrent '{torrent_name}' did not generate a v1 hash, it has been removed")
             os.unlink(torrent_file)
             return None
         torrent_hash_v1 = str(hashes.v1)
         if not hashes.has_v2():
-            log.error(f"[TORRENT] Torrent '{torrent_name}' did not generate a v2 hash, it has been removed")
+            log.error(f"[TORCLIENT] Torrent '{torrent_name}' did not generate a v2 hash, it has been removed")
             os.unlink(torrent_file)
             return None
         torrent_hash_v2 = str(hashes.v2)
@@ -175,7 +177,7 @@ async def add_torrent_for_download(torrent_file: str, save_path: str) -> bool:
 
     # add the data for the torrent to the database
     await utils.add_torrent_to_database(name=torrent_name, size=total_size, torrent_path=torrent_file_out, uploaded=True, files=file_count, category=0,
-                                        media_path=save_path, download_path=DOWNLOADS_DIR, hash_v1=torrent_hash_v1, hash_v2=torrent_hash_v2)
+                                        media_path=save_path, download_path=save_path, hash_v1=torrent_hash_v1, hash_v2=torrent_hash_v2)
 
     log.info(f"[TORCLIENT] Added new torrent for download: {torrent_name}")
     return True
@@ -258,8 +260,11 @@ async def load_fastresume_data():
 
         # remove fastresume files which do not have a matching torrent file
         if not torrent_path or not os.path.exists(torrent_path):
-            os.unlink(fastresume_path)
-            log.warning(f"[FASTRESUME] Removed dangling fastresume file with hash: {hash_v1}")
+            ignore_file = f"{fastresume_path}.ignore"
+            for file in [fastresume_path, ignore_file]:
+                if os.path.exists(file):
+                    os.unlink(file)
+            log.info(f"[FASTRESUME] Removed dangling fastresume data with hash: {hash_v1}")
             continue
 
         # dispatch the fastresume file to the pool of worker threads
@@ -269,7 +274,7 @@ async def load_fastresume_data():
     async for future in asyncio.as_completed(futures):
         try:
             raw_data, hash_v1, torrent_path = await future
-            if raw_data:
+            if raw_data and os.path.exists(torrent_path):
                 # assemble the raw data into fastresume add_torrent_params
                 atp = lt.read_resume_data(raw_data)
                 # attach the torrent info to the params
@@ -293,8 +298,10 @@ async def load_fastresume_data():
         # try to seed the download media first, then fall back to media path
         seed_path = download_path if download_exists else (media_path if media_exists else None)
         if seed_path:
-            await add_torrent_for_seeding(torrent["torrent_path"], seed_path)
-            log.info(f"[SCAN] Re-added '{torrent["name"]}' for seeding from {"download" if download_exists else "media"} path")
+            if await add_torrent_for_seeding(torrent["torrent_path"], seed_path):
+                log.info(f"[FASTRESUME] Re-added '{torrent["name"]}' for seeding from {"download" if download_exists else "media"} path")
+            else:
+                log.warning(f"[FASTRESUME] Unable to re-add '{torrent["name"]}' for seeding from {"download" if download_exists else "media"} path")
 
     delta = datetime.datetime.now() - before
     log.info(f"[FASTRESUME] Finished loading fastresume data ({delta})")
@@ -427,6 +434,7 @@ async def periodic_alerts_task():
                     # persist the stats to disk every 60 seconds
                     if int(time.monotonic()) % 60 == 0:
                         utils.save_persistent_stats(_all_time_download, _all_time_upload)
+                        log.debug("[ALERTS] Saved persistent client stats")
 
         except Exception as e:
             log.error(f"[ALERTS] Error in torrent alerts loop: {e}")
