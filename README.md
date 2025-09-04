@@ -46,6 +46,7 @@ You can also use the hosted pre-built image on at `ghcr.io/humehouse/privateinde
 | `FASTRESUME_INTERVAL` | `60`              | How often (in minutes) to save fastresume data. *Setting this too low can negatively impact your disk performance.*                    |
 | `TORRENTING_PORT`     | `6881`            | Port accepting connections from other torrent clients. (Make sure to bind this to host and forward in router.)                         |
 | `LOG_LEVEL`           | `INFO`            | Lowest log level to show in console. Can be `DEBUG`, `INFO`, `WARNING`, `ERROR`, or `CRITICAL` where `DEBUG` shows most amount of logs |
+| `EXCLUDE_REGEX`       | **NONE**          | Regular expression to compare against filenames and exclude upon match. This has no default and is ignored if omitted.                 |
 
 ### 2. Configure Volumes
 

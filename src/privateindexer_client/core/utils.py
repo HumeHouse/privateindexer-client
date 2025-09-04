@@ -2,16 +2,19 @@ import datetime
 import hashlib
 import json
 import os
+import re
 import secrets
 import time
 
 import libtorrent as lt
 
 from privateindexer_client.core import config, httpx_request, database
-from privateindexer_client.core.config import TORZNAB_CATEGORY_PATHS, API_KEY, INDEXER_API_URL, TORRENTS_DIR, FASTRESUME_DIR, MOVIE_EXTENSIONS, APP_VERSION, STATS_FILE
+from privateindexer_client.core.config import TORZNAB_CATEGORY_PATHS, API_KEY, INDEXER_API_URL, TORRENTS_DIR, FASTRESUME_DIR, MOVIE_EXTENSIONS, APP_VERSION, STATS_FILE, \
+    EXCLUDE_REGEX
 from privateindexer_client.core.logger import log
 
 _file_piece_hash_cache: dict[str, dict[int, list[bytes]]] = {}
+_exclude_pattern = re.compile(EXCLUDE_REGEX) if EXCLUDE_REGEX else None
 
 
 def detect_torznab_category(file_path: str) -> int:
@@ -109,7 +112,9 @@ def hash_file_by_pieces(file_path: str, piece_length: int) -> list[str]:
     # try to return a value from the peice length cache
     if file_path in _file_piece_hash_cache:
         if piece_length in _file_piece_hash_cache[file_path]:
+            log.debug(f"[TORRENT] Cache hit for file '{file_path}'")
             return _file_piece_hash_cache[file_path][piece_length]
+    log.debug(f"[TORRENT] Cache miss for file '{file_path}'")
 
     hashes = []
     before = datetime.datetime.now()
@@ -158,15 +163,13 @@ def torrent_matches_file(torrent_path: str, media_path: str) -> bool:
     return False
 
 
-def create_torrent(media_path: str, output_torrent_file: str):
+def create_torrent(media_path: str, output_torrent_file: str = None):
     """
     Synchronous routine to build and generate a complete torrent file from the media passed in as media_path
     Checks if output torrent file already exists and skips the torrent generation process
     Will fail if v1/v2 hash checks do not succeeed
     Removes the torrent file if any failures occur so a new one can be generated
     """
-    # get size of media
-    total_media_size = os.path.getsize(media_path)
 
     # check if the torrent file supplied exists
     if output_torrent_file and os.path.exists(output_torrent_file):
@@ -242,13 +245,15 @@ def create_torrent(media_path: str, output_torrent_file: str):
         return None
 
     category_id = detect_torznab_category(media_path)
+    # get size of media
+    total_media_size = os.path.getsize(media_path)
 
     return ({"name": torrent_name, "size": total_media_size, "media_path": media_path, "torrent_path": output_torrent_file, "uploaded": False,
              "files": file_count, "category": category_id, "hash_v1": torrent_hash_v1, "hash_v2": torrent_hash_v2},
             is_new_file)
 
 
-def create_torrent_threadsafe(media_path: str, output_torrent_file: str):
+def create_torrent_threadsafe(media_path: str, output_torrent_file: str = None):
     """
     Wraps the create_torrent() routine in a try/accept to catch all runtime errors
     """
@@ -257,6 +262,10 @@ def create_torrent_threadsafe(media_path: str, output_torrent_file: str):
     except Exception as e:
         log.error(f"[TORRENT] Failed to create torrent for '{media_path}': {e}")
         return None
+
+
+def exclusion_regex_matches(input_string: str) -> bool:
+    return _exclude_pattern and _exclude_pattern.search(input_string)
 
 
 def find_existing_torrent(media_path: str) -> str | None:
