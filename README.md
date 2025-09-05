@@ -44,6 +44,7 @@ You can also use the hosted pre-built image on at `ghcr.io/humehouse/privateinde
 | `MAX_THREADS `        | `8`               | Number of threads to use for CPU & I/O bound tasks. Recommend matching CPU cores.                                                      |
 | `SCAN_INTERVAL`       | `30`              | Minutes between media library scans.                                                                                                   |
 | `FASTRESUME_INTERVAL` | `60`              | How often (in minutes) to save fastresume data. *Setting this too low can negatively impact your disk performance.*                    |
+| `ANNOUNCE_IP`         | **NONE**          | Rarely needed, advanced only. If for some reason your client is making requests from different IP than you appear to peers.            |
 | `TORRENTING_PORT`     | `6881`            | Port accepting connections from other torrent clients. (Make sure to bind this to host and forward in router.)                         |
 | `LOG_LEVEL`           | `INFO`            | Lowest log level to show in console. Can be `DEBUG`, `INFO`, `WARNING`, `ERROR`, or `CRITICAL` where `DEBUG` shows most amount of logs |
 | `EXCLUDE_REGEX`       | **NONE**          | Regular expression to compare against filenames and exclude upon match. This has no default and is ignored if omitted.                 |
