@@ -7,7 +7,7 @@ from fastapi.staticfiles import StaticFiles
 
 from privateindexer_client.core import torrent_client, scan, api, gui, httpx_request, database, utils, sync
 from privateindexer_client.core.config import TORRENTS_DIR, SCAN_INTERVAL, MOVIE_DIR, TORZNAB_CATEGORY_PATHS, INDEXER_API_URL, API_KEY, TORRENTING_PORT, \
-    DOWNLOADS_DIR, FASTRESUME_DIR, APP_VERSION, MAX_THREADS, FASTRESUME_INTERVAL, EXCLUDE_REGEX
+    DOWNLOADS_DIR, FASTRESUME_DIR, APP_VERSION, MAX_THREADS, FASTRESUME_INTERVAL, EXCLUDE_REGEX, ANNOUNCE_IP
 from privateindexer_client.core.logger import log
 
 
@@ -46,16 +46,24 @@ async def lifespan(_: FastAPI):
     if EXCLUDE_REGEX:
         log.info(f"[APP] Ignoring files matching: {EXCLUDE_REGEX}")
 
-    # try to authenticate with the API to validate the API key, otherwise fail
+    # try to authenticate with the API to validate the API key and check our external IP, otherwise fail
     try:
         status_code = None
+        params = {}
+        if ANNOUNCE_IP:
+            params["announce_ip"] = ANNOUNCE_IP
         while status_code not in (403, 200):
             async with httpx_request.get_client() as client:
-                indexer_response = await client.get(INDEXER_API_URL + "/user", headers={"X-API-Key": API_KEY}, params={"v": APP_VERSION})
+                params = {"v": APP_VERSION}
+                if ANNOUNCE_IP:
+                    params["announce_ip"] = ANNOUNCE_IP
+                indexer_response = await client.get(INDEXER_API_URL + "/user", headers={"X-API-Key": API_KEY}, params=params)
                 status_code = indexer_response.status_code
                 if status_code == 200:
-                    TORRENT_SIGNER = indexer_response.text
-                    log.info(f"[APP] Connected to PrivateIndexer server as '{TORRENT_SIGNER}'")
+                    response_json = indexer_response.json()
+                    user_label = response_json["user_label"]
+                    announce_ip = response_json["announce_ip"]
+                    log.info(f"[APP] Connected to PrivateIndexer server as '{user_label}' from '{announce_ip}'")
                 elif status_code == 403:
                     log.error("[APP] API key rejected by PrivateIndexer server")
                     exit(1)

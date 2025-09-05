@@ -35,6 +35,7 @@ EXCLUDE_REGEX = os.getenv("EXCLUDE_REGEX")
 API_KEY = os.getenv("API_KEY")
 ANNOUNCE_TRACKER_URL = "https://tracker.humehouse.com/announce" + "?apikey=" + API_KEY
 
+ANNOUNCE_IP = os.getenv("ANNOUNCE_IP")
 TORRENTING_PORT = int(os.getenv("TORRENTING_PORT", "6881"))
 
 config_lock = threading.Lock()
