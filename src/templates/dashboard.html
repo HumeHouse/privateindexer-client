@@ -110,7 +110,7 @@
                 <span class="fw-bold" id="client-leeching">0</span><br><small>Downloading</small>
             </div>
             <div class="text-center text-info">
-                <span class="fw-bold" id="session-dl">0</span> (<span class="fw-bold" id="dl-rate"> B/s</span>)
+                <span class="fw-bold" id="session-dl">0</span> (<span class="fw-bold" id="dl-rate">0 B/s</span>)
                 <br><small>Session DL (Rate)</small>
             </div>
             <div class="text-center text-info">
@@ -143,7 +143,13 @@
                 <small class="text-muted d-block">PrivateIndexer Server Stats</small>
             </div>
             <div class="text-center text-info">
-                <span class="fw-bold" id="torrents-added">0</span><br><small>Uploaded</small>
+                <span class="fw-bold" id="torrents-added">0</span><br><small>Torrents</small>
+            </div>
+            <div class="text-center text-danger">
+                <span class="fw-bold" id="total-download">0</span><br><small>DL</small>
+            </div>
+            <div class="text-center text-success">
+                <span class="fw-bold" id="total-upload">0</span><br><small>UL</small>
             </div>
             <div class="text-center text-danger">
                 <span class="fw-bold" id="currently-leeching">0</span><br><small>L</small>
@@ -328,7 +334,9 @@
                 // update user stats elements
                 $("#torrents-added").text(data["torrents_added_total"]);
                 $("#currently-seeding").text(data["currently_seeding"]);
+                $("#total-upload").text(formatBytes(data["total_upload"]));
                 $("#currently-leeching").text(data["currently_leeching"]);
+                $("#total-download").text(formatBytes(data["total_download"]));
                 $("#peers-total").text(data["peers_on_user_torrents"]);
                 $("#grabs-total").text(data["grabs_total"]);
             })
