@@ -7,7 +7,7 @@ import time
 import libtorrent as lt
 
 from privateindexer_client.core import database, utils
-from privateindexer_client.core.config import TORRENTING_PORT, TORRENTS_DIR, ANNOUNCE_TRACKER_URL, FASTRESUME_DIR, FASTRESUME_INTERVAL
+from privateindexer_client.core.config import TORRENTING_PORT, TORRENTS_DIR, ANNOUNCE_TRACKER_URL, FASTRESUME_DIR, FASTRESUME_INTERVAL, ANNOUNCE_IP
 from privateindexer_client.core.logger import log
 from privateindexer_client.core.thread_executor import EXECUTOR
 from privateindexer_client.core.utils import process_fastresume_file
@@ -42,6 +42,11 @@ def create_libtorrent_session(app_version: str):
                 "connections_limit": -1,  # unlimited connections
                 "seed_choking_algorithm": lt.seed_choking_algorithm_t.fastest_upload,  # choke based on upload speed
                 }
+
+    # add the manual announce IP if configured
+    if ANNOUNCE_IP:
+        settings["announce_ip"] = ANNOUNCE_IP
+
     libtorrent_session = lt.session(settings)
     _all_time_download, _all_time_upload = utils.load_persistent_stats()
 
