@@ -268,6 +268,25 @@ def exclusion_regex_matches(input_string: str) -> bool:
     return _exclude_pattern and _exclude_pattern.search(input_string)
 
 
+def file_exists_in_torrent(torrent_path: str, target_filename: str) -> bool:
+    """
+    Helper to check if file exists in torrent based on the index of a file inside the files() of a torrent_info object
+    """
+    # get the file storage from the torrent
+    try:
+        torrent_info = lt.torrent_info(torrent_path)
+        fs = torrent_info.files()
+
+        # loop through all the files and check for matches
+        for i in range(fs.num_files()):
+            filename = os.path.basename(fs.file_path(i))
+            if filename == target_filename:
+                return True
+    except Exception as e:
+        log.error(f"[TORRENT] Failed to get file index for '{target_filename}' in torrent {torrent_path}: {e}")
+    return False
+
+
 def find_existing_torrent(media_path: str) -> str | None:
     """
     Given a media path, check if a torrent already exists in TORRENTS_DIR with the same name or hash

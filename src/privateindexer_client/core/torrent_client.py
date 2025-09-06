@@ -295,6 +295,7 @@ async def load_fastresume_data():
         if await torrent_exists_in_session(torrent.get("hash_v1")):
             continue
 
+        torrent_exists = os.path.exists(torrent["torrent_path"])
         download_path = torrent.get("download_path")
         download_exists = os.path.exists(download_path) if download_path else False
         media_path = torrent.get("media_path")
@@ -302,7 +303,7 @@ async def load_fastresume_data():
 
         # try to seed the download media first, then fall back to media path
         seed_path = download_path if download_exists else (media_path if media_exists else None)
-        if seed_path:
+        if torrent_exists and seed_path:
             if await add_torrent_for_seeding(torrent["torrent_path"], seed_path):
                 log.info(f"[FASTRESUME] Re-added '{torrent["name"]}' for seeding from {"download" if download_exists else "media"} path")
             else:
