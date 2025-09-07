@@ -452,8 +452,14 @@ def map_state(status: lt.torrent_status) -> str:
     if status.errc and status.errc.value() != 0:
         return "error"
     mapping = {lt.torrent_status.checking_files: "checkingDL", lt.torrent_status.downloading_metadata: "metaDL", lt.torrent_status.downloading: "downloading",
-               lt.torrent_status.finished: "stalledUP", lt.torrent_status.seeding: "uploading", lt.torrent_status.checking_resume_data: "checkingResumeData", }
-    return mapping.get(status.state, "unknown")
+               lt.torrent_status.finished: "finished", lt.torrent_status.seeding: "uploading", lt.torrent_status.checking_resume_data: "checkingResumeData", }
+    peer_count = status.num_peers
+    torrent_state = mapping.get(status.state, "unknown")
+    if torrent_state == "downloading" and peer_count == 0:
+        torrent_state = "stalledDL"
+    if torrent_state == "uploading" and peer_count == 0:
+        torrent_state = "stalledUP"
+    return torrent_state
 
 
 def format_peer_flags(peer: lt.peer_info):
