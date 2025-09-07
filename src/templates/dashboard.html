@@ -98,6 +98,46 @@
             background-color: rgba(0, 123, 255, 0.15) !important;
             color: #abd6ff !important;
         }
+
+        .flag-downloading {
+            background-color: rgba(0, 123, 255, 0.1) !important;
+            color: #007bff !important;
+        }
+
+        .flag-interested-choked {
+            background-color: rgba(0, 123, 255, 0.2) !important;
+            color: #0056b3 !important;
+        }
+
+        .flag-uploading {
+            background-color: rgba(40, 167, 69, 0.1) !important;
+            color: #28a745 !important;
+        }
+
+        .flag-not-uploading {
+            background-color: rgba(40, 167, 69, 0.2) !important;
+            color: #1c7430 !important;
+        }
+
+        .flag-snubbed {
+            background-color: rgba(255, 193, 7, 0.1) !important;
+            color: #eaaf08 !important;
+        }
+
+        .flag-not-interested {
+            background-color: rgba(220, 53, 69, 0.1) !important;
+            color: #dc3545 !important;
+        }
+
+        .flag-encrypted {
+            background-color: rgba(23, 162, 184, 0.1) !important;
+            color: #17a2b8 !important;
+        }
+
+        .flag-general {
+            background-color: rgba(108, 117, 125, 0.05) !important;
+            color: #c5c5c5 !important;
+        }
     </style>
 </head>
 
@@ -562,19 +602,55 @@
         <tbody>`;
         torrent["peers"].forEach(peer => {
             const progress = (peer["progress"] * 100).toFixed(1);
+            let flagsList = "";
+            let peerFlags = peer["flags"];
+            if (peerFlags && peerFlags.length > 0) {
+                peerFlags.forEach(flag => {
+                    let className;
+                    switch (flag[0]) {
+                        case "D":
+                            className = "flag-downloading";
+                            break;
+                        case "d":
+                            className = "flag-interested-choked";
+                            break;
+                        case "U":
+                            className = "flag-uploading";
+                            break;
+                        case "u":
+                            className = "flag-not-uploading";
+                            break;
+                        case "S":
+                            className = "flag-snubbed";
+                            break;
+                        case "K":
+                        case "?":
+                            className = "flag-not-interested";
+                            break;
+                        case "E":
+                        case "e":
+                            className = "flag-encrypted";
+                            break;
+                        default:
+                            className = "flag-general";
+                            break;
+                    }
+                    flagsList += `<span style="cursor:help;" class="badge me-1 ${className}" title="${flag[1]}">${flag[0]}</span>`;
+                });
+            }
             peersHtml += `<tr>
-            <td>${peer["ip"]}</td>
-            <td>${peer["port"]}</td>
-            <td>${peer["client"]}</td>
-            <td>${peer["flags"]}</td>
-            <td>${formatSpeed(peer["down_speed"])}</td>
-            <td>${formatSpeed(peer["up_speed"])}</td>
-            <td>
-                <div class="progress" style="height:1.5rem;">
-                <div class="progress-bar bg-success" role="progressbar" style="width: ${progress}%">${progress}%</div>
-                </div>
-            </td>
-        </tr>`;
+                <td>${peer["ip"]}</td>
+                <td>${peer["port"]}</td>
+                <td>${peer["client"]}</td>
+                <td>${flagsList}</td>
+                <td>${formatSpeed(peer["down_speed"])}</td>
+                <td>${formatSpeed(peer["up_speed"])}</td>
+                <td>
+                    <div class="progress" style="height:1.5rem;">
+                    <div class="progress-bar bg-success" role="progressbar" style="width: ${progress}%">${progress}%</div>
+                    </div>
+                </td>
+            </tr>`;
         });
         peersHtml += `</tbody></table>`;
         $("#peers-content").html(peersHtml);

@@ -462,68 +462,56 @@ def map_state(status: lt.torrent_status) -> str:
     return torrent_state
 
 
-def format_peer_flags(peer: lt.peer_info):
+def format_peer_flags(peer: lt.peer_info) -> list[tuple[str, str]]:
     """
-    Convert a libtorrent peer_info.flags + peer_info.source into a qBittorrent-style string
+    Convert a libtorrent peer_info.flags into a qBittorrent-style string
     https://web.archive.org/web/20141111072948/http://www.utorrent.com/help/faq/misc#faq13
     """
     flags = []
 
     # downloading states
     if peer.flags & peer.interesting:
-        if peer.flags & peer.choked:
-            flags.append("d")  # interested, but peer choked us
+        if peer.flags & peer.remote_choked:
+            flags.append(("d", "Trying to download - Interested (local) & Choked (peer)"))
         else:
-            flags.append("D")  # actively downloading
+            flags.append(("D", "Downloading - Interested (local) & Unchoked (peer)"))
 
     # uploading states
     if peer.flags & peer.remote_interested:
-        if peer.flags & peer.remote_choked:
-            flags.append("u")  # they want, but we choke
+        if peer.flags & peer.choked:
+            flags.append(("u", "Not uploading - Interested (peer) & Choked (local)"))
         else:
-            flags.append("U")  # uploading to them
+            flags.append(("U", "Uploading - Interested (peer) & Unchoked (local)"))
 
-    # optimistic unchoke
     if peer.flags & peer.optimistic_unchoke:
-        flags.append("O")
+        flags.append(("O", "Optimistic unchoke"))
 
-    # snubbed
     if peer.flags & peer.snubbed:
-        flags.append("S")
+        flags.append(("S", "Peer is snubbed"))
 
-    # incoming connection
-    if peer.flags & peer.local_connection:
-        flags.append("I")
+    if not (peer.flags & peer.outgoing_connection):
+        flags.append(("I", "Incoming connection"))
 
     # unchoked by peer but we're not interested
-    if not (peer.flags & peer.interesting) and not (peer.flags & peer.choked):
-        flags.append("K")
+    if not (peer.flags & peer.interesting) and not (peer.flags & peer.remote_choked):
+        flags.append(("K", "Not downloading - Not interested (local) & Unchoked (peer)"))
 
     # we unchoked them but they’re not interested
-    if not (peer.flags & peer.remote_interested) and not (peer.flags & peer.remote_choked):
-        flags.append("?")
-
-    # peer sources
-    if peer.source & peer.pex:
-        flags.append("X")
-    if peer.source & peer.dht:
-        flags.append("H")
+    if not (peer.flags & peer.remote_interested) and not (peer.flags & peer.choked):
+        flags.append(("?", "Not uploading - Not interested (peer) & Unchoked (local)"))
 
     # encrypted
     if peer.flags & peer.rc4_encrypted:
-        flags.append("E")
+        flags.append(("E", "Encrypted traffic"))
     elif peer.flags & peer.plaintext_encrypted:
-        flags.append("e")
+        flags.append(("e", "Encrypted handshake"))
 
-    # # uTP
-    # if peer.flags & peer.utp_socket:
-    #     flags.append("P")
+    # uTP
+    # the enum is missing for some reason in libtorrent python bindings
+    if peer.flags & (1 << 17):
+        flags.append(("P", "Peer using uTP"))
 
-    # local peer
-    if peer.flags & peer.i2p_socket:
-        flags.append("L")
-
-    return "".join(flags)
+    return flags
 
 
 def map_torrent_to_qbit(torrent: lt.torrent_handle) -> dict:
