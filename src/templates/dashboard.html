@@ -57,14 +57,19 @@
             color: #007bff !important;
         }
 
+        .state-stalledDL {
+            background-color: rgba(255, 193, 7, 0.1) !important;
+            color: #856404 !important;
+        }
+
         .state-uploading {
             background-color: rgba(40, 167, 69, 0.1) !important;
             color: #28a745 !important;
         }
 
         .state-stalledUP {
-            background-color: rgba(255, 193, 7, 0.1) !important;
-            color: #856404 !important;
+            background-color: rgba(40, 167, 69, 0.1) !important;
+            color: #50af66 !important;
         }
 
         .state-checkingDL,
@@ -93,6 +98,46 @@
             background-color: rgba(0, 123, 255, 0.15) !important;
             color: #abd6ff !important;
         }
+
+        .flag-downloading {
+            background-color: rgba(0, 123, 255, 0.1) !important;
+            color: #007bff !important;
+        }
+
+        .flag-interested-choked {
+            background-color: rgba(0, 123, 255, 0.2) !important;
+            color: #0056b3 !important;
+        }
+
+        .flag-uploading {
+            background-color: rgba(40, 167, 69, 0.1) !important;
+            color: #28a745 !important;
+        }
+
+        .flag-not-uploading {
+            background-color: rgba(40, 167, 69, 0.2) !important;
+            color: #1c7430 !important;
+        }
+
+        .flag-snubbed {
+            background-color: rgba(255, 193, 7, 0.1) !important;
+            color: #eaaf08 !important;
+        }
+
+        .flag-not-interested {
+            background-color: rgba(220, 53, 69, 0.1) !important;
+            color: #dc3545 !important;
+        }
+
+        .flag-encrypted {
+            background-color: rgba(23, 162, 184, 0.1) !important;
+            color: #17a2b8 !important;
+        }
+
+        .flag-general {
+            background-color: rgba(108, 117, 125, 0.05) !important;
+            color: #c5c5c5 !important;
+        }
     </style>
 </head>
 
@@ -117,7 +162,7 @@
                 <span class="fw-bold" id="total-dl">0</span><br><small>Total DL</small>
             </div>
             <div class="text-center text-success">
-                <span class="fw-bold" id="client-seeding">0</span><br><small>Uploading</small>
+                <span class="fw-bold" id="client-seeding">0</span><br><small>Seeding</small>
             </div>
             <div class="text-center text-success">
                 <span class="fw-bold" id="session-ul">0</span> (<span class="fw-bold" id="ul-rate">0 B/s</span>)
@@ -363,8 +408,9 @@
         let seeding = 0, leeching = 0, totalPeers = 0;
 
         torrents.forEach(torrent => {
-            if (torrent.state === "seeding" || torrent.state === "uploading") seeding++;
-            if (torrent.state === "downloading" || torrent.state === "metaDL") leeching++;
+            let t_state = torrent["state"];
+            if (["uploading", "stalledUP"].includes(t_state)) seeding++;
+            if (["downloading", "stalledDL", "metaDL"].includes(t_state)) leeching++;
             totalPeers += (torrent["num_seeds"] || 0) + (torrent["num_leechs"] || 0);
         });
 
@@ -421,6 +467,20 @@
         renderTable(data);
     }
 
+    function formatState(state) {
+        const mapping = {
+            "error": "Error",
+            "downloading": "Downloading",
+            "stalledDL": "Downloading (stalled)",
+            "uploading": "Seeding",
+            "stalledUP": "Seeding (stalled)",
+            "metaDL": "Downloading Metadata",
+            "checkingDL": "Downloading (checking)",
+            "checkingResumeData": "Checking Resume Data",
+        };
+        return mapping[state] || "Unknown";
+    }
+
     function formatBytes(bytes) {
         if (!bytes || bytes <= 0) return "0 B";
         const units = ["B", "KiB", "MiB", "GiB", "TiB"];
@@ -465,7 +525,7 @@
                         <div class="progress-bar bg-success" role="progressbar" style="width: ${progress}%">${progress}%</div>
                     </div>
                 </td>
-                <td class="${rowClass}">${torrent["state"]}</td>
+                <td class="${rowClass}">${formatState(torrent["state"])}</td>
                 <td>${torrent["num_seeds"]} (${torrent["num_complete"]})</td>
                 <td>${torrent["num_leechs"]} (${torrent["num_incomplete"]})</td>
                 <td>${formatSpeed(torrent["dlspeed"])}</td>
@@ -542,19 +602,55 @@
         <tbody>`;
         torrent["peers"].forEach(peer => {
             const progress = (peer["progress"] * 100).toFixed(1);
+            let flagsList = "";
+            let peerFlags = peer["flags"];
+            if (peerFlags && peerFlags.length > 0) {
+                peerFlags.forEach(flag => {
+                    let className;
+                    switch (flag[0]) {
+                        case "D":
+                            className = "flag-downloading";
+                            break;
+                        case "d":
+                            className = "flag-interested-choked";
+                            break;
+                        case "U":
+                            className = "flag-uploading";
+                            break;
+                        case "u":
+                            className = "flag-not-uploading";
+                            break;
+                        case "S":
+                            className = "flag-snubbed";
+                            break;
+                        case "K":
+                        case "?":
+                            className = "flag-not-interested";
+                            break;
+                        case "E":
+                        case "e":
+                            className = "flag-encrypted";
+                            break;
+                        default:
+                            className = "flag-general";
+                            break;
+                    }
+                    flagsList += `<span style="cursor:help;" class="badge me-1 ${className}" title="${flag[1]}">${flag[0]}</span>`;
+                });
+            }
             peersHtml += `<tr>
-            <td>${peer["ip"]}</td>
-            <td>${peer["port"]}</td>
-            <td>${peer["client"]}</td>
-            <td>${peer["flags"]}</td>
-            <td>${formatSpeed(peer["down_speed"])}</td>
-            <td>${formatSpeed(peer["up_speed"])}</td>
-            <td>
-                <div class="progress" style="height:1.5rem;">
-                <div class="progress-bar bg-success" role="progressbar" style="width: ${progress}%">${progress}%</div>
-                </div>
-            </td>
-        </tr>`;
+                <td>${peer["ip"]}</td>
+                <td>${peer["port"]}</td>
+                <td>${peer["client"]}</td>
+                <td>${flagsList}</td>
+                <td>${formatSpeed(peer["down_speed"])}</td>
+                <td>${formatSpeed(peer["up_speed"])}</td>
+                <td>
+                    <div class="progress" style="height:1.5rem;">
+                    <div class="progress-bar bg-success" role="progressbar" style="width: ${progress}%">${progress}%</div>
+                    </div>
+                </td>
+            </tr>`;
         });
         peersHtml += `</tbody></table>`;
         $("#peers-content").html(peersHtml);
