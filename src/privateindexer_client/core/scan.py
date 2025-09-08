@@ -5,7 +5,7 @@ import os
 from privateindexer_client.core import torrent_client, database, utils
 from privateindexer_client.core.config import SCAN_INTERVAL, TORZNAB_CATEGORY_PATHS, MOVIE_EXTENSIONS, DOWNLOADS_DIR, TORRENTS_DIR, MOVIE_DIR
 from privateindexer_client.core.logger import log
-from privateindexer_client.core.thread_executor import EXECUTOR
+from privateindexer_client.core.thread_executor import CREATE_EXECUTOR, SEARCH_EXECUTOR
 
 
 async def scan_media_library():
@@ -56,7 +56,6 @@ async def scan_media_library():
 
                 log.debug(f"[SCAN] Trying to locate torrent file for: '{file_path}'")
                 # ignore the media file if we can find a matching torrent file for it
-                find_future = loop.run_in_executor(EXECUTOR, utils.find_existing_torrent, file_path)
                 torrent_file = await find_future
                 if torrent_file:
                     # try to update the media path in the database to match the current path
@@ -73,11 +72,12 @@ async def scan_media_library():
                             continue
                         else:
                             log.info(f"[SCAN] File was renamed, media path not updated: '{result["name"]}'")
+        find_future = loop.run_in_executor(SEARCH_EXECUTOR, utils.find_existing_torrent, file_path, existing_media.values())
 
-                log.debug(f"[SCAN] Queueing for torrent creation: '{file_path}'")
-                # dispatch the torrent creation to the pool of worker threads
-                future = loop.run_in_executor(EXECUTOR, utils.create_torrent_threadsafe, file_path, torrent_file)
-                futures.append(future)
+        log.debug(f"[SCAN] Queueing for torrent creation: '{file_path}'")
+        # dispatch the torrent creation to the pool of worker threads
+        future = loop.run_in_executor(CREATE_EXECUTOR, utils.create_torrent_threadsafe, file_path, torrent_file)
+        futures.append(future)
 
     if len(futures) > 0:
         log.info(f"[SCAN] Queued {len(futures)} torrents for creation")

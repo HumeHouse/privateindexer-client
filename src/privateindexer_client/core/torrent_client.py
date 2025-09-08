@@ -9,7 +9,7 @@ import libtorrent as lt
 from privateindexer_client.core import database, utils
 from privateindexer_client.core.config import TORRENTING_PORT, TORRENTS_DIR, ANNOUNCE_TRACKER_URL, FASTRESUME_DIR, FASTRESUME_INTERVAL, ANNOUNCE_IP
 from privateindexer_client.core.logger import log
-from privateindexer_client.core.thread_executor import EXECUTOR
+from privateindexer_client.core.thread_executor import FASTRESUME_EXECUTOR
 from privateindexer_client.core.utils import process_fastresume_file
 
 libtorrent_session: lt.session
@@ -273,7 +273,7 @@ async def load_fastresume_data():
             continue
 
         # dispatch the fastresume file to the pool of worker threads
-        futures.append(loop.run_in_executor(EXECUTOR, process_fastresume_file, fastresume_path, hash_v1, torrent_path))
+        futures.append(loop.run_in_executor(FASTRESUME_EXECUTOR, process_fastresume_file, fastresume_path, hash_v1, torrent_path))
 
     # collect results as they finish
     async for future in asyncio.as_completed(futures):
