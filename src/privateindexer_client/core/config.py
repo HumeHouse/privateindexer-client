@@ -31,10 +31,10 @@ FASTRESUME_INTERVAL = 60 * int(os.getenv("FASTRESUME_INTERVAL", "60"))
 MOVIE_DIR = os.getenv("MOVIE_DIR")
 MOVIE_EXTENSIONS = os.getenv("MOVIE_EXTENSIONS", "mp4,mkv,m4v,avi").split(",")
 
-RADARR_URL = os.getenv("RADARR_URL")
+RADARR_URL = (os.getenv("RADARR_URL", "")).strip("/")
 RADARR_API_KEY = os.getenv("RADARR_API_KEY")
 
-SONARR_URL = os.getenv("SONARR_URL")
+SONARR_URL = (os.getenv("SONARR_URL", "")).strip("/")
 SONARR_API_KEY = os.getenv("SONARR_API_KEY")
 
 API_KEY = os.getenv("API_KEY")
