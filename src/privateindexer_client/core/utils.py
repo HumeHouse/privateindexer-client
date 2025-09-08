@@ -2,19 +2,17 @@ import datetime
 import hashlib
 import json
 import os
-import re
 import secrets
 import time
 
 import libtorrent as lt
 
-from privateindexer_client.core import config, httpx_request, database
-from privateindexer_client.core.config import TORZNAB_CATEGORY_PATHS, API_KEY, INDEXER_API_URL, TORRENTS_DIR, FASTRESUME_DIR, MOVIE_EXTENSIONS, APP_VERSION, STATS_FILE, \
-    EXCLUDE_REGEX
+from privateindexer_client.core import config, httpx_request, database, radarr, sonarr
+from privateindexer_client.core.config import TORZNAB_CATEGORY_PATHS, API_KEY, INDEXER_API_URL, TORRENTS_DIR, FASTRESUME_DIR, APP_VERSION, STATS_FILE, \
+    MOVIE_DIR, SONARR_URL, RADARR_URL
 from privateindexer_client.core.logger import log
 
 _file_piece_hash_cache: dict[str, dict[int, list[bytes]]] = {}
-_exclude_pattern = re.compile(EXCLUDE_REGEX) if EXCLUDE_REGEX else None
 
 
 def detect_torznab_category(file_path: str) -> int:
@@ -102,6 +100,47 @@ async def send_torrent_to_indexer(torrent_path: str, category: int):
     except Exception as e:
         log.error(f"[INDEXER] Exception while sending '{torrent_basename}' to indexer, will retry later: {e}")
         return False
+
+
+def using_legacy_media_source() -> bool:
+    """
+    Legacy function to check if the old MOVIE_DIR is being used or not
+    # TODO: deprecated - remove in upcoming release
+    """
+    return MOVIE_DIR is not None
+
+
+async def get_all_media_files() -> list[str]:
+    """
+    Returns list of file paths for all tracked media
+    """
+    media_files = []
+
+    # TODO: deprecated - remove in upcoming release
+    if using_legacy_media_source():
+        for cat_info in TORZNAB_CATEGORY_PATHS:
+            for root, _, files in os.walk(cat_info["path"]):
+                for file in files:
+                    media_files.append(os.path.join(root, file))
+
+    else:
+        # fetch all movie files from Radarr if configured
+        if RADARR_URL:
+            radarr_movies = await radarr.fetch_movie_library()
+            for movie in radarr_movies:
+                path = movie.get("movieFile", {}).get("path")
+                if path:
+                    media_files.append(path)
+
+        # fetch all TV episode files from Sonarr if configured
+        if SONARR_URL:
+            sonarr_episodes = await sonarr.fetch_tv_library()
+            for episode in sonarr_episodes:
+                path = episode.get("path")
+                if path:
+                    media_files.append(path)
+
+    return media_files
 
 
 def hash_file_by_pieces(file_path: str, piece_length: int) -> list[str]:
