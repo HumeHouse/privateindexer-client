@@ -186,20 +186,16 @@ def torrent_matches_file(torrent_path: str, media_path: str) -> bool:
     # read torrent info
     info = lt.torrent_info(torrent_path)
 
-    # single file torrent
-    if info.num_files() == 1:
-        if os.path.getsize(media_path) != info.total_size():
-            return False
+    if os.path.getsize(media_path) != info.total_size():
+        return False
 
-        piece_length = info.piece_length()
-        file_hashes = hash_file_by_pieces(media_path, piece_length)
+    piece_length = info.piece_length()
+    file_hashes = hash_file_by_pieces(media_path, piece_length)
 
-        # get piece hashes from torrent info
-        torrent_hashes = [info.hash_for_piece(i) for i in range(info.num_pieces())]
-        return file_hashes == torrent_hashes
+    # get piece hashes from torrent info
+    torrent_hashes = [info.hash_for_piece(i) for i in range(info.num_pieces())]
+    return file_hashes == torrent_hashes
 
-    # TODO: multi-file torrents require walking directory
-    return False
 
 def create_torrent(media_path: str, output_torrent_file: str = None) -> tuple[dict, bool]:
     """
