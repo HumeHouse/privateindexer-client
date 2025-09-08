@@ -201,8 +201,7 @@ def torrent_matches_file(torrent_path: str, media_path: str) -> bool:
     # TODO: multi-file torrents require walking directory
     return False
 
-
-def create_torrent(media_path: str, output_torrent_file: str = None):
+def create_torrent(media_path: str, output_torrent_file: str = None) -> tuple[dict, bool]:
     """
     Synchronous routine to build and generate a complete torrent file from the media passed in as media_path
     Checks if output torrent file already exists and skips the torrent generation process
@@ -225,26 +224,8 @@ def create_torrent(media_path: str, output_torrent_file: str = None):
         # create the file storage object
         fs = lt.file_storage()
 
-        # if this is a single file torrent, just add it to the filestorage
-        if os.path.isfile(media_path):
-            lt.add_files(fs, media_path)
-        else:
-            # otherwise walk the directory and collect all the files
-            for root, _, files in os.walk(media_path):
-                # sort the files so they are in a standard order every time
-                for file in sorted(files, key=lambda f: f.lower()):
-                    # skip the file if user doesn't include its extension in configuration
-                    _, extension = os.path.splitext(os.path.basename(file))
-                    if extension.replace(".", "") not in MOVIE_EXTENSIONS:
-                        log.debug(f"[TORRENT] Skipping file with {extension} extension")
-                        continue
-
-                    # put the file inside the torernt under a relative directory based on the media_path directory name
-                    file_path = os.path.join(root, file)
-                    relative_path = os.path.relpath(file_path, media_path)
-
-                    file_size = os.path.getsize(file_path)
-                    fs.add_file(relative_path, file_size)
+        # add file to the filestorage
+        lt.add_files(fs, media_path)
 
         # create the torrent from the file storage object
         t = lt.create_torrent(fs)
@@ -281,7 +262,7 @@ def create_torrent(media_path: str, output_torrent_file: str = None):
     except Exception as e:
         log.error(f"[TORRENT] Failed to read hash for '{output_torrent_file}', it has been removed: {e}")
         os.unlink(output_torrent_file)
-        return None
+        return None, False
 
     category_id = detect_torznab_category(media_path)
     # get size of media
@@ -292,7 +273,7 @@ def create_torrent(media_path: str, output_torrent_file: str = None):
             is_new_file)
 
 
-def create_torrent_threadsafe(media_path: str, output_torrent_file: str = None):
+def create_torrent_threadsafe(media_path: str, output_torrent_file: str = None) -> tuple[dict, bool]:
     """
     Wraps the create_torrent() routine in a try/accept to catch all runtime errors
     """
@@ -300,11 +281,7 @@ def create_torrent_threadsafe(media_path: str, output_torrent_file: str = None):
         return create_torrent(media_path, output_torrent_file)
     except Exception as e:
         log.error(f"[TORRENT] Failed to create torrent for '{media_path}': {e}")
-        return None
-
-
-def exclusion_regex_matches(input_string: str) -> bool:
-    return _exclude_pattern and _exclude_pattern.search(input_string)
+        return None, False
 
 
 def file_exists_in_torrent(torrent_path: str, target_filename: str) -> bool:
