@@ -303,7 +303,7 @@ def file_exists_in_torrent(torrent_path: str, target_filename: str) -> bool:
     return False
 
 
-def find_existing_torrent(media_path: str) -> str | None:
+def find_existing_torrent(media_path: str, ignored_torrents: list[str]) -> str | None:
     """
     Given a media path, check if a torrent already exists in TORRENTS_DIR with the same name or hash
     Returns the existing torrent path if found, otherwise None
@@ -330,6 +330,8 @@ def find_existing_torrent(media_path: str) -> str | None:
         if not torrent_file.endswith(".torrent"):
             continue
         torrent_path = os.path.join(TORRENTS_DIR, torrent_file)
+        if torrent_path in ignored_torrents:
+            continue
         try:
             if torrent_matches_file(torrent_path, media_path):
                 log.debug(f"[TORRENT] Matched '{media_path}' to '{torrent_path}' by hash")
