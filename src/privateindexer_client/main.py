@@ -39,7 +39,7 @@ async def lifespan(_: FastAPI):
     # TODO: deprecated - remove in upcoming release
     # check if user is still pointing to legacy media sources
     if utils.using_legacy_media_source():
-        log.warning(f"[APP] The legacy media scanner using MOVIE_DIR and MOVIE_EXTENSIONS is now deprecated, use Radarr and Sonarr instead")
+        log.warning(f"[APP] Legacy media scanner using MOVIE_DIR, MOVIE_EXTENSIONS, and EXCLUDE_REGEX are deprecated, use new Radarr and Sonarr environment variables")
         # make sure media directory exists and index it with ID in the category paths
         if not os.path.exists(MOVIE_DIR):
             log.error(f"[APP] Movies directory doesn't exist: {MOVIE_DIR}")
