@@ -171,6 +171,10 @@ async def add_torrent_for_download(torrent_file: str, save_path: str) -> bool:
 
         params = {"ti": info, "save_path": save_path}
 
+        # create the save path if it doesn't exist
+        if not os.path.exists(save_path):
+            os.makedirs(save_path)
+
         # add to the libtorrent session
         torrent_handle = libtorrent_session.add_torrent(params)
         # trigger a fastresume save task only
@@ -181,7 +185,7 @@ async def add_torrent_for_download(torrent_file: str, save_path: str) -> bool:
 
     # add the data for the torrent to the database
     await utils.add_torrent_to_database(name=torrent_name, size=total_size, torrent_path=torrent_file_out, uploaded=True, files=file_count, category=0,
-                                        media_path=save_path, download_path=save_path, hash_v1=torrent_hash_v1, hash_v2=torrent_hash_v2)
+                                        download_path=save_path, hash_v1=torrent_hash_v1, hash_v2=torrent_hash_v2)
 
     log.info(f"[TORCLIENT] Added new torrent for download: {torrent_name}")
     return True
