@@ -282,6 +282,17 @@ async def load_fastresume_data():
             if raw_data and os.path.exists(torrent_path):
                 # assemble the raw data into fastresume add_torrent_params
                 atp = lt.read_resume_data(raw_data)
+
+                # remove the fastresume data if it points to a save path that no longer exists
+                if not os.path.exists(atp.save_path):
+                    fastresume_file = os.path.join(FASTRESUME_DIR, f"{hash_v1}.fastresume")
+                    ignore_file = f"{fastresume_file}.ignore"
+                    for file in [fastresume_file, ignore_file]:
+                        if os.path.exists(file):
+                            os.unlink(file)
+                    log.warning(f"[FASTRESUME] Removed invalid fastresume data with hash: {hash_v1}")
+                    continue
+
                 # attach the torrent info to the params
                 atp.ti = lt.torrent_info(torrent_path)
                 # add the torrent to the session
