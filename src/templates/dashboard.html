@@ -498,6 +498,14 @@
         return [h, m, s].map(v => String(v).padStart(2, '0')).join(":");
     }
 
+    function truncateString(str, maxLength, ending = '...') {
+        if (str.length > maxLength) {
+            return str.slice(0, maxLength - ending.length) + ending;
+        } else {
+            return str;
+        }
+    }
+
     function renderTable(torrents) {
         const $tbody = $("#torrents-container");
         const filter = $('#filter-name').val().toLowerCase() || '';
@@ -518,7 +526,7 @@
             row.toggleClass("d-none", !torrent["name"].toLowerCase().includes(filter));
 
             row.html(`
-                <td>${torrent["name"]}</td>
+                <td>${truncateString(torrent["name"], 100)}</td>
                 <td>${formatBytes(torrent["size"])}</td>
                 <td>
                     <div class="progress" style="height:1.5rem;">

@@ -4,7 +4,7 @@ import threading
 
 from privateindexer_client.core.logger import log
 
-APP_VERSION = "1.2.8"
+APP_VERSION = "1.3.0"
 
 # gather/set environment variables for usage later
 DATABASE_FILE = "/app/data/torrents.db"
@@ -17,7 +17,7 @@ STATS_FILE = "/app/data/stats.json"
 
 CONFIG_FILE = "/app/data/config.json"
 
-TORZNAB_CATEGORY_PATHS = {}
+TORZNAB_CATEGORY_PATHS = []
 
 INDEXER_API_URL = "https://indexer.humehouse.com"
 
@@ -27,10 +27,15 @@ SYNC_INTERVAL = 60 * 60
 SCAN_INTERVAL = 60 * int(os.getenv("SCAN_INTERVAL", "30"))
 FASTRESUME_INTERVAL = 60 * int(os.getenv("FASTRESUME_INTERVAL", "60"))
 
+# TODO: deprecated - remove in upcoming release
 MOVIE_DIR = os.getenv("MOVIE_DIR")
 MOVIE_EXTENSIONS = os.getenv("MOVIE_EXTENSIONS", "mp4,mkv,m4v,avi").split(",")
 
-EXCLUDE_REGEX = os.getenv("EXCLUDE_REGEX")
+RADARR_URL = (os.getenv("RADARR_URL", "")).strip("/")
+RADARR_API_KEY = os.getenv("RADARR_API_KEY")
+
+SONARR_URL = (os.getenv("SONARR_URL", "")).strip("/")
+SONARR_API_KEY = os.getenv("SONARR_API_KEY")
 
 API_KEY = os.getenv("API_KEY")
 ANNOUNCE_TRACKER_URL = "https://tracker.humehouse.com/announce" + "?apikey=" + API_KEY

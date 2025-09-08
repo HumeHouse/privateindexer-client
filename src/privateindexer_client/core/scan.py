@@ -3,9 +3,9 @@ import datetime
 import os
 
 from privateindexer_client.core import torrent_client, database, utils
-from privateindexer_client.core.config import SCAN_INTERVAL, TORZNAB_CATEGORY_PATHS, MOVIE_EXTENSIONS, DOWNLOADS_DIR, TORRENTS_DIR, MOVIE_DIR
+from privateindexer_client.core.config import SCAN_INTERVAL, DOWNLOADS_DIR, TORRENTS_DIR
 from privateindexer_client.core.logger import log
-from privateindexer_client.core.thread_executor import EXECUTOR
+from privateindexer_client.core.thread_executor import CREATE_EXECUTOR, SEARCH_EXECUTOR
 
 
 async def scan_media_library():
@@ -27,57 +27,48 @@ async def scan_media_library():
     loop = asyncio.get_running_loop()
     futures = []
 
-    # loop through all files in the media directories
-    for category_key, cat_info in TORZNAB_CATEGORY_PATHS.items():
-        for root, _, files in os.walk(cat_info["path"]):
-            for file in files:
-                filename, extension = os.path.splitext(os.path.basename(file))
+    files = await utils.get_all_media_files()
+    # loop through the files we intend to scan
+    for file_path in files:
+        if not os.path.exists(file_path):
+            log.debug(f"[SCAN] File path not found or accessible, skipped: {file_path}")
+            continue
 
-                # skip the file if user doesn't include its extension in configuration
-                if cat_info["path"] == MOVIE_DIR and extension.replace(".", "") not in MOVIE_EXTENSIONS:
-                    log.debug(f"[SCAN] Skipping file with {extension} extension")
+        filename = os.path.basename(file_path)
+        total_files += 1
+
+        # ignore the media file if the current path is matches what is in the database
+        if file_path in existing_media:
+            torrent_path = existing_media[file_path]
+            # only ignore the creation process if the torrent file exists
+            if os.path.exists(torrent_path):
+                ignored_files += 1
+                continue
+
+        log.debug(f"[SCAN] Trying to locate torrent file for: '{file_path}'")
+        # ignore the media file if we can find a matching torrent file for it
+        find_future = loop.run_in_executor(SEARCH_EXECUTOR, utils.find_existing_torrent, file_path, existing_media.values())
+        torrent_file = await find_future
+        if torrent_file:
+            # try to update the media path in the database to match the current path
+            result = await database.fetch_one("SELECT id, name, media_path FROM torrents WHERE torrent_path = ?", (torrent_file,))
+            if result and result.get("id") is not None:
+                # check to see if the file was only moved, not renamed
+                if utils.file_exists_in_torrent(torrent_file, filename):
+                    updated_files += 1
+                    # detect category in case it's not matching in the database
+                    category_id = utils.detect_torznab_category(file_path)
+                    # update the old media location to match current location
+                    await database.execute("UPDATE torrents SET media_path = ?, category = ? WHERE id = ?", (file_path, category_id, result["id"],))
+                    log.info(f"[SCAN] Updated the media path for '{result["name"]}'")
                     continue
+                else:
+                    log.info(f"[SCAN] File was renamed, media path not updated: '{result["name"]}'")
 
-                # exclude if filename matches the regex exclusion
-                if utils.exclusion_regex_matches(file):
-                    log.debug(f"[SCAN] Excluding file due to matching regex: {file}")
-                    continue
-
-                file_path = os.path.join(root, file)
-                total_files += 1
-
-                # ignore the media file if the current path is matches what is in the database
-                if file_path in existing_media:
-                    torrent_path = existing_media[file_path]
-                    # only ignore the creation process if the torrent file exists
-                    if os.path.exists(torrent_path):
-                        ignored_files += 1
-                        continue
-
-                log.debug(f"[SCAN] Trying to locate torrent file for: '{file_path}'")
-                # ignore the media file if we can find a matching torrent file for it
-                find_future = loop.run_in_executor(EXECUTOR, utils.find_existing_torrent, file_path)
-                torrent_file = await find_future
-                if torrent_file:
-                    # try to update the media path in the database to match the current path
-                    result = await database.fetch_one("SELECT id, name, media_path FROM torrents WHERE torrent_path = ?", (torrent_file,))
-                    if result and result.get("id") is not None:
-                        # check to see if the file was only moved, not renamed
-                        if utils.file_exists_in_torrent(torrent_file, filename):
-                            updated_files += 1
-                            # detect category in case it's not matching in the database
-                            category_id = utils.detect_torznab_category(file_path)
-                            # update the old media location to match current location
-                            await database.execute("UPDATE torrents SET media_path = ?, category = ? WHERE id = ?", (file_path, category_id, result["id"],))
-                            log.info(f"[SCAN] Updated the media path for '{result["name"]}'")
-                            continue
-                        else:
-                            log.info(f"[SCAN] File was renamed, media path not updated: '{result["name"]}'")
-
-                log.debug(f"[SCAN] Queueing for torrent creation: '{file_path}'")
-                # dispatch the torrent creation to the pool of worker threads
-                future = loop.run_in_executor(EXECUTOR, utils.create_torrent_threadsafe, file_path, torrent_file)
-                futures.append(future)
+        log.debug(f"[SCAN] Queueing for torrent creation: '{file_path}'")
+        # dispatch the torrent creation to the pool of worker threads
+        future = loop.run_in_executor(CREATE_EXECUTOR, utils.create_torrent_threadsafe, file_path, torrent_file)
+        futures.append(future)
 
     if len(futures) > 0:
         log.info(f"[SCAN] Queued {len(futures)} torrents for creation")
