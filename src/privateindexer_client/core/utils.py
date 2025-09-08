@@ -21,7 +21,7 @@ def detect_torznab_category(file_path: str) -> int:
     """
     Tries to match the file's path with the known torznab category directories and returns its ID
     """
-    for name, cat_info in TORZNAB_CATEGORY_PATHS.items():
+    for cat_info in TORZNAB_CATEGORY_PATHS:
         if file_path.startswith(cat_info["path"]):
             return cat_info["id"]
     return 0
