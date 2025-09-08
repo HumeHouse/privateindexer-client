@@ -136,7 +136,6 @@ async def add_torrent_for_download(torrent_file: str, save_path: str) -> bool:
 
     # attempt to add the torrent to the client
     try:
-        # skip torrent if torrent already exists in libtorrent session
         info = lt.torrent_info(torrent_file)
         torrent_name = info.name()
 
