@@ -9,7 +9,7 @@ import libtorrent as lt
 from privateindexer_client.core import database, utils
 from privateindexer_client.core.config import TORRENTING_PORT, TORRENTS_DIR, ANNOUNCE_TRACKER_URL, FASTRESUME_DIR, FASTRESUME_INTERVAL, ANNOUNCE_IP
 from privateindexer_client.core.logger import log
-from privateindexer_client.core.thread_executor import EXECUTOR
+from privateindexer_client.core.thread_executor import FASTRESUME_EXECUTOR
 from privateindexer_client.core.utils import process_fastresume_file
 
 libtorrent_session: lt.session
@@ -136,7 +136,6 @@ async def add_torrent_for_download(torrent_file: str, save_path: str) -> bool:
 
     # attempt to add the torrent to the client
     try:
-        # skip torrent if torrent already exists in libtorrent session
         info = lt.torrent_info(torrent_file)
         torrent_name = info.name()
 
@@ -273,7 +272,7 @@ async def load_fastresume_data():
             continue
 
         # dispatch the fastresume file to the pool of worker threads
-        futures.append(loop.run_in_executor(EXECUTOR, process_fastresume_file, fastresume_path, hash_v1, torrent_path))
+        futures.append(loop.run_in_executor(FASTRESUME_EXECUTOR, process_fastresume_file, fastresume_path, hash_v1, torrent_path))
 
     # collect results as they finish
     async for future in asyncio.as_completed(futures):
@@ -282,6 +281,17 @@ async def load_fastresume_data():
             if raw_data and os.path.exists(torrent_path):
                 # assemble the raw data into fastresume add_torrent_params
                 atp = lt.read_resume_data(raw_data)
+
+                # remove the fastresume data if it points to a save path that no longer exists
+                if not os.path.exists(atp.save_path):
+                    fastresume_file = os.path.join(FASTRESUME_DIR, f"{hash_v1}.fastresume")
+                    ignore_file = f"{fastresume_file}.ignore"
+                    for file in [fastresume_file, ignore_file]:
+                        if os.path.exists(file):
+                            os.unlink(file)
+                    log.warning(f"[FASTRESUME] Removed invalid fastresume data with hash: {hash_v1}")
+                    continue
+
                 # attach the torrent info to the params
                 atp.ti = lt.torrent_info(torrent_path)
                 # add the torrent to the session

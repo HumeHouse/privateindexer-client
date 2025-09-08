@@ -10,16 +10,19 @@ services:
     stop_grace_period: 5m
     environment:
       DOWNLOADS_DIR: /path/to/downloads
-      MOVIE_DIR: /path/to/movies
-      MOVIE_EXTENSIONS: mp4,mkv,m4v,avi
       MAX_THREADS: 8
       FASTRESUME_INTERVAL: 60
       SCAN_INTERVAL: 15
       API_KEY: keyhere
       TORRENTING_PORT: 6881
+      RADARR_URL: https://radarr.example.com
+      RADARR_API_KEY: keyhere
+      SONARR_URL: https://sonarr.example.com
+      SONARR_API_KEY: keyhere
     volumes:
       - /path/to/client/data:/app/data
       - /path/to/movies:/path/to/movies
+      - /path/to/tv:/path/to/tv
     networks:
       - privateindexer-net
     ports:

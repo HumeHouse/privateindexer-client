@@ -1,9 +1,9 @@
 # PrivateIndexer Client
 
 This is the client container for the HumeHouse PrivateIndexer.
-It scans your local media library, creates torrents, and communicates with the PrivateIndexer server.
+It pulls from Radarr and Sonarr, creates torrents, and communicates with the PrivateIndexer server.
 There is also a built-in torrent client that will automatically start seeding all your media for you.
-The build-in torrent client also provides qBittorrent-compatible API endpoints for usage with the *arr suite apps.
+The built-in torrent client also provides qBittorrent-compatible API endpoints for usage with the *arr suite apps.
 You can view a basic dashboard by visiting `http://hostname:8080/dashboard` from a browser if you use the example.
 
 ---
@@ -17,7 +17,8 @@ built
 docker compose build
 ```
 
-You can also use the hosted pre-built image on at `ghcr.io/humehouse/privateindexer-client:latest`
+You can also use the hosted pre-built image on at `ghcr.io/humehouse/privateindexer-client:latest` like in the example
+below
 (See [GitHub](https://github.com/HumeHouse/privateindexer-client/tags) for all version tags)
 
 ---
@@ -30,24 +31,30 @@ You can also use the hosted pre-built image on at `ghcr.io/humehouse/privateinde
 
 #### REQURIED VARIABLES
 
-| Variable        | Description                                                                                                    | Example              |
-|-----------------|----------------------------------------------------------------------------------------------------------------|----------------------|
-| `DOWNLOADS_DIR` | Path inside the container that downloads are saved to. (Make sure to mount it to the host somewhere - step 2.) | `/data/downloads`    |
-| `MOVIE_DIR`     | Path inside the container to your movie media library. (Make sure to mount it to the host somewhere - step 2.) | `/data/media/movies` |
-| `API_KEY`       | Your assigned API key (contact David if you don’t have one).                                                   | `abcdef123456`       |
+| Variable        | Description                                                                                                    | Example           |
+|-----------------|----------------------------------------------------------------------------------------------------------------|-------------------|
+| `DOWNLOADS_DIR` | Path inside the container that downloads are saved to. (Make sure to mount it to the host somewhere - step 2.) | `/data/downloads` |
+| `API_KEY`       | Your assigned API key (contact David if you don’t have one).                                                   | `abcdef123456`    |
+
+#### RADARR/SONARR VARIABLES (OPTIONAL, AT LEAST 1 REQUIRED)
+
+| Variable         | Description                                                                                             | Example                        |
+|------------------|---------------------------------------------------------------------------------------------------------|--------------------------------|
+| `RADARR_URL`     | Full protocol and host string for connecting to Radarr. Port definitions are allowed at the end of URL. | `https://radarr.humehouse.com` |
+| `RADARR_API_KEY` | Your Radarr API key, found under `Settings > General > Security`                                        | `abcdef123456`                 |
+| `SONARR_URL`     | Same as `RADARR_URL` but for Sonarr                                                                     | `https://sonarr.humehouse.com` |
+| `SONARR_API_KEY` | Your Sonarr API key, found under `Settings > General > Security`                                        | `abcdef123456`                 |
 
 #### OPTIONAL VARIABLES
 
-| Variable              | Default Value     | Description                                                                                                                            |
-|-----------------------|-------------------|----------------------------------------------------------------------------------------------------------------------------------------|
-| `MOVIE_EXTENSIONS`    | `mp4,mkv,m4v,avi` | File extensions (comma-separated) to whitelist for torrent creation during scans.                                                      |
-| `MAX_THREADS `        | `8`               | Number of threads to use for CPU & I/O bound tasks. Recommend matching CPU cores.                                                      |
-| `SCAN_INTERVAL`       | `30`              | Minutes between media library scans.                                                                                                   |
-| `FASTRESUME_INTERVAL` | `60`              | How often (in minutes) to save fastresume data. *Setting this too low can negatively impact your disk performance.*                    |
-| `ANNOUNCE_IP`         | **NONE**          | Rarely needed, advanced only. If for some reason your client is making requests from different IP than you appear to peers.            |
-| `TORRENTING_PORT`     | `6881`            | Port accepting connections from other torrent clients. (Make sure to bind this to host and forward in router.)                         |
-| `LOG_LEVEL`           | `INFO`            | Lowest log level to show in console. Can be `DEBUG`, `INFO`, `WARNING`, `ERROR`, or `CRITICAL` where `DEBUG` shows most amount of logs |
-| `EXCLUDE_REGEX`       | **NONE**          | Regular expression to compare against filenames and exclude upon match. This has no default and is ignored if omitted.                 |
+| Variable              | Default Value | Description                                                                                                                            |
+|-----------------------|---------------|----------------------------------------------------------------------------------------------------------------------------------------|
+| `MAX_THREADS `        | `8`           | Number of threads to use for CPU & I/O bound tasks. Recommend matching CPU cores.                                                      |
+| `SCAN_INTERVAL`       | `30`          | Minutes between media library scans. We rebuild the media library from Radarr and Sonarr every scan, so be cautious setting too low.   |
+| `FASTRESUME_INTERVAL` | `60`          | How often (in minutes) to save fastresume data. *Setting this too low can negatively impact your disk performance.*                    |
+| `ANNOUNCE_IP`         | **NONE**      | Rarely needed, advanced only. If for some reason your client is making requests from different IP than you appear to peers.            |
+| `TORRENTING_PORT`     | `6881`        | Port accepting connections from other torrent clients. (Make sure to bind this to host and forward in router.)                         |
+| `LOG_LEVEL`           | `INFO`        | Lowest log level to show in console. Can be `DEBUG`, `INFO`, `WARNING`, `ERROR`, or `CRITICAL` where `DEBUG` shows most amount of logs |
 
 ### 2. Configure Volumes
 
@@ -55,7 +62,8 @@ You can also use the hosted pre-built image on at `ghcr.io/humehouse/privateinde
 |-------------|:-------------------------------------------------------------------------------------------------------------------------|---------------------------------------------------|
 | `/app/data` | Persistent storage inside the app for storing torrent files (.torrent), fastresume data, and torrent metadata for cache. | `/humehouse/privateindexer/client/data:/app/data` |
 | *Downloads* | Directory where downloads will be stored. `DOWNLOADS_DIR` MUST be accessible from this directory (Try to match them.)    | `/data/downloads:/data/downloads`                 |
-| *Movies*    | Movie library location. `MOVIE_DIR` MUST be accessible from this directory (Try to match them.)                          | `/data/media/movies:/data/media/movies`           |
+| *Movies*    | Movie library location(s). **This should match Radarr's configuration exactly.**                                         | `/data/media/movies:/data/media/movies`           |
+| *TV series* | Movie library location(s). **This should match Sonarr's configuration exactly.**                                         | `/data/media/shows:/data/media/shows`             |
 
 ### 3. Port forwarding
 
@@ -121,8 +129,7 @@ The API was derived from the qBittorrent API and mocks all of the endpoints used
 9. You may want to click the gear at the bottom to show advanced settings and set the `Client Priority` to something
    `higher` than your default download client so it doesn't try to download random torrents
 10. **Uncheck** both `Remove Completed` and `Remove Failed` - the client has no sense of either of these options and
-    will
-    only cause errors if you leave these on.
+    will only cause errors if you leave these on.
 11. Click `Test` to make sure the connection is working
 12. Click `Save` to add the client
 
@@ -146,6 +153,7 @@ Navigate to `https://your-hostname:8080/dashboard` to view the dashboard
 - Click on torrents to view their status
 - Switch tabs using the menu docked to the bottom of the page to view general info, tracker info, and peer info
 - Filter through torrents by name using the `Filter` search box at the top of the 'Name' column
+- Sort torrents by clicking any of the column headers
 
 - Your client stats are displayed at the top center
     - Uploading: number of torrents you are actively uploading (seeding) from **this local client**
@@ -174,6 +182,7 @@ Navigate to `https://your-hostname:8080/dashboard` to view the dashboard
 Here’s an example setup:
 
 - My movie files are stored in `/data/media/movies` on the host
+- My TV show files are stored in `/data/media/shows` on the host
 - My downloads are stored in `/data/privateindexer/downloads` on the host
 - My persistent data (torrents and database) for client is stored in `/humehouse/privateindexer` on the host
 
@@ -190,17 +199,20 @@ services:
     stop_grace_period: 5m # careful not to let Docker kill the container, it could prevent fastresume data from being saved during shutdown
     environment:
       DOWNLOADS_DIR: /data/privateindexer/downloads
-      MOVIE_DIR: /data/media/movies
-      MOVIE_EXTENSIONS: mp4,mkv,m4v,avi
       MAX_THREADS: 16 # 16 threads
       FASTRESUME_INTERVAL: 60 # save fastresume data every hour
       SCAN_INTERVAL: 30 # 30 minutes
       API_KEY: keyhere
       TORRENTING_PORT: 6881
+      RADARR_URL: https://radarr.humehouse.com
+      RADARR_API_KEY: keyhere
+      SONARR_URL: https://sonarr.humehouse.com
+      SONARR_API_KEY: keyhere
     volumes:
       - /humehouse/privateindexer/client_data:/app/data # mount the persistent data storage location to the host somewhere
       - /data/privateindexer/downloads:/data/privateindexer/downloads # mount the downloads location on the host to the DOWNLOADS_DIR in the container
-      - /data/media/movies:/data/media/movies # mount the movies directory on the host to the MOVIE_DIR in the container
+      - /data/media/movies:/data/media/movies # mount the movies directory - this should match what Radarr sees
+      - /data/media/shows:/data/media/shows # mount the tv series directory - this should match what Sonarr sees
     networks:
       - privateindexer-net
     ports:

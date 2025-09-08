@@ -2,26 +2,24 @@ import datetime
 import hashlib
 import json
 import os
-import re
 import secrets
 import time
 
 import libtorrent as lt
 
-from privateindexer_client.core import config, httpx_request, database
-from privateindexer_client.core.config import TORZNAB_CATEGORY_PATHS, API_KEY, INDEXER_API_URL, TORRENTS_DIR, FASTRESUME_DIR, MOVIE_EXTENSIONS, APP_VERSION, STATS_FILE, \
-    EXCLUDE_REGEX
+from privateindexer_client.core import config, httpx_request, database, radarr, sonarr
+from privateindexer_client.core.config import TORZNAB_CATEGORY_PATHS, API_KEY, INDEXER_API_URL, TORRENTS_DIR, FASTRESUME_DIR, APP_VERSION, STATS_FILE, \
+    MOVIE_DIR, SONARR_URL, RADARR_URL
 from privateindexer_client.core.logger import log
 
 _file_piece_hash_cache: dict[str, dict[int, list[bytes]]] = {}
-_exclude_pattern = re.compile(EXCLUDE_REGEX) if EXCLUDE_REGEX else None
 
 
 def detect_torznab_category(file_path: str) -> int:
     """
     Tries to match the file's path with the known torznab category directories and returns its ID
     """
-    for name, cat_info in TORZNAB_CATEGORY_PATHS.items():
+    for cat_info in TORZNAB_CATEGORY_PATHS:
         if file_path.startswith(cat_info["path"]):
             return cat_info["id"]
     return 0
@@ -104,6 +102,47 @@ async def send_torrent_to_indexer(torrent_path: str, category: int):
         return False
 
 
+def using_legacy_media_source() -> bool:
+    """
+    Legacy function to check if the old MOVIE_DIR is being used or not
+    # TODO: deprecated - remove in upcoming release
+    """
+    return MOVIE_DIR is not None
+
+
+async def get_all_media_files() -> list[str]:
+    """
+    Returns list of file paths for all tracked media
+    """
+    media_files = []
+
+    # TODO: deprecated - remove in upcoming release
+    if using_legacy_media_source():
+        for cat_info in TORZNAB_CATEGORY_PATHS:
+            for root, _, files in os.walk(cat_info["path"]):
+                for file in files:
+                    media_files.append(os.path.join(root, file))
+
+    else:
+        # fetch all movie files from Radarr if configured
+        if RADARR_URL:
+            radarr_movies = await radarr.fetch_movie_library()
+            for movie in radarr_movies:
+                path = movie.get("movieFile", {}).get("path")
+                if path:
+                    media_files.append(path)
+
+        # fetch all TV episode files from Sonarr if configured
+        if SONARR_URL:
+            sonarr_episodes = await sonarr.fetch_tv_library()
+            for episode in sonarr_episodes:
+                path = episode.get("path")
+                if path:
+                    media_files.append(path)
+
+    return media_files
+
+
 def hash_file_by_pieces(file_path: str, piece_length: int) -> list[str]:
     """
     Return list of SHA1 hashes (hex) of file split into piece_length chunks
@@ -147,23 +186,18 @@ def torrent_matches_file(torrent_path: str, media_path: str) -> bool:
     # read torrent info
     info = lt.torrent_info(torrent_path)
 
-    # single file torrent
-    if info.num_files() == 1:
-        if os.path.getsize(media_path) != info.total_size():
-            return False
+    if os.path.getsize(media_path) != info.total_size():
+        return False
 
-        piece_length = info.piece_length()
-        file_hashes = hash_file_by_pieces(media_path, piece_length)
+    piece_length = info.piece_length()
+    file_hashes = hash_file_by_pieces(media_path, piece_length)
 
-        # get piece hashes from torrent info
-        torrent_hashes = [info.hash_for_piece(i) for i in range(info.num_pieces())]
-        return file_hashes == torrent_hashes
-
-    # TODO: multi-file torrents require walking directory
-    return False
+    # get piece hashes from torrent info
+    torrent_hashes = [info.hash_for_piece(i) for i in range(info.num_pieces())]
+    return file_hashes == torrent_hashes
 
 
-def create_torrent(media_path: str, output_torrent_file: str = None):
+def create_torrent(media_path: str, output_torrent_file: str = None) -> tuple[dict, bool]:
     """
     Synchronous routine to build and generate a complete torrent file from the media passed in as media_path
     Checks if output torrent file already exists and skips the torrent generation process
@@ -186,26 +220,8 @@ def create_torrent(media_path: str, output_torrent_file: str = None):
         # create the file storage object
         fs = lt.file_storage()
 
-        # if this is a single file torrent, just add it to the filestorage
-        if os.path.isfile(media_path):
-            lt.add_files(fs, media_path)
-        else:
-            # otherwise walk the directory and collect all the files
-            for root, _, files in os.walk(media_path):
-                # sort the files so they are in a standard order every time
-                for file in sorted(files, key=lambda f: f.lower()):
-                    # skip the file if user doesn't include its extension in configuration
-                    _, extension = os.path.splitext(os.path.basename(file))
-                    if extension.replace(".", "") not in MOVIE_EXTENSIONS:
-                        log.debug(f"[TORRENT] Skipping file with {extension} extension")
-                        continue
-
-                    # put the file inside the torernt under a relative directory based on the media_path directory name
-                    file_path = os.path.join(root, file)
-                    relative_path = os.path.relpath(file_path, media_path)
-
-                    file_size = os.path.getsize(file_path)
-                    fs.add_file(relative_path, file_size)
+        # add file to the filestorage
+        lt.add_files(fs, media_path)
 
         # create the torrent from the file storage object
         t = lt.create_torrent(fs)
@@ -242,7 +258,7 @@ def create_torrent(media_path: str, output_torrent_file: str = None):
     except Exception as e:
         log.error(f"[TORRENT] Failed to read hash for '{output_torrent_file}', it has been removed: {e}")
         os.unlink(output_torrent_file)
-        return None
+        return None, False
 
     category_id = detect_torznab_category(media_path)
     # get size of media
@@ -253,7 +269,7 @@ def create_torrent(media_path: str, output_torrent_file: str = None):
             is_new_file)
 
 
-def create_torrent_threadsafe(media_path: str, output_torrent_file: str = None):
+def create_torrent_threadsafe(media_path: str, output_torrent_file: str = None) -> tuple[dict, bool]:
     """
     Wraps the create_torrent() routine in a try/accept to catch all runtime errors
     """
@@ -261,11 +277,7 @@ def create_torrent_threadsafe(media_path: str, output_torrent_file: str = None):
         return create_torrent(media_path, output_torrent_file)
     except Exception as e:
         log.error(f"[TORRENT] Failed to create torrent for '{media_path}': {e}")
-        return None
-
-
-def exclusion_regex_matches(input_string: str) -> bool:
-    return _exclude_pattern and _exclude_pattern.search(input_string)
+        return None, False
 
 
 def file_exists_in_torrent(torrent_path: str, target_filename: str) -> bool:
@@ -287,7 +299,7 @@ def file_exists_in_torrent(torrent_path: str, target_filename: str) -> bool:
     return False
 
 
-def find_existing_torrent(media_path: str) -> str | None:
+def find_existing_torrent(media_path: str, ignored_torrents: list[str]) -> str | None:
     """
     Given a media path, check if a torrent already exists in TORRENTS_DIR with the same name or hash
     Returns the existing torrent path if found, otherwise None
@@ -314,6 +326,8 @@ def find_existing_torrent(media_path: str) -> str | None:
         if not torrent_file.endswith(".torrent"):
             continue
         torrent_path = os.path.join(TORRENTS_DIR, torrent_file)
+        if torrent_path in ignored_torrents:
+            continue
         try:
             if torrent_matches_file(torrent_path, media_path):
                 log.debug(f"[TORRENT] Matched '{media_path}' to '{torrent_path}' by hash")
