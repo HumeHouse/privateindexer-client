@@ -47,7 +47,7 @@ async def scan_media_library():
 
         log.debug(f"[SCAN] Trying to locate torrent file for: '{file_path}'")
         # ignore the media file if we can find a matching torrent file for it
-        find_future = loop.run_in_executor(SEARCH_EXECUTOR, utils.find_existing_torrent, file_path, existing_media.values())
+        find_future = loop.run_in_executor(SEARCH_EXECUTOR, utils.find_existing_torrent, file_path, list(existing_media.values()))
         torrent_file = await find_future
         if torrent_file:
             # try to update the media path in the database to match the current path
