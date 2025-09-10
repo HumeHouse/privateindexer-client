@@ -1,11 +1,17 @@
 import asyncio
 import datetime
+import itertools
 import os
+from enum import Enum
 
 from privateindexer_client.core import torrent_client, database, utils
-from privateindexer_client.core.config import SCAN_INTERVAL, DOWNLOADS_DIR, TORRENTS_DIR
+from privateindexer_client.core.config import SCAN_INTERVAL, DOWNLOADS_DIR, TORRENTS_DIR, PURGE_UNTRACKED_TORRENTS, SCAN_BATCH_SIZE
 from privateindexer_client.core.logger import log
-from privateindexer_client.core.thread_executor import CREATE_EXECUTOR, SEARCH_EXECUTOR
+from privateindexer_client.core.thread_executor import SCAN_EXECUTOR
+
+SCAN_PROCESS_STATE: int = 0
+SCAN_TOTAL_ITEMS: int = 0
+SCAN_DONE_ITEMS: int = 0
 
 
 async def scan_media_library():
@@ -47,7 +53,7 @@ async def scan_media_library():
 
         log.debug(f"[SCAN] Trying to locate torrent file for: '{file_path}'")
         # ignore the media file if we can find a matching torrent file for it
-        find_future = loop.run_in_executor(SEARCH_EXECUTOR, utils.find_existing_torrent, file_path, list(existing_media.values()))
+        find_future = loop.run_in_executor(SCAN_EXECUTOR, utils.find_existing_torrent, file_path, list(existing_media.values()))
         torrent_file = await find_future
         if torrent_file:
             # try to update the media path in the database to match the current path
