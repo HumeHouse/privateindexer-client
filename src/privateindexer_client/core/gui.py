@@ -2,7 +2,7 @@ from fastapi import Request, APIRouter, HTTPException
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
-from privateindexer_client.core import torrent_client, utils
+from privateindexer_client.core import torrent_client, utils, scan
 from privateindexer_client.core.logger import log
 
 router = APIRouter()
@@ -42,6 +42,12 @@ async def dashboard_maindata():
     except Exception as e:
         log.error(f"[GUI] Failed to get session info: {e}")
         return HTTPException(status_code=500, detail="Failed to get session info")
+
+    try:
+        main_data["scanner_status"] = {"state": scan.SCAN_PROCESS_STATE, "total_items": scan.SCAN_TOTAL_ITEMS, "done_items": scan.SCAN_DONE_ITEMS}
+    except Exception as e:
+        log.error(f"[GUI] Failed to get scanner info: {e}")
+        return HTTPException(status_code=500, detail="Failed to get scanner info")
 
     return main_data
 
