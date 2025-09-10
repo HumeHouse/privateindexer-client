@@ -163,8 +163,10 @@
     <div class="d-flex justify-content-between align-items-center my-1">
         <div class="d-flex align-items-center">
             <img class="logo" src="/static/logo.png" alt="logo">
-            <h3 class="ms-2">PrivateIndexer Dashboard</h3>
+            <h4 class="ms-2">PrivateIndexer</h4>
         </div>
+
+        <div id="scanner-status"></div>
 
         <!-- Client-visible stats -->
         <div id="client-stats" class="d-flex gap-3 align-items-center my-2">
@@ -382,6 +384,9 @@
 
                 // update client-visible stats
                 updateClientStats(data["torrents"], data["server_state"]);
+
+                // update the scanner progress
+                updateScannerStats(data["scanner_status"]);
             })
             .catch(e => console.error("Error fetching main data:", e));
 
@@ -419,6 +424,79 @@
             }
             $label.text(text);
         });
+    }
+
+    function updateScannerStats(scanner_status) {
+        let state = scanner_status["state"];
+        let total = scanner_status["total_items"];
+        let done = scanner_status["done_items"];
+
+        let scannerStatus;
+
+        if (state === 1) {
+            // scan task is in the pre-processing state
+            scannerStatus = `
+                <div>
+                    <span class="fw-bold text-warning">
+                        Scan: Pre-scan
+                        <div class="spinner-border spinner-border-sm text-warning ms-2" role="status"></div>
+                    </span>
+                </div>
+            `;
+        } else if (state === 2) {
+            // scan task is in the scanning state
+            let percent = ((done / total) * 100).toFixed(1);
+            scannerStatus = `
+                <div>
+                    <span class="fw-bold text-info">
+                        Scan: Scanning
+                        <div class="spinner-border spinner-border-sm text-info ms-2" role="status"></div>
+                    </span><br>
+                    <span class="fw-bold">${done} / ${total}</span>
+                    <span class="text-muted">(${percent}%)</span>
+                    <div class="progress mt-1" style="height: 10px;">
+                        <div class="progress-bar bg-info" role="progressbar" style="width: ${percent}%;">
+                        </div>
+                    </div>
+                </div>
+            `;
+        } else if (state === 3) {
+            // scan task is in the scanning state
+            let percent = ((done / total) * 100).toFixed(1);
+            scannerStatus = `
+                <div>
+                    <span class="fw-bold text-primary">
+                        Scan: Processing
+                        <div class="spinner-border spinner-border-sm text-primary ms-2" role="status"></div>
+                    </span><br>
+                    <span class="fw-bold">${done} / ${total}</span>
+                    <span class="text-muted">(${percent}%)</span>
+                    <div class="progress mt-1" style="height: 10px;">
+                        <div class="progress-bar bg-primary" role="progressbar" style="width: ${percent}%;">
+                        </div>
+                    </div>
+                </div>
+            `;
+        } else if (state === 4) {
+            // scan task is in the post-scan state
+            scannerStatus = `
+                <div>
+                    <span class="fw-bold text-success">
+                        Scan: Post-processing
+                        <div class="spinner-border spinner-border-sm text-success ms-2" role="status"></div>
+                    </span>
+                </div>
+            `;
+        } else {
+            // nothing is scanning, just show idle
+            scannerStatus = `
+                <div>
+                    <span class="fw-bold text-secondary">Scan: Idle</span>
+                </div>
+            `;
+        }
+
+        $("#scanner-status").html(scannerStatus);
     }
 
     function updateClientStats(torrents, stats) {
