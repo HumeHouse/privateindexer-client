@@ -1,5 +1,6 @@
 import asyncio
 import os
+from asyncio import Task
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -10,9 +11,32 @@ from privateindexer_client.core.config import TORRENTS_DIR, SCAN_INTERVAL, TORZN
     DOWNLOADS_DIR, FASTRESUME_DIR, APP_VERSION, MAX_THREADS, FASTRESUME_INTERVAL, ANNOUNCE_IP, RADARR_URL, RADARR_API_KEY, SONARR_URL, SONARR_API_KEY
 from privateindexer_client.core.logger import log
 
+APP_TASKS: list[Task] = []
+
+
+async def startup_tasks():
+    """
+    Async startup task to ensure processes start in order
+    """
+    global APP_TASKS
+    # wait for fastresume data to load into the client session before continuing to avoid blocking other tasks
+    await torrent_client.load_fastresume_data()
+
+    log.info("[APP] Creating periodic tasks")
+
+    # send the system task to the asyncio scheduler and store them in the app state
+    APP_TASKS = [
+        asyncio.create_task(scan.periodic_scan_task(), name="scan"),
+        asyncio.create_task(torrent_client.periodic_torrent_status_task(), name="status"),
+        asyncio.create_task(torrent_client.periodic_fastresume_task(), name="fastresume"),
+        asyncio.create_task(torrent_client.periodic_alerts_task(), name="alerts"),
+        asyncio.create_task(sync.periodic_sync_task(), name="sync"),
+    ]
+
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
+    global APP_TASKS
     log.info(f"[APP] Starting PrivateIndexer client v{APP_VERSION}")
 
     # initialize the database
@@ -111,25 +135,9 @@ async def lifespan(_: FastAPI):
         log.error(f"[APP] Failed to validate API key: {e}")
         exit(1)
 
-    # load the fastresume data into the client session using background task
-    asyncio.create_task(torrent_client.load_fastresume_data())
+    log.info("[APP] Running startup tasks")
 
-    log.info("[APP] Starting periodic tasks")
-
-    # send the scan task to the asyncio scheduler
-    scan_task = asyncio.create_task(scan.periodic_scan_task())
-
-    # send the torrent status task to the asyncio scheduler
-    status_task = asyncio.create_task(torrent_client.periodic_torrent_status_task())
-
-    # send the torrent fastresume task to the asyncio scheduler
-    fastresume_task = asyncio.create_task(torrent_client.periodic_fastresume_task())
-
-    # send the torrent alerts task to the asyncio scheduler
-    alerts_task = asyncio.create_task(torrent_client.periodic_alerts_task())
-
-    # send the sync task to the asyncio scheduler
-    sync_task = asyncio.create_task(sync.periodic_sync_task())
+    asyncio.create_task(startup_tasks())
 
     log.info("[APP] API server started on 0.0.0.0:80")
 
@@ -143,11 +151,11 @@ async def lifespan(_: FastAPI):
 
     log.info(f"[APP] Stopping tasks")
 
-    scan_task.cancel()
-    status_task.cancel()
-    fastresume_task.cancel()
-    alerts_task.cancel()
-    sync_task.cancel()
+    for task in APP_TASKS:
+        try:
+            task.cancel()
+        except Exception:
+            pass
 
     log.info("[APP] Saving fastresume data")
 
