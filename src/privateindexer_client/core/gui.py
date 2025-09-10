@@ -17,7 +17,7 @@ async def root():
 @router.get("/dashboard", response_class=HTMLResponse)
 async def dashboard(request: Request):
     log.debug("[GUI] Dashboard loaded")
-    return templates.TemplateResponse("dashboard.html", context={"request": request})
+    return templates.TemplateResponse(name="dashboard.html", request=request)
 
 
 @router.get("/dashboard/maindata")
@@ -51,5 +51,6 @@ async def dashboard_user_stats():
     log.debug("[GUI] User statistics fetched")
     user_data = await utils.fetch_indexer_user_data()
     if not user_data:
+        # we don't log the error to console here because fetch_indexer_user_data() does for us
         return HTTPException(status_code=500, detail="Failed to fetch user stats")
     return user_data
