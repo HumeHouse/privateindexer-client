@@ -118,7 +118,7 @@ async def add_torrent_for_seeding(torrent_file: str, save_path: str) -> bool:
         params["flags"] = flags
 
         # add to the libtorrent session
-        libtorrent_session.add_torrent(params)
+        libtorrent_session.async_add_torrent(params)
         log.info(f"[TORCLIENT] Added torrent for seeding: {torrent_name}")
         return True
     except Exception as e:
@@ -302,7 +302,7 @@ async def load_fastresume_data():
                 # attach the torrent info to the params
                 atp.ti = lt.torrent_info(torrent_path)
                 # add the torrent to the session
-                libtorrent_session.add_torrent(atp)
+                libtorrent_session.async_add_torrent(atp)
         except Exception as e:
             log.error(f"[FASTRESUME] Error in fastresume data post-processing: {e}")
 
