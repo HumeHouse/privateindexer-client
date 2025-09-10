@@ -172,7 +172,7 @@ async def lifespan(_: FastAPI):
     # ensure any exceptions from save_task are raised
     await save_task
 
-    log.info("[APP] Shutdown complete")
+    log.info("[APP] Shutdown complete, closing libtorrent session")
 
 
 app = FastAPI(lifespan=lifespan)
