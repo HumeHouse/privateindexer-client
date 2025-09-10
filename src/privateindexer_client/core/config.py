@@ -40,6 +40,8 @@ ANNOUNCE_TRACKER_URL = "https://tracker.humehouse.com/announce" + "?apikey=" + A
 ANNOUNCE_IP = os.getenv("ANNOUNCE_IP")
 TORRENTING_PORT = int(os.getenv("TORRENTING_PORT", 6881))
 
+PURGE_UNTRACKED_TORRENTS = os.getenv("PURGE_UNTRACKED_TORRENTS", False)
+
 config_lock = threading.Lock()
 _config_cache = None
 
