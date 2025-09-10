@@ -78,31 +78,38 @@ async def lifespan(_: FastAPI):
         log.error(f"[APP] No root folders accessible for tracking")
         exit(1)
 
-    # attempt to authenticate with the API to validate the API key and check our external IP, otherwise warn console
+    log.debug(f"[APP] Opening libtorrent session")
+    # init the libtorrent client session
+    torrent_client.create_libtorrent_session(APP_VERSION)
+    log.info(f"[APP] Started libtorrent session - listening on port {TORRENTING_PORT}")
+
+    # attempt to authenticate with the API to validate the API key and check our external IP/port accessibility, otherwise warn console
+    log.debug(f"[APP] Trying to connect to PrivateIndexer server")
     try:
         async with httpx_request.get_client() as client:
-            params = {"v": APP_VERSION}
+            params = {"v": APP_VERSION, "port": TORRENTING_PORT}
             if ANNOUNCE_IP:
                 params["announce_ip"] = ANNOUNCE_IP
-            indexer_response = await client.get(INDEXER_API_URL + "/user", headers={"X-API-Key": API_KEY}, params=params)
+            indexer_response = await client.get(INDEXER_API_URL + "/user", headers={"X-API-Key": API_KEY}, params=params, timeout=10)
             status_code = indexer_response.status_code
             if status_code == 200:
                 response_json = indexer_response.json()
                 user_label = response_json["user_label"]
                 announce_ip = response_json["announce_ip"]
-                log.info(f"[APP] Connected to PrivateIndexer server as '{user_label}' from '{announce_ip}'")
+                log.info(f"[APP] Connected to PrivateIndexer server as '{user_label}'")
+                is_reachable = response_json["is_reachable"]
+                if is_reachable:
+                    log.info(f"[APP] PrivateIndexer server successfully verified we are REACHABLE at {announce_ip}:{TORRENTING_PORT}")
+                else:
+                    log.error(f"[APP] PrivateIndexer server is UNABLE TO REACH US at {announce_ip}:{TORRENTING_PORT} - check your port forwarding settings")
             elif status_code == 403:
                 log.error("[APP] API key rejected by PrivateIndexer server")
                 exit(1)
             else:
-                log.warning(f"[APP] Unable to validate API key with PrivateIndexer server - server could be down (status {status_code})")
+                log.warning(f"[APP] Unable to validate API key and port status with PrivateIndexer server - server could be down (status {status_code})")
     except Exception as e:
         log.error(f"[APP] Failed to validate API key: {e}")
         exit(1)
-
-    log.info(f"[APP] Creating libtorrent session, listening on port {TORRENTING_PORT}")
-    # init the libtorrent client session
-    torrent_client.create_libtorrent_session(APP_VERSION)
 
     # load the fastresume data into the client session using background task
     asyncio.create_task(torrent_client.load_fastresume_data())
