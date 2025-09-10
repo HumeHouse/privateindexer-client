@@ -4,7 +4,7 @@ import threading
 
 from privateindexer_client.core.logger import log
 
-APP_VERSION = "1.3.2"
+APP_VERSION = "1.3.3"
 
 # gather/set environment variables for usage later
 DATABASE_FILE = "/app/data/torrents.db"
@@ -21,15 +21,13 @@ TORZNAB_CATEGORY_PATHS = []
 
 INDEXER_API_URL = "https://indexer.humehouse.com"
 
-MAX_THREADS = int(os.getenv("MAX_THREADS", "8"))
+MAX_THREADS = int(os.getenv("MAX_THREADS", 8))
 
 SYNC_INTERVAL = 60 * 60
-SCAN_INTERVAL = 60 * int(os.getenv("SCAN_INTERVAL", "30"))
-FASTRESUME_INTERVAL = 60 * int(os.getenv("FASTRESUME_INTERVAL", "60"))
+SCAN_INTERVAL = 60 * int(os.getenv("SCAN_INTERVAL", 30))
+SCAN_BATCH_SIZE = int(os.getenv("SCAN_BATCH_SIZE", 128))
 
-# TODO: deprecated - remove in upcoming release
-MOVIE_DIR = os.getenv("MOVIE_DIR")
-MOVIE_EXTENSIONS = os.getenv("MOVIE_EXTENSIONS", "mp4,mkv,m4v,avi").split(",")
+FASTRESUME_INTERVAL = 60 * int(os.getenv("FASTRESUME_INTERVAL", 60))
 
 RADARR_URL = (os.getenv("RADARR_URL", "")).strip("/")
 RADARR_API_KEY = os.getenv("RADARR_API_KEY")
@@ -41,7 +39,9 @@ API_KEY = os.getenv("API_KEY")
 ANNOUNCE_TRACKER_URL = "https://tracker.humehouse.com/announce" + "?apikey=" + API_KEY
 
 ANNOUNCE_IP = os.getenv("ANNOUNCE_IP")
-TORRENTING_PORT = int(os.getenv("TORRENTING_PORT", "6881"))
+TORRENTING_PORT = int(os.getenv("TORRENTING_PORT", 6881))
+
+PURGE_UNTRACKED_TORRENTS = os.getenv("PURGE_UNTRACKED_TORRENTS", False)
 
 config_lock = threading.Lock()
 _config_cache = None

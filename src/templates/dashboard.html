@@ -15,6 +15,23 @@
             margin: 0;
         }
 
+        #torrents-table-container table {
+            width: 100%;
+        }
+
+        #torrents-table-container thead {
+            position: sticky;
+            top: 0;
+            z-index: 2;
+        }
+
+        #torrents-table-container td:first-child {
+            max-width: 900px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            text-wrap: nowrap;
+        }
+
         .logo {
             width: 55px;
             height: 55px;
@@ -146,8 +163,10 @@
     <div class="d-flex justify-content-between align-items-center my-1">
         <div class="d-flex align-items-center">
             <img class="logo" src="/static/logo.png" alt="logo">
-            <h3 class="ms-2">PrivateIndexer Dashboard</h3>
+            <h4 class="ms-2">PrivateIndexer</h4>
         </div>
+
+        <div id="scanner-status"></div>
 
         <!-- Client-visible stats -->
         <div id="client-stats" class="d-flex gap-3 align-items-center my-2">
@@ -188,19 +207,17 @@
                 <small class="text-muted d-block">PrivateIndexer Server Stats</small>
             </div>
             <div class="text-center text-info">
-                <span class="fw-bold" id="torrents-added">0</span><br><small>Torrents</small>
+                <span class="fw-bold" id="torrents-added">0</span><br><small>Uploads</small>
             </div>
             <div class="text-center text-danger">
-                <span class="fw-bold" id="total-download">0</span><br><small>DL</small>
+                <span class="fw-bold" id="total-download">0</span> (<span class="fw-bold"
+                                                                          id="currently-leeching">0</span>)
+                <br><small>DL</small> (<small>L</small>)
             </div>
             <div class="text-center text-success">
-                <span class="fw-bold" id="total-upload">0</span><br><small>UL</small>
-            </div>
-            <div class="text-center text-danger">
-                <span class="fw-bold" id="currently-leeching">0</span><br><small>L</small>
-            </div>
-            <div class="text-center text-success">
-                <span class="fw-bold" id="currently-seeding">0</span><br><small>S</small>
+                <span class="fw-bold" id="total-upload">0</span> (<span class="fw-bold"
+                                                                        id="currently-seeding">0</span>)
+                <br><small>UL</small> (<small>S</small>)
             </div>
             <div class="text-center">
                 <span class="fw-bold" id="peers-total">0</span><br><small>Swarm</small>
@@ -213,7 +230,7 @@
 
     <div id="torrents-table-container" class="table-responsive flex-grow-1">
         <table class="table table-striped table-bordered table-hover">
-            <thead>
+            <thead class="bg-body">
             <tr>
                 <th data-column="name" class="sortable d-flex align-items-center">
                     <span class="sort-label flex-grow-1">Name</span>
@@ -365,6 +382,9 @@
 
                 // update client-visible stats
                 updateClientStats(data["torrents"], data["server_state"]);
+
+                // update the scanner progress
+                updateScannerStats(data["scanner_status"]);
             })
             .catch(e => console.error("Error fetching main data:", e));
 
@@ -402,6 +422,79 @@
             }
             $label.text(text);
         });
+    }
+
+    function updateScannerStats(scanner_status) {
+        let state = scanner_status["state"];
+        let total = scanner_status["total_items"];
+        let done = scanner_status["done_items"];
+
+        let scannerStatus;
+
+        if (state === 1) {
+            // scan task is in the pre-processing state
+            scannerStatus = `
+                <div>
+                    <span class="fw-bold text-warning">
+                        Scan: Pre-scan
+                        <div class="spinner-border spinner-border-sm text-warning ms-2" role="status"></div>
+                    </span>
+                </div>
+            `;
+        } else if (state === 2) {
+            // scan task is in the scanning state
+            let percent = ((done / total) * 100).toFixed(1);
+            scannerStatus = `
+                <div>
+                    <span class="fw-bold text-info">
+                        Scan: Scanning
+                        <div class="spinner-border spinner-border-sm text-info ms-2" role="status"></div>
+                    </span><br>
+                    <span class="fw-bold">${done} / ${total}</span>
+                    <span class="text-muted">(${percent}%)</span>
+                    <div class="progress mt-1" style="height: 10px;">
+                        <div class="progress-bar bg-info" role="progressbar" style="width: ${percent}%;">
+                        </div>
+                    </div>
+                </div>
+            `;
+        } else if (state === 3) {
+            // scan task is in the scanning state
+            let percent = ((done / total) * 100).toFixed(1);
+            scannerStatus = `
+                <div>
+                    <span class="fw-bold text-primary">
+                        Scan: Processing
+                        <div class="spinner-border spinner-border-sm text-primary ms-2" role="status"></div>
+                    </span><br>
+                    <span class="fw-bold">${done} / ${total}</span>
+                    <span class="text-muted">(${percent}%)</span>
+                    <div class="progress mt-1" style="height: 10px;">
+                        <div class="progress-bar bg-primary" role="progressbar" style="width: ${percent}%;">
+                        </div>
+                    </div>
+                </div>
+            `;
+        } else if (state === 4) {
+            // scan task is in the post-scan state
+            scannerStatus = `
+                <div>
+                    <span class="fw-bold text-success">
+                        Scan: Post-processing
+                        <div class="spinner-border spinner-border-sm text-success ms-2" role="status"></div>
+                    </span>
+                </div>
+            `;
+        } else {
+            // nothing is scanning, just show idle
+            scannerStatus = `
+                <div>
+                    <span class="fw-bold text-secondary">Scan: Idle</span>
+                </div>
+            `;
+        }
+
+        $("#scanner-status").html(scannerStatus);
     }
 
     function updateClientStats(torrents, stats) {
@@ -498,14 +591,6 @@
         return [h, m, s].map(v => String(v).padStart(2, '0')).join(":");
     }
 
-    function truncateString(str, maxLength, ending = '...') {
-        if (str.length > maxLength) {
-            return str.slice(0, maxLength - ending.length) + ending;
-        } else {
-            return str;
-        }
-    }
-
     function renderTable(torrents) {
         const $tbody = $("#torrents-container");
         const filter = $('#filter-name').val().toLowerCase() || '';
@@ -526,7 +611,7 @@
             row.toggleClass("d-none", !torrent["name"].toLowerCase().includes(filter));
 
             row.html(`
-                <td>${truncateString(torrent["name"], 100)}</td>
+                <td>${torrent["name"]}</td>
                 <td>${formatBytes(torrent["size"])}</td>
                 <td>
                     <div class="progress" style="height:1.5rem;">
