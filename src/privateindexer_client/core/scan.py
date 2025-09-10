@@ -156,15 +156,17 @@ async def periodic_scan_task():
                         await database.execute("UPDATE torrents SET download_path = ? WHERE id = ?", (download_path, torrent["id"],))
                         log.info(f"[SCAN] Updated the download path for '{torrent["name"]}'")
 
-            torrent_paths = [torrent["torrent_path"] for torrent in torrents]
-            for fname in os.listdir(TORRENTS_DIR):
-                # ignore non-torrent files
-                if not fname.endswith(".torrent"):
-                    continue
-                torrent_path = os.path.join(TORRENTS_DIR, fname)
-                if torrent_path not in torrent_paths:
-                    os.unlink(torrent_path)
-                    log.info(f"[SCAN] Removed danlging torrent file '{torrent_path}'")
+            # only purge dangling torrents if the user has this option enabled
+            if PURGE_UNTRACKED_TORRENTS:
+                torrent_paths = [torrent["torrent_path"] for torrent in torrents]
+                for fname in os.listdir(TORRENTS_DIR):
+                    # ignore non-torrent files
+                    if not fname.endswith(".torrent"):
+                        continue
+                    torrent_path = os.path.join(TORRENTS_DIR, fname)
+                    if torrent_path not in torrent_paths:
+                        os.unlink(torrent_path)
+                        log.info(f"[SCAN] Removed danlging torrent file '{torrent_path}'")
 
             delta = datetime.datetime.now() - before
             log.info(f"[SCAN] Media library scan completed ({delta}): "
