@@ -15,6 +15,23 @@
             margin: 0;
         }
 
+        #torrents-table-container table {
+            width: 100%;
+        }
+
+        #torrents-table-container thead {
+            position: sticky;
+            top: 0;
+            z-index: 2;
+        }
+
+        #torrents-table-container td:first-child {
+            max-width: 900px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            text-wrap: nowrap;
+        }
+
         .logo {
             width: 55px;
             height: 55px;
@@ -213,7 +230,7 @@
 
     <div id="torrents-table-container" class="table-responsive flex-grow-1">
         <table class="table table-striped table-bordered table-hover">
-            <thead>
+            <thead class="bg-body">
             <tr>
                 <th data-column="name" class="sortable d-flex align-items-center">
                     <span class="sort-label flex-grow-1">Name</span>
@@ -498,14 +515,6 @@
         return [h, m, s].map(v => String(v).padStart(2, '0')).join(":");
     }
 
-    function truncateString(str, maxLength, ending = '...') {
-        if (str.length > maxLength) {
-            return str.slice(0, maxLength - ending.length) + ending;
-        } else {
-            return str;
-        }
-    }
-
     function renderTable(torrents) {
         const $tbody = $("#torrents-container");
         const filter = $('#filter-name').val().toLowerCase() || '';
@@ -526,7 +535,7 @@
             row.toggleClass("d-none", !torrent["name"].toLowerCase().includes(filter));
 
             row.html(`
-                <td>${truncateString(torrent["name"], 100)}</td>
+                <td>${torrent["name"]}</td>
                 <td>${formatBytes(torrent["size"])}</td>
                 <td>
                     <div class="progress" style="height:1.5rem;">
