@@ -27,9 +27,6 @@ SYNC_INTERVAL = 60 * 60
 SCAN_INTERVAL = 60 * int(os.getenv("SCAN_INTERVAL", "30"))
 FASTRESUME_INTERVAL = 60 * int(os.getenv("FASTRESUME_INTERVAL", "60"))
 
-# TODO: deprecated - remove in upcoming release
-MOVIE_DIR = os.getenv("MOVIE_DIR")
-MOVIE_EXTENSIONS = os.getenv("MOVIE_EXTENSIONS", "mp4,mkv,m4v,avi").split(",")
 
 RADARR_URL = (os.getenv("RADARR_URL", "")).strip("/")
 RADARR_API_KEY = os.getenv("RADARR_API_KEY")
