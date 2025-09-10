@@ -14,7 +14,15 @@ SCAN_TOTAL_ITEMS: int = 0
 SCAN_DONE_ITEMS: int = 0
 
 
-async def scan_media_library():
+class ScannerStates(Enum):
+    IDLE = 0
+    PRE_SCAN = 1
+    SCANNING = 2
+    PROCESSING = 3
+    POST_SCAN = 4
+
+
+async def scan_media_library() -> tuple[int, int, int, int]:
     """
     Main loop for scanning media libraries defined by user
     Will walk over all defined category paths, each single file gets turned into a single torrent file
@@ -22,6 +30,11 @@ async def scan_media_library():
     Torrent creation is batched into a multi-threaded executor, number of threads defined by user
     Will attempt to use send_torrent_to_indexer() and seed_torrents() for each torrent if conditions are met
     """
+    global SCAN_PROCESS_STATE, SCAN_TOTAL_ITEMS, SCAN_DONE_ITEMS
+
+    # set scan state to pre-scan
+    SCAN_PROCESS_STATE = ScannerStates.PRE_SCAN.value
+
     torrents = await database.fetch_all("SELECT media_path, torrent_path FROM torrents")
     existing_media = {t["media_path"]: t["torrent_path"] for t in torrents}
 
@@ -31,13 +44,23 @@ async def scan_media_library():
     updated_files = 0
 
     loop = asyncio.get_running_loop()
-    futures = []
-
     files = await utils.get_all_media_files()
+
+    # set scan state to scanning and update progress values
+    SCAN_TOTAL_ITEMS = len(files)
+    SCAN_DONE_ITEMS = 0
+    SCAN_PROCESS_STATE = ScannerStates.SCANNING.value
+
+    # create a list to store files that need to be processed
+    to_process: list[tuple[str, str | None]] = []
+
     # loop through the files we intend to scan
     for file_path in files:
+        # make sure we can see whatever was passed through from Radarr/Sonarr
         if not os.path.exists(file_path):
             log.debug(f"[SCAN] File path not found or accessible, skipped: {file_path}")
+            # increment global items counter
+            SCAN_DONE_ITEMS += 1
             continue
 
         filename = os.path.basename(file_path)
@@ -49,6 +72,8 @@ async def scan_media_library():
             # only ignore the creation process if the torrent file exists
             if os.path.exists(torrent_path):
                 ignored_files += 1
+                # increment global items counter
+                SCAN_DONE_ITEMS += 1
                 continue
 
         log.debug(f"[SCAN] Trying to locate torrent file for: '{file_path}'")
@@ -67,42 +92,81 @@ async def scan_media_library():
                     # update the old media location to match current location
                     await database.execute("UPDATE torrents SET media_path = ?, category = ? WHERE id = ?", (file_path, category_id, result["id"],))
                     log.info(f"[SCAN] Updated the media path for '{result["name"]}'")
+                    # increment global items counter
+                    SCAN_DONE_ITEMS += 1
                     continue
                 else:
                     log.info(f"[SCAN] File was renamed, media path not updated: '{result["name"]}'")
 
-        log.debug(f"[SCAN] Queueing for torrent creation: '{file_path}'")
-        # dispatch the torrent creation to the pool of worker threads
-        future = loop.run_in_executor(CREATE_EXECUTOR, utils.create_torrent_threadsafe, file_path, torrent_file)
-        futures.append(future)
+        # once we've reached this point, we should add the file to the processing queue to be batched
+        to_process.append((file_path, torrent_file))
+        # increment global items counter
+        SCAN_DONE_ITEMS += 1
 
-    if len(futures) > 0:
-        log.info(f"[SCAN] Queued {len(futures)} torrents for creation")
+    # stop here if we don't have any new items to process
+    if not to_process:
+        return total_files, ignored_files, updated_files, created_files
 
-    # collect the workers as they finish and process their output
-    async for future in asyncio.as_completed(futures):
-        try:
-            metadata, is_new_file = await future
-            if metadata:
+    # set scan state to processing and update global variables to track the processing files now
+    SCAN_TOTAL_ITEMS = len(to_process)
+    SCAN_DONE_ITEMS = 0
+    SCAN_PROCESS_STATE = ScannerStates.PROCESSING.value
 
-                # attempt to send torrent file to indexer server
-                uploaded = await utils.send_torrent_to_indexer(metadata["torrent_path"], metadata["category"])
+    # batch the items into processing groups to peridically save progress to database
+    batches = itertools.batched(to_process, SCAN_BATCH_SIZE)
+    # calculate number of batches we made based on number of items we need to process
+    num_batches = (len(to_process) + SCAN_BATCH_SIZE - 1) // SCAN_BATCH_SIZE
 
-                # add the data for the torrent to the database
-                await utils.add_torrent_to_database(metadata["name"], metadata["size"], metadata["torrent_path"], uploaded, metadata["files"], metadata["category"],
-                                                    media_path=metadata["media_path"], hash_v1=metadata["hash_v1"], hash_v2=metadata["hash_v2"])
+    log.info(f"[SCAN] {num_batches} batches created for processing {SCAN_TOTAL_ITEMS} items")
 
-                if is_new_file:
-                    created_files += 1
-                    # attempt to add the torrent to the libtorrent session right away for immediate seeding
-                    if await torrent_client.add_torrent_for_seeding(metadata["torrent_path"], metadata["media_path"]):
-                        log.info(f"[SCAN] Created and started seeding new torrent: {metadata["name"]}")
+    batch_index = 0
+    # process each batch of files, one at a time, synchronously
+    for batched_job in batches:
+        batch_index += 1
+        futures = []
+
+        log.info(f"[SCAN] Starting batch {batch_index} of {num_batches} ({len(batched_job)} items)")
+
+        # add each file/torrent pair to the execution queue
+        for job_item in batched_job:
+            file_path, torrent_file = job_item
+            log.debug(f"[SCAN] Queueing file for processing: '{file_path}'")
+
+            # dispatch the torrent creation to the pool of worker threads
+            future = loop.run_in_executor(SCAN_EXECUTOR, utils.create_torrent_threadsafe, file_path, torrent_file)
+            futures.append(future)
+
+        log.info(f"[SCAN] Queued {len(futures)} files for processing")
+
+        # collect the workers as they finish and process their output
+        async for future in asyncio.as_completed(futures):
+            # keep a rolling count of the total files completed in global variable
+            SCAN_DONE_ITEMS += 1
+            try:
+                metadata, is_new_file = await future
+                if metadata:
+
+                    # attempt to send torrent file to indexer server
+                    uploaded = await utils.send_torrent_to_indexer(metadata["torrent_path"], metadata["category"])
+
+                    # add the data for the torrent to the database
+                    await utils.add_torrent_to_database(metadata["name"], metadata["size"], metadata["torrent_path"], uploaded, metadata["files"],
+                                                        metadata["category"],
+                                                        media_path=metadata["media_path"], hash_v1=metadata["hash_v1"], hash_v2=metadata["hash_v2"])
+
+                    if is_new_file:
+                        created_files += 1
+                        # attempt to add the torrent to the libtorrent session right away for immediate seeding
+                        if await torrent_client.add_torrent_for_seeding(metadata["torrent_path"], metadata["media_path"]):
+                            log.info(f"[SCAN] Created and started seeding new torrent: {metadata["name"]}")
+                        else:
+                            log.warning(f"[SCAN] Created but failed to start seeding new torrent: {metadata["name"]}")
                     else:
-                        log.warning(f"[SCAN] Created but failed to start seeding new torrent: {metadata["name"]}")
-                else:
-                    log.debug(f"[SCAN] Updated existing torrent: {metadata["name"]}")
-        except Exception as e:
-            log.error(f"[SCAN] Error in torrent post-torrent-creation process: {e}")
+                        log.debug(f"[SCAN] Updated existing torrent: {metadata["name"]}")
+            except Exception as e:
+                log.error(f"[SCAN] Error in torrent post-torrent-creation process: {e}")
+
+        log.info(f"[SCAN] Completed batch {batch_index} of {num_batches} ({SCAN_DONE_ITEMS} of {SCAN_TOTAL_ITEMS} total items processed)")
 
     return total_files, ignored_files, updated_files, created_files
 
@@ -112,6 +176,7 @@ async def periodic_scan_task():
     Wraps scan_media_library() asynchronously and periodically scans media libraries defined by user
     Will also attempt to resend failed uploads torrents to the PrivateIndexer server after each scan
     """
+    global SCAN_PROCESS_STATE
     log.debug("[SCAN] Task loop started")
     while True:
         try:
@@ -119,6 +184,9 @@ async def periodic_scan_task():
             before = datetime.datetime.now()
 
             total_files, ignored_files, updated_files, created_files = await scan_media_library()
+
+            # update the scan state
+            SCAN_PROCESS_STATE = ScannerStates.POST_SCAN.value
 
             removed_entries = 0
             # here we check to make sure the media files for a torrent still exist on the disk, otherwise remove the torrent from the database
@@ -180,4 +248,8 @@ async def periodic_scan_task():
 
         except Exception as e:
             log.error(f"[SCAN] Error during periodic scan: {e}")
+
+        # set scan state back to idle
+        SCAN_PROCESS_STATE = ScannerStates.IDLE.value
+
         await asyncio.sleep(SCAN_INTERVAL)
