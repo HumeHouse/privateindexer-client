@@ -595,8 +595,8 @@ def save_persistent_stats(all_time_download: int, all_time_upload: int):
 
 
 def map_stats_to_qbit(
-        stats_now: dict[str, int],
-        time_now: float,
+        stats_now: dict[str, int] | None,
+        time_now: float | None,
         stats_prev: dict[str, int] | None,
         time_prev: float | None,
         all_time_download: int,
@@ -608,8 +608,8 @@ def map_stats_to_qbit(
     mapped = {}
 
     # session totals
-    total_download = stats_now["net.recv_bytes"]
-    total_upload = stats_now["net.sent_bytes"]
+    total_download = stats_now["net.recv_bytes"] if stats_now else 0
+    total_upload = stats_now["net.sent_bytes"] if stats_now else 0
     mapped["dl_info_data"] = total_download
     mapped["up_info_data"] = total_upload
 
@@ -624,12 +624,12 @@ def map_stats_to_qbit(
         mapped["global_ratio"] = 0.0
 
     # rates (compare with prev snapshot if available)
-    if stats_prev and time_prev:
+    if stats_prev and time_now and time_prev:
         # offset the interval based on the previous timestamp
         interval = max(time_now - time_prev, 1e-6)
 
-        prev_download = stats_prev["net.recv_bytes"]
-        prev_upload = stats_prev["net.sent_bytes"]
+        prev_download = stats_prev.get("net.recv_bytes", 0)
+        prev_upload = stats_prev.get("net.sent_bytes", 0)
 
         mapped["dl_info_speed"] = int((total_download - prev_download) / interval)
         mapped["up_info_speed"] = int((total_upload - prev_upload) / interval)
@@ -638,7 +638,7 @@ def map_stats_to_qbit(
         mapped["up_info_speed"] = 0
 
     # base the connection status on the number of connections or if there is incoming traffic
-    if stats_now.get("net.has_incoming_connections", 0) or mapped["up_info_speed"] > 0:
+    if (stats_now and stats_now.get("net.has_incoming_connections", 0)) or mapped["up_info_speed"] > 0:
         mapped["connection_status"] = "connected"
     else:
         mapped["connection_status"] = "disconnected"
