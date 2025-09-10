@@ -21,12 +21,12 @@ TORZNAB_CATEGORY_PATHS = []
 
 INDEXER_API_URL = "https://indexer.humehouse.com"
 
-MAX_THREADS = int(os.getenv("MAX_THREADS", "8"))
+MAX_THREADS = int(os.getenv("MAX_THREADS", 8))
 
 SYNC_INTERVAL = 60 * 60
-SCAN_INTERVAL = 60 * int(os.getenv("SCAN_INTERVAL", "30"))
-FASTRESUME_INTERVAL = 60 * int(os.getenv("FASTRESUME_INTERVAL", "60"))
+SCAN_INTERVAL = 60 * int(os.getenv("SCAN_INTERVAL", 30))
 
+FASTRESUME_INTERVAL = 60 * int(os.getenv("FASTRESUME_INTERVAL", 60))
 
 RADARR_URL = (os.getenv("RADARR_URL", "")).strip("/")
 RADARR_API_KEY = os.getenv("RADARR_API_KEY")
@@ -38,7 +38,7 @@ API_KEY = os.getenv("API_KEY")
 ANNOUNCE_TRACKER_URL = "https://tracker.humehouse.com/announce" + "?apikey=" + API_KEY
 
 ANNOUNCE_IP = os.getenv("ANNOUNCE_IP")
-TORRENTING_PORT = int(os.getenv("TORRENTING_PORT", "6881"))
+TORRENTING_PORT = int(os.getenv("TORRENTING_PORT", 6881))
 
 config_lock = threading.Lock()
 _config_cache = None
