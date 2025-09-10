@@ -78,30 +78,24 @@ async def lifespan(_: FastAPI):
         log.error(f"[APP] No root folders accessible for tracking")
         exit(1)
 
-    # try to authenticate with the API to validate the API key and check our external IP, otherwise fail
+    # attempt to authenticate with the API to validate the API key and check our external IP, otherwise warn console
     try:
-        status_code = None
-        params = {}
-        if ANNOUNCE_IP:
-            params["announce_ip"] = ANNOUNCE_IP
-        while status_code not in (403, 200):
-            async with httpx_request.get_client() as client:
-                params = {"v": APP_VERSION}
-                if ANNOUNCE_IP:
-                    params["announce_ip"] = ANNOUNCE_IP
-                indexer_response = await client.get(INDEXER_API_URL + "/user", headers={"X-API-Key": API_KEY}, params=params)
-                status_code = indexer_response.status_code
-                if status_code == 200:
-                    response_json = indexer_response.json()
-                    user_label = response_json["user_label"]
-                    announce_ip = response_json["announce_ip"]
-                    log.info(f"[APP] Connected to PrivateIndexer server as '{user_label}' from '{announce_ip}'")
-                elif status_code == 403:
-                    log.error("[APP] API key rejected by PrivateIndexer server")
-                    exit(1)
-                else:
-                    log.error("[APP] PrivateIndexer server unavailable, trying again in 30 seconds")
-                    await asyncio.sleep(30)
+        async with httpx_request.get_client() as client:
+            params = {"v": APP_VERSION}
+            if ANNOUNCE_IP:
+                params["announce_ip"] = ANNOUNCE_IP
+            indexer_response = await client.get(INDEXER_API_URL + "/user", headers={"X-API-Key": API_KEY}, params=params)
+            status_code = indexer_response.status_code
+            if status_code == 200:
+                response_json = indexer_response.json()
+                user_label = response_json["user_label"]
+                announce_ip = response_json["announce_ip"]
+                log.info(f"[APP] Connected to PrivateIndexer server as '{user_label}' from '{announce_ip}'")
+            elif status_code == 403:
+                log.error("[APP] API key rejected by PrivateIndexer server")
+                exit(1)
+            else:
+                log.warning(f"[APP] Unable to validate API key with PrivateIndexer server - server could be down (status {status_code})")
     except Exception as e:
         log.error(f"[APP] Failed to validate API key: {e}")
         exit(1)
