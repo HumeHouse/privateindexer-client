@@ -7,8 +7,7 @@ from fastapi.staticfiles import StaticFiles
 
 from privateindexer_client.core import torrent_client, scan, api, gui, httpx_request, database, utils, sync, radarr, sonarr
 from privateindexer_client.core.config import TORRENTS_DIR, SCAN_INTERVAL, TORZNAB_CATEGORY_PATHS, INDEXER_API_URL, API_KEY, TORRENTING_PORT, \
-    DOWNLOADS_DIR, FASTRESUME_DIR, APP_VERSION, MAX_THREADS, FASTRESUME_INTERVAL, ANNOUNCE_IP, MOVIE_DIR, RADARR_URL, RADARR_API_KEY, SONARR_URL, \
-    SONARR_API_KEY
+    DOWNLOADS_DIR, FASTRESUME_DIR, APP_VERSION, MAX_THREADS, FASTRESUME_INTERVAL, ANNOUNCE_IP, RADARR_URL, RADARR_API_KEY, SONARR_URL, SONARR_API_KEY
 from privateindexer_client.core.logger import log
 
 
@@ -36,59 +35,48 @@ async def lifespan(_: FastAPI):
 
     log.info(f"[APP] Maximum threads: {MAX_THREADS}")
 
-    # TODO: deprecated - remove in upcoming release
-    # check if user is still pointing to legacy media sources
-    if utils.using_legacy_media_source():
-        log.warning(f"[APP] Legacy media scanner using MOVIE_DIR, MOVIE_EXTENSIONS, and EXCLUDE_REGEX are deprecated, use new Radarr and Sonarr environment variables")
-        # make sure media directory exists and index it with ID in the category paths
-        if not os.path.exists(MOVIE_DIR):
-            log.error(f"[APP] Movies directory doesn't exist: {MOVIE_DIR}")
+    # connect and set up Radarr if user has it configured
+    if RADARR_URL:
+        if not RADARR_API_KEY:
+            log.error(f"[APP] No API key provided for Radarr")
             exit(1)
-        log.info(f"[APP] Using movies directory: {MOVIE_DIR}")
-        TORZNAB_CATEGORY_PATHS.append({"id": 1000, "path": MOVIE_DIR})
-    else:
-        # connect and set up Radarr if user has it configured
-        if RADARR_URL:
-            if not RADARR_API_KEY:
-                log.error(f"[APP] No API key provided for Radarr")
-                exit(1)
 
-            root_folders = await radarr.fetch_root_folders()
-            log.info(f"[APP] Connected to Radarr")
+        root_folders = await radarr.fetch_root_folders()
+        log.info(f"[APP] Connected to Radarr")
 
-            # check each root folder for access and add to tracked paths
-            for root_folder in root_folders:
-                # skip if we can't access this directory
-                if not os.path.exists(root_folder):
-                    log.warning(f"[APP] Unable to access Radarr path: {root_folder}")
-                    continue
-                # add the root path to tracking
-                TORZNAB_CATEGORY_PATHS.append({"id": 1000, "path": root_folder})
-                log.info(f"[APP] Tracking Radarr path: {root_folder}")
+        # check each root folder for access and add to tracked paths
+        for root_folder in root_folders:
+            # skip if we can't access this directory
+            if not os.path.exists(root_folder):
+                log.warning(f"[APP] Unable to access Radarr path: {root_folder}")
+                continue
+            # add the root path to tracking
+            TORZNAB_CATEGORY_PATHS.append({"id": 1000, "path": root_folder})
+            log.info(f"[APP] Tracking Radarr path: {root_folder}")
 
-        # connect and set up Sonarr if user has it configured
-        if SONARR_URL:
-            if not SONARR_API_KEY:
-                log.error(f"[APP] No API key provided for Sonarr")
-                exit(1)
-
-            root_folders = await sonarr.fetch_root_folders()
-            log.info(f"[APP] Connected to Sonarr")
-
-            # check each root folder for access and add to tracked paths
-            for root_folder in root_folders:
-                # skip if we can't access this directory
-                if not os.path.exists(root_folder):
-                    log.warning(f"[APP] Unable to access Sonarr path: {root_folder}")
-                    continue
-                # add the root path to tracking
-                TORZNAB_CATEGORY_PATHS.append({"id": 5000, "path": root_folder})
-                log.info(f"[APP] Tracking Sonarr path: {root_folder}")
-
-        # make sure we have at least 1 directory to track, otherwise fail
-        if len(TORZNAB_CATEGORY_PATHS) == 0:
-            log.error(f"[APP] No root folders accessible for tracking")
+    # connect and set up Sonarr if user has it configured
+    if SONARR_URL:
+        if not SONARR_API_KEY:
+            log.error(f"[APP] No API key provided for Sonarr")
             exit(1)
+
+        root_folders = await sonarr.fetch_root_folders()
+        log.info(f"[APP] Connected to Sonarr")
+
+        # check each root folder for access and add to tracked paths
+        for root_folder in root_folders:
+            # skip if we can't access this directory
+            if not os.path.exists(root_folder):
+                log.warning(f"[APP] Unable to access Sonarr path: {root_folder}")
+                continue
+            # add the root path to tracking
+            TORZNAB_CATEGORY_PATHS.append({"id": 5000, "path": root_folder})
+            log.info(f"[APP] Tracking Sonarr path: {root_folder}")
+
+    # make sure we have at least 1 directory to track, otherwise fail
+    if len(TORZNAB_CATEGORY_PATHS) == 0:
+        log.error(f"[APP] No root folders accessible for tracking")
+        exit(1)
 
     # try to authenticate with the API to validate the API key and check our external IP, otherwise fail
     try:
