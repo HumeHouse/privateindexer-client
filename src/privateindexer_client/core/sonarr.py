@@ -32,7 +32,7 @@ async def fetch_tv_library() -> list[dict]:
             response.raise_for_status()
             series_list = response.json()
 
-            # asyncronously fetch episodes for the series
+            # asynchronously fetch episodes for the series
             tasks = [fetch_series_episodes(series["id"]) for series in series_list]
             results = await asyncio.gather(*tasks, return_exceptions=True)
 

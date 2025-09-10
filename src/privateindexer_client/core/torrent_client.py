@@ -118,7 +118,7 @@ async def add_torrent_for_seeding(torrent_file: str, save_path: str) -> bool:
         params["flags"] = flags
 
         # add to the libtorrent session
-        libtorrent_session.add_torrent(params)
+        libtorrent_session.async_add_torrent(params)
         log.info(f"[TORCLIENT] Added torrent for seeding: {torrent_name}")
         return True
     except Exception as e:
@@ -247,7 +247,7 @@ async def load_fastresume_data():
     """
     Load fastresume and torrent files from torrents dir into the session
     """
-    log.info("[FASTRESUME] Loading fastresume data into torrent client")
+    log.info("[FASTRESUME] Loading fastresume data into torrent client, this may take a while")
     before = datetime.datetime.now()
 
     # build a map of all the hashes and their respective torrent files
@@ -275,8 +275,11 @@ async def load_fastresume_data():
             log.info(f"[FASTRESUME] Removed dangling fastresume data with hash: {hash_v1}")
             continue
 
+        log.debug(f"[FASTRESUME] Queueing fastresume data processing for hash: {hash_v1}")
         # dispatch the fastresume file to the pool of worker threads
         futures.append(loop.run_in_executor(FASTRESUME_EXECUTOR, process_fastresume_file, fastresume_path, hash_v1, torrent_path))
+
+    log.info(f"[FASTRESUME] Queued {len(futures)} fastresume data files for processing")
 
     # collect results as they finish
     async for future in asyncio.as_completed(futures):
@@ -299,9 +302,11 @@ async def load_fastresume_data():
                 # attach the torrent info to the params
                 atp.ti = lt.torrent_info(torrent_path)
                 # add the torrent to the session
-                libtorrent_session.add_torrent(atp)
+                libtorrent_session.async_add_torrent(atp)
         except Exception as e:
             log.error(f"[FASTRESUME] Error in fastresume data post-processing: {e}")
+
+    log.info(f"[FASTRESUME] Checking for torrents without fastresume data")
 
     # loop through the torrents in the database
     for torrent in torrents:

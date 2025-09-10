@@ -1,5 +1,6 @@
 import asyncio
 import os
+from asyncio import Task
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -7,13 +8,35 @@ from fastapi.staticfiles import StaticFiles
 
 from privateindexer_client.core import torrent_client, scan, api, gui, httpx_request, database, utils, sync, radarr, sonarr
 from privateindexer_client.core.config import TORRENTS_DIR, SCAN_INTERVAL, TORZNAB_CATEGORY_PATHS, INDEXER_API_URL, API_KEY, TORRENTING_PORT, \
-    DOWNLOADS_DIR, FASTRESUME_DIR, APP_VERSION, MAX_THREADS, FASTRESUME_INTERVAL, ANNOUNCE_IP, MOVIE_DIR, RADARR_URL, RADARR_API_KEY, SONARR_URL, \
-    SONARR_API_KEY
+    DOWNLOADS_DIR, FASTRESUME_DIR, APP_VERSION, MAX_THREADS, FASTRESUME_INTERVAL, ANNOUNCE_IP, RADARR_URL, RADARR_API_KEY, SONARR_URL, SONARR_API_KEY
 from privateindexer_client.core.logger import log
+
+APP_TASKS: list[Task] = []
+
+
+async def startup_tasks():
+    """
+    Async startup task to ensure processes start in order
+    """
+    global APP_TASKS
+    # wait for fastresume data to load into the client session before continuing to avoid blocking other tasks
+    await torrent_client.load_fastresume_data()
+
+    log.info("[APP] Creating periodic tasks")
+
+    # send the system task to the asyncio scheduler and store them in the app state
+    APP_TASKS = [
+        asyncio.create_task(scan.periodic_scan_task(), name="scan"),
+        asyncio.create_task(torrent_client.periodic_torrent_status_task(), name="status"),
+        asyncio.create_task(torrent_client.periodic_fastresume_task(), name="fastresume"),
+        asyncio.create_task(torrent_client.periodic_alerts_task(), name="alerts"),
+        asyncio.create_task(sync.periodic_sync_task(), name="sync"),
+    ]
 
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
+    global APP_TASKS
     log.info(f"[APP] Starting PrivateIndexer client v{APP_VERSION}")
 
     # initialize the database
@@ -36,111 +59,85 @@ async def lifespan(_: FastAPI):
 
     log.info(f"[APP] Maximum threads: {MAX_THREADS}")
 
-    # TODO: deprecated - remove in upcoming release
-    # check if user is still pointing to legacy media sources
-    if utils.using_legacy_media_source():
-        log.warning(f"[APP] Legacy media scanner using MOVIE_DIR, MOVIE_EXTENSIONS, and EXCLUDE_REGEX are deprecated, use new Radarr and Sonarr environment variables")
-        # make sure media directory exists and index it with ID in the category paths
-        if not os.path.exists(MOVIE_DIR):
-            log.error(f"[APP] Movies directory doesn't exist: {MOVIE_DIR}")
-            exit(1)
-        log.info(f"[APP] Using movies directory: {MOVIE_DIR}")
-        TORZNAB_CATEGORY_PATHS.append({"id": 1000, "path": MOVIE_DIR})
-    else:
-        # connect and set up Radarr if user has it configured
-        if RADARR_URL:
-            if not RADARR_API_KEY:
-                log.error(f"[APP] No API key provided for Radarr")
-                exit(1)
-
-            root_folders = await radarr.fetch_root_folders()
-            log.info(f"[APP] Connected to Radarr")
-
-            # check each root folder for access and add to tracked paths
-            for root_folder in root_folders:
-                # skip if we can't access this directory
-                if not os.path.exists(root_folder):
-                    log.warning(f"[APP] Unable to access Radarr path: {root_folder}")
-                    continue
-                # add the root path to tracking
-                TORZNAB_CATEGORY_PATHS.append({"id": 1000, "path": root_folder})
-                log.info(f"[APP] Tracking Radarr path: {root_folder}")
-
-        # connect and set up Sonarr if user has it configured
-        if SONARR_URL:
-            if not SONARR_API_KEY:
-                log.error(f"[APP] No API key provided for Sonarr")
-                exit(1)
-
-            root_folders = await sonarr.fetch_root_folders()
-            log.info(f"[APP] Connected to Sonarr")
-
-            # check each root folder for access and add to tracked paths
-            for root_folder in root_folders:
-                # skip if we can't access this directory
-                if not os.path.exists(root_folder):
-                    log.warning(f"[APP] Unable to access Sonarr path: {root_folder}")
-                    continue
-                # add the root path to tracking
-                TORZNAB_CATEGORY_PATHS.append({"id": 5000, "path": root_folder})
-                log.info(f"[APP] Tracking Sonarr path: {root_folder}")
-
-        # make sure we have at least 1 directory to track, otherwise fail
-        if len(TORZNAB_CATEGORY_PATHS) == 0:
-            log.error(f"[APP] No root folders accessible for tracking")
+    # connect and set up Radarr if user has it configured
+    if RADARR_URL:
+        if not RADARR_API_KEY:
+            log.error(f"[APP] No API key provided for Radarr")
             exit(1)
 
-    # try to authenticate with the API to validate the API key and check our external IP, otherwise fail
+        root_folders = await radarr.fetch_root_folders()
+        log.info(f"[APP] Connected to Radarr")
+
+        # check each root folder for access and add to tracked paths
+        for root_folder in root_folders:
+            # skip if we can't access this directory
+            if not os.path.exists(root_folder):
+                log.warning(f"[APP] Unable to access Radarr path: {root_folder}")
+                continue
+            # add the root path to tracking
+            TORZNAB_CATEGORY_PATHS.append({"id": 1000, "path": root_folder})
+            log.info(f"[APP] Tracking Radarr path: {root_folder}")
+
+    # connect and set up Sonarr if user has it configured
+    if SONARR_URL:
+        if not SONARR_API_KEY:
+            log.error(f"[APP] No API key provided for Sonarr")
+            exit(1)
+
+        root_folders = await sonarr.fetch_root_folders()
+        log.info(f"[APP] Connected to Sonarr")
+
+        # check each root folder for access and add to tracked paths
+        for root_folder in root_folders:
+            # skip if we can't access this directory
+            if not os.path.exists(root_folder):
+                log.warning(f"[APP] Unable to access Sonarr path: {root_folder}")
+                continue
+            # add the root path to tracking
+            TORZNAB_CATEGORY_PATHS.append({"id": 5000, "path": root_folder})
+            log.info(f"[APP] Tracking Sonarr path: {root_folder}")
+
+    # make sure we have at least 1 directory to track, otherwise fail
+    if len(TORZNAB_CATEGORY_PATHS) == 0:
+        log.error(f"[APP] No root folders accessible for tracking")
+        exit(1)
+
+    log.debug(f"[APP] Opening libtorrent session")
+    # init the libtorrent client session
+    torrent_client.create_libtorrent_session(APP_VERSION)
+    log.info(f"[APP] Started libtorrent session - listening on port {TORRENTING_PORT}")
+
+    # attempt to authenticate with the API to validate the API key and check our external IP/port accessibility, otherwise warn console
+    log.debug(f"[APP] Trying to connect to PrivateIndexer server")
     try:
-        status_code = None
-        params = {}
-        if ANNOUNCE_IP:
-            params["announce_ip"] = ANNOUNCE_IP
-        while status_code not in (403, 200):
-            async with httpx_request.get_client() as client:
-                params = {"v": APP_VERSION}
-                if ANNOUNCE_IP:
-                    params["announce_ip"] = ANNOUNCE_IP
-                indexer_response = await client.get(INDEXER_API_URL + "/user", headers={"X-API-Key": API_KEY}, params=params)
-                status_code = indexer_response.status_code
-                if status_code == 200:
-                    response_json = indexer_response.json()
-                    user_label = response_json["user_label"]
-                    announce_ip = response_json["announce_ip"]
-                    log.info(f"[APP] Connected to PrivateIndexer server as '{user_label}' from '{announce_ip}'")
-                elif status_code == 403:
-                    log.error("[APP] API key rejected by PrivateIndexer server")
-                    exit(1)
+        async with httpx_request.get_client() as client:
+            params = {"v": APP_VERSION, "port": TORRENTING_PORT}
+            if ANNOUNCE_IP:
+                params["announce_ip"] = ANNOUNCE_IP
+            indexer_response = await client.get(INDEXER_API_URL + "/user", headers={"X-API-Key": API_KEY}, params=params, timeout=10)
+            status_code = indexer_response.status_code
+            if status_code == 200:
+                response_json = indexer_response.json()
+                user_label = response_json["user_label"]
+                announce_ip = response_json["announce_ip"]
+                log.info(f"[APP] Connected to PrivateIndexer server as '{user_label}'")
+                is_reachable = response_json["is_reachable"]
+                if is_reachable:
+                    log.info(f"[APP] PrivateIndexer server successfully verified we are REACHABLE at {announce_ip}:{TORRENTING_PORT}")
                 else:
-                    log.error("[APP] PrivateIndexer server unavailable, trying again in 30 seconds")
-                    await asyncio.sleep(30)
+                    log.error(f"[APP] PrivateIndexer server is UNABLE TO REACH US at {announce_ip}:{TORRENTING_PORT} - check your port forwarding settings")
+            elif status_code == 403:
+                log.error("[APP] API key rejected by PrivateIndexer server")
+                exit(1)
+            else:
+                log.warning(f"[APP] Unable to validate API key and port status with PrivateIndexer server - server could be down (status {status_code})")
     except Exception as e:
         log.error(f"[APP] Failed to validate API key: {e}")
         exit(1)
 
-    log.info(f"[APP] Creating libtorrent session, listening on port {TORRENTING_PORT}")
-    # init the libtorrent client session
-    torrent_client.create_libtorrent_session(APP_VERSION)
+    log.info("[APP] Running startup tasks")
 
-    # load the fastresume data into the client session using background task
-    asyncio.create_task(torrent_client.load_fastresume_data())
-
-    log.info("[APP] Starting periodic tasks")
-
-    # send the scan task to the asyncio scheduler
-    scan_task = asyncio.create_task(scan.periodic_scan_task())
-
-    # send the torrent status task to the asyncio scheduler
-    status_task = asyncio.create_task(torrent_client.periodic_torrent_status_task())
-
-    # send the torrent fastresume task to the asyncio scheduler
-    fastresume_task = asyncio.create_task(torrent_client.periodic_fastresume_task())
-
-    # send the torrent alerts task to the asyncio scheduler
-    alerts_task = asyncio.create_task(torrent_client.periodic_alerts_task())
-
-    # send the sync task to the asyncio scheduler
-    sync_task = asyncio.create_task(sync.periodic_sync_task())
+    asyncio.create_task(startup_tasks())
 
     log.info("[APP] API server started on 0.0.0.0:80")
 
@@ -154,11 +151,11 @@ async def lifespan(_: FastAPI):
 
     log.info(f"[APP] Stopping tasks")
 
-    scan_task.cancel()
-    status_task.cancel()
-    fastresume_task.cancel()
-    alerts_task.cancel()
-    sync_task.cancel()
+    for task in APP_TASKS:
+        try:
+            task.cancel()
+        except Exception:
+            pass
 
     log.info("[APP] Saving fastresume data")
 
@@ -175,7 +172,7 @@ async def lifespan(_: FastAPI):
     # ensure any exceptions from save_task are raised
     await save_task
 
-    log.info("[APP] Shutdown complete")
+    log.info("[APP] Shutdown complete, closing libtorrent session")
 
 
 app = FastAPI(lifespan=lifespan)
