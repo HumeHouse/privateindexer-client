@@ -5,6 +5,22 @@ from privateindexer_client.core.config import SONARR_URL, SONARR_API_KEY
 from privateindexer_client.core.logger import log
 
 
+async def test_connection():
+    """
+    Tests connection to Sonarr API
+    """
+    try:
+        async with httpx_request.get_client() as client:
+            response = await client.get(SONARR_URL + "/api", headers={"X-API-Key": SONARR_API_KEY}, timeout=30)
+
+            if response.status_code == 200:
+                log.info(f"[SONARR] Connected to Sonarr")
+            else:
+                log.warning(f"[SONARR] Failed to connect to Sonarr: {response.status_code}")
+    except Exception as e:
+        log.error(f"[SONARR] Exception while testing Sonarr connection: {e}")
+
+
 async def fetch_root_folders() -> list[str]:
     """
     Fetches the list of directories (root folders) Sonarr is configured to monitor

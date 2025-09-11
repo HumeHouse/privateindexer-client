@@ -3,6 +3,22 @@ from privateindexer_client.core.config import RADARR_URL, RADARR_API_KEY
 from privateindexer_client.core.logger import log
 
 
+async def test_connection():
+    """
+    Tests connection to Radarr API
+    """
+    try:
+        async with httpx_request.get_client() as client:
+            response = await client.get(RADARR_URL + "/api", headers={"X-API-Key": RADARR_API_KEY}, timeout=30)
+
+            if response.status_code == 200:
+                log.info(f"[RADARR] Connected to Radarr")
+            else:
+                log.warning(f"[RADARR] Failed to connect to Radarr: {response.status_code}")
+    except Exception as e:
+        log.error(f"[RADARR] Exception while testing Radarr connection: {e}")
+
+
 async def fetch_root_folders() -> list[str]:
     """
     Fetches the list of directories (root folders) Radarr is configured to monitor
