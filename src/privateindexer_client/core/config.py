@@ -4,7 +4,7 @@ import threading
 
 from privateindexer_client.core.logger import log
 
-APP_VERSION = "1.3.3"
+APP_VERSION = "1.3.4"
 
 # gather/set environment variables for usage later
 DATABASE_FILE = "/app/data/torrents.db"
@@ -16,8 +16,6 @@ DOWNLOADS_DIR = os.getenv("DOWNLOADS_DIR")
 STATS_FILE = "/app/data/stats.json"
 
 CONFIG_FILE = "/app/data/config.json"
-
-TORZNAB_CATEGORY_PATHS = []
 
 INDEXER_API_URL = "https://indexer.humehouse.com"
 

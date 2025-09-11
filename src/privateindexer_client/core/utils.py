@@ -8,18 +8,19 @@ import time
 import libtorrent as lt
 
 from privateindexer_client.core import config, httpx_request, database, radarr, sonarr
-from privateindexer_client.core.config import TORZNAB_CATEGORY_PATHS, API_KEY, INDEXER_API_URL, TORRENTS_DIR, FASTRESUME_DIR, APP_VERSION, STATS_FILE, SONARR_URL, \
+from privateindexer_client.core.config import API_KEY, INDEXER_API_URL, TORRENTS_DIR, FASTRESUME_DIR, APP_VERSION, STATS_FILE, SONARR_URL, \
     RADARR_URL
 from privateindexer_client.core.logger import log
 
 _file_piece_hash_cache: dict[str, dict[int, list[bytes]]] = {}
+_torznab_category_paths: list[dict[str, str]] = []
 
 
 def detect_torznab_category(file_path: str) -> int:
     """
     Tries to match the file's path with the known torznab category directories and returns its ID
     """
-    for cat_info in TORZNAB_CATEGORY_PATHS:
+    for cat_info in _torznab_category_paths:
         if file_path.startswith(cat_info["path"]):
             return cat_info["id"]
     return 0
@@ -102,15 +103,40 @@ async def send_torrent_to_indexer(torrent_path: str, category: int):
         return False
 
 
+async def update_torznab_category_paths() -> set[dict[str, str]]:
+    """
+    Fetches root folders from Radarr/Sonarr and updates the tracked paths with valid directories
+    """
+    global _torznab_category_paths
+    _torznab_category_paths = []
+
+    if RADARR_URL:
+        radarr_root_folders = await radarr.fetch_root_folders()
+
+        # add the root paths to tracking
+        for radarr_root_folder in radarr_root_folders:
+            _torznab_category_paths.append({"id": 1000, "path": radarr_root_folder})
+
+    if SONARR_URL:
+        sonarr_root_folders = await sonarr.fetch_root_folders()
+
+        # add the root paths to tracking
+        for sonarr_root_folder in sonarr_root_folders:
+            _torznab_category_paths.append({"id": 5000, "path": sonarr_root_folder})
+
+    return _torznab_category_paths
+
+
 async def get_all_media_files() -> list[str]:
     """
     Returns list of file paths for all tracked media
     """
+    tracked_root_folders = [cat_info.get("path") for cat_info in _torznab_category_paths]
     media_files = []
 
     # fetch all movie files from Radarr if configured
     if RADARR_URL:
-        radarr_movies = await radarr.fetch_movie_library()
+        radarr_movies = await radarr.fetch_movie_library(tracked_root_folders)
         for movie in radarr_movies:
             path = movie.get("movieFile", {}).get("path")
             if path:
@@ -118,7 +144,7 @@ async def get_all_media_files() -> list[str]:
 
     # fetch all TV episode files from Sonarr if configured
     if SONARR_URL:
-        sonarr_episodes = await sonarr.fetch_tv_library()
+        sonarr_episodes = await sonarr.fetch_tv_library(tracked_root_folders)
         for episode in sonarr_episodes:
             path = episode.get("path")
             if path:
