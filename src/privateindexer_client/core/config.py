@@ -17,8 +17,6 @@ STATS_FILE = "/app/data/stats.json"
 
 CONFIG_FILE = "/app/data/config.json"
 
-TORZNAB_CATEGORY_PATHS = []
-
 INDEXER_API_URL = "https://indexer.humehouse.com"
 
 MAX_THREADS = int(os.getenv("MAX_THREADS", 8))
