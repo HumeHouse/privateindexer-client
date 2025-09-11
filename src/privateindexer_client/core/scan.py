@@ -32,6 +32,14 @@ async def scan_media_library() -> tuple[int, int, int, int]:
     """
     global SCAN_PROCESS_STATE, SCAN_TOTAL_ITEMS, SCAN_DONE_ITEMS
 
+    # fetch updated root folders from Radarr/Sonarr
+    category_paths = await utils.update_torznab_category_paths()
+
+    # make sure we have at least 1 directory to scan, otherwise skip scan
+    if len(category_paths) == 0:
+        log.warning(f"[SCAN] No root folders accessible for scanning")
+        return 0, 0, 0, 0
+
     # set scan state to pre-scan
     SCAN_PROCESS_STATE = ScannerStates.PRE_SCAN.value
 
