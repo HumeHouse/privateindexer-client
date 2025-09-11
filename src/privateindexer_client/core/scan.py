@@ -193,17 +193,20 @@ async def periodic_scan_task():
 
             total_files, ignored_files, updated_files, created_files = await scan_media_library()
 
+            log.debug("[SCAN] Scan complete, running post-scan checks")
+
             # update the scan state
             SCAN_PROCESS_STATE = ScannerStates.POST_SCAN.value
 
             removed_entries = 0
-            # here we check to make sure the media files for a torrent still exist on the disk, otherwise remove the torrent from the database
+
+            # here we perform various database integrity and value correction checks
             torrents = await database.fetch_all("SELECT * FROM torrents")
             for torrent in torrents:
-                torrent_path = torrent["torrent_path"]
+                torrent_path: str = torrent["torrent_path"]
                 torrent_exists = os.path.exists(torrent_path)
-                media_path = torrent.get("media_path")
-                download_path = torrent.get("download_path")
+                media_path: str | None = torrent.get("media_path")
+                download_path: str | None = torrent.get("download_path")
                 media_exists = os.path.exists(media_path) if media_path else False
                 download_exists = os.path.exists(download_path) if download_path else False
 
@@ -221,13 +224,13 @@ async def periodic_scan_task():
                     continue
 
                 # case where only the media data is missing, nullify the media_path in the database
-                elif media_path and not media_exists:
+                if media_path and not media_exists:
                     updated_files += 1
                     await database.execute("UPDATE torrents SET media_path = NULL WHERE id = ?", (torrent["id"],))
                     log.info(f"[SCAN] Media files missing for '{torrent["name"]}', purged media path from database")
 
                 # case if this is an external torrent (should have a download path), try to locate the download media if it's missing
-                elif download_path and not download_exists:
+                if download_path and not download_exists:
                     log.debug(f"[SCAN] Trying to locate download media for: '{torrent_path}'")
                     download_path = utils.find_media_for_torrent(torrent_path, DOWNLOADS_DIR)
                     download_exists = os.path.exists(download_path) if download_path else False
@@ -237,6 +240,22 @@ async def periodic_scan_task():
                         updated_files += 1
                         await database.execute("UPDATE torrents SET download_path = ? WHERE id = ?", (download_path, torrent["id"],))
                         log.info(f"[SCAN] Updated the download path for '{torrent["name"]}'")
+
+                # case where media exists but the torznab category is unknown (0), try to fix it
+                if media_exists and torrent["category"] == 0:
+                    category_id = utils.detect_torznab_category(media_path)
+
+                    # update the category if a match was found
+                    if category_id != 0:
+                        updated_files += 1
+                        await database.execute("UPDATE torrents SET category = ? WHERE id = ?", (category_id, torrent["id"],))
+                        log.info(f"[SCAN] Updated the category to '{category_id}' for '{torrent["name"]}'")
+
+                # case where we have tracked media but it's somehow set inside the downloads directory, nullify its value so it can be rescanned next time
+                if media_path and media_path.startswith(DOWNLOADS_DIR):
+                    updated_files += 1
+                    await database.execute("UPDATE torrents SET media_path = NULL WHERE id = ?", (torrent["id"],))
+                    log.info(f"[SCAN] Invalid media path for '{torrent["name"]}', purged media path from database")
 
             # only purge dangling torrents if the user has this option enabled
             if PURGE_UNTRACKED_TORRENTS:
