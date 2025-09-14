@@ -13,6 +13,7 @@ from privateindexer_client.core.config import API_KEY, INDEXER_API_URL, TORRENTS
 from privateindexer_client.core.logger import log
 
 _file_piece_hash_cache: dict[str, dict[int, list[bytes]]] = {}
+_torrent_info_cache: dict[str, dict[str, int | str]] = {}
 _torznab_category_paths: list[dict[str, str]] = []
 
 
@@ -193,17 +194,33 @@ def torrent_matches_file(torrent_path: str, media_path: str) -> bool:
     Checks if a torrent file and media hashes match
     Calculates hash of the media and compares to the hashes found in the torrent file
     """
-    # read torrent info
-    info = lt.torrent_info(torrent_path)
+    # check if torrent piece hashes are cached
+    cached_data = _torrent_info_cache.get(torrent_path)
+    if cached_data:
+        log.debug(f"[TORRENT] Cache hit for '{torrent_path}'")
+        # read the data from the cache
+        total_size = cached_data["total_size"]
+        piece_length = cached_data["piece_length"]
+        torrent_hashes = cached_data["torrent_hashes"]
+    else:
+        log.debug(f"[TORRENT] Cache miss for '{torrent_path}'")
+        # read torrent info from file
+        info = lt.torrent_info(torrent_path)
+        total_size = info.total_size()
+        piece_length = info.piece_length()
+        # get piece hashes from torrent info
+        torrent_hashes = [info.hash_for_piece(i) for i in range(info.num_pieces())]
+        _torrent_info_cache[torrent_path] = {
+            "piece_length": piece_length,
+            "total_size": total_size,
+            "torrent_hashes": torrent_hashes,
+        }
 
-    if os.path.getsize(media_path) != info.total_size():
+    if os.path.getsize(media_path) != total_size:
         return False
 
-    piece_length = info.piece_length()
     file_hashes = hash_file_by_pieces(media_path, piece_length)
 
-    # get piece hashes from torrent info
-    torrent_hashes = [info.hash_for_piece(i) for i in range(info.num_pieces())]
     return file_hashes == torrent_hashes
 
 
