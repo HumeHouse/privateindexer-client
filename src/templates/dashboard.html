@@ -411,11 +411,16 @@
 
                 // update the scanner progress
                 updateScannerStats(data["scanner_status"]);
-            })
-            .catch(e => console.error("Error fetching main data:", e));
 
-        // 5 second interval
-        setTimeout(fetchMainData, 5000);
+                // 5 second interval
+                setTimeout(fetchMainData, 5000);
+            })
+            .catch(e => {
+                console.error("Error fetching main data, delayed 30s:", e);
+
+                // delay next interval 30 seconds
+                setTimeout(fetchMainData, 30000);
+            });
     }
 
     async function fetchUserStats() {
@@ -430,11 +435,16 @@
                 $("#total-download").text(formatBytes(data["total_download"]));
                 $("#peers-total").text(data["peers_on_user_torrents"]);
                 $("#grabs-total").text(data["grabs_total"]);
-            })
-            .catch(e => console.error("Error fetching user stats:", e));
 
-        // 10 second interval
-        setTimeout(fetchUserStats, 10000);
+                // 10 second interval
+                setTimeout(fetchUserStats, 10000);
+            })
+            .catch(e => {
+                console.error("Error fetching user stats, delayed 60s:", e);
+
+                // delay next interval 60 seconds
+                setTimeout(fetchUserStats, 60000);
+            });
     }
 
     // adds up/down arrows to columns when sorting
