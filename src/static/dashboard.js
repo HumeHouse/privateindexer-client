@@ -11,7 +11,10 @@ $(document).ready(() => {
     fetchUserStats();
 
     // listen on the filter box for user input
-    $('#filter-name').on('input', applyNameFilter);
+    $('#filter-name').on('input', function () {
+        currentPage = 1;
+        applySortingAndRender();
+    });
 
     // listen for rows count dropdown change
     $("#rows-per-page").on("change", updateRowsPerPage);
@@ -44,17 +47,6 @@ function updateRowsPerPage() {
     rowsPerPage = parseInt($(this).val());
     currentPage = 1;
     applySortingAndRender();
-}
-
-// loops through all
-function applyNameFilter() {
-    const filter = $('#filter-name').val().toLowerCase();
-    $('#torrents-container tr').each(function () {
-        const nameCell = $(this).find('td').first();
-        if (!nameCell.length) return;
-        const nameText = nameCell.text().toLowerCase();
-        $(this).toggleClass("d-none", !nameText.includes(filter));
-    });
 }
 
 async function fetchMainData() {
