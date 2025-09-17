@@ -481,9 +481,19 @@ def calc_eta(status: lt.torrent_status) -> int:
 
 
 def safe_ratio(status: lt.torrent_status) -> float:
-    if status.total_payload_download > 0:
-        return status.total_payload_upload / status.total_payload_download
-    return 0.0
+    """
+    Converts torrent status to ratio based on download/upload values
+    """
+    upload = status.all_time_upload
+    download = status.all_time_download
+
+    if download > 0:
+        return upload / download
+    elif upload > 0:
+        # return qBittorrent infinity equivalent
+        return 8640000
+    else:
+        return 0.0
 
 
 def map_state(status: lt.torrent_status) -> str:
