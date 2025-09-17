@@ -222,7 +222,7 @@ function updateClientStats(torrents, stats) {
     $("#session-ul").text(formatBytes(stats["up_info_data"]));
     $("#total-ul").text(formatBytes(stats["alltime_ul"]));
     $("#ul-rate").text(formatSpeed(stats["ul_info_speed"]));
-    $("#global-ratio").text(stats["global_ratio"].toFixed(2));
+    $("#global-ratio").text(formatRatio(stats["global_ratio"]));
 }
 
 function applySortingAndRender() {
@@ -293,6 +293,10 @@ function formatTime(seconds) {
     return [h, m, s].map(v => String(v).padStart(2, '0')).join(":");
 }
 
+function formatRatio(ratio) {
+    return ratio === 8640000 ? "∞" : ratio.toFixed(2);
+}
+
 function renderTable(torrents) {
     const $tbody = $("#torrents-container");
     $tbody.empty();
@@ -336,7 +340,7 @@ function renderTable(torrents) {
                 <td>${formatSpeed(torrent["dlspeed"])}</td>
                 <td>${formatSpeed(torrent["upspeed"])}</td>
                 <td>${formatTime(torrent["eta"])}</td>
-                <td>${torrent["ratio"].toFixed(2)}</td>
+                <td>${formatRatio(torrent["ratio"])}</td>
                 <td>${new Date(torrent["added_on"] * 1000).toLocaleString()}</td>
             `);
 
@@ -399,7 +403,7 @@ function populateInfoPanel(torrent) {
                     <dt class="col-4 text-end">Time Active:</dt><dd class="ms-2 col-7">${formatTime(torrent["time_active"])}</dd>
                     <dt class="col-4 text-end">Downloaded:</dt><dd class="ms-2 col-7">${formatBytes(torrent["downloaded"])} (${formatBytes(torrent["downloaded_session"])} this session)</dd>
                     <dt class="col-4 text-end">Download Speed:</dt><dd class="ms-2 col-7">${formatSpeed(torrent["dlspeed"])}</dd>
-                    <dt class="col-4 text-end">Ratio:</dt><dd class="ms-2 col-7">${torrent["ratio"].toFixed(2)}</dd>
+                    <dt class="col-4 text-end">Ratio:</dt><dd class="ms-2 col-7">${formatRatio(torrent["ratio"])}</dd>
                     <dt class="col-4 text-end">Info Hash v1:</dt><dd class="ms-2 col-7">${torrent["infohash_v1"]}</dd>
                     <dt class="col-4 text-end">Info Hash v2:</dt><dd class="ms-2 col-7">${torrent["infohash_v2"] || "N/A"}</dd>
                 </dl>
