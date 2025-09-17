@@ -3,6 +3,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
 from privateindexer_client.core import torrent_client, utils, scan
+from privateindexer_client.core.config import APP_VERSION
 from privateindexer_client.core.logger import log
 
 router = APIRouter()
@@ -17,7 +18,7 @@ async def root():
 @router.get("/dashboard", response_class=HTMLResponse)
 async def dashboard(request: Request):
     log.debug("[GUI] Dashboard loaded")
-    return templates.TemplateResponse(name="dashboard.html", request=request)
+    return templates.TemplateResponse(name="dashboard.html", context={"APP_VERSION": APP_VERSION}, request=request)
 
 
 @router.get("/dashboard/maindata")
