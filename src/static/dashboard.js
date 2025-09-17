@@ -3,6 +3,7 @@ let sortConfig = {column: null, direction: null};
 let torrentsCache = [];
 let currentPage = 1;
 let rowsPerPage = 500;
+let filterDebounceTimeout = null;
 
 // catch ready event on document
 $(document).ready(() => {
@@ -12,8 +13,14 @@ $(document).ready(() => {
 
     // listen on the filter box for user input
     $('#filter-name').on('input', function () {
-        currentPage = 1;
-        applySortingAndRender();
+        clearTimeout(filterDebounceTimeout);
+
+        // 1 second debounce
+        filterDebounceTimeout = setTimeout(() => {
+            // reset pagination to first page
+            currentPage = 1;
+            applySortingAndRender();
+        }, 1000);
     });
 
     // listen for rows count dropdown change
