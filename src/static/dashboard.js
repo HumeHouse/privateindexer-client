@@ -49,7 +49,7 @@ function updateRowsPerPage() {
     applySortingAndRender();
 }
 
-async function fetchMainData() {
+function fetchMainData() {
     fetch("/dashboard/maindata")
         .then(r => r.json())
         .then(data => {
@@ -82,7 +82,7 @@ async function fetchMainData() {
         });
 }
 
-async function fetchUserStats() {
+function fetchUserStats() {
     fetch("/dashboard/user")
         .then(r => r.json())
         .then(data => {
@@ -225,11 +225,11 @@ function applySortingAndRender() {
         name: row => row["name"].toLowerCase(),
         size: row => row["size"],
         progress: row => row["progress"],
-        status: row => row["state"],
-        seeds: row => row["num_seeds"] + row["num_complete"],
+        state: row => row["state"],
+        num_seeds: row => row["num_seeds"] + row["num_complete"],
         peers: row => row["num_leechs"] + row["num_incomplete"],
-        download_speed: row => row["dlspeed"],
-        upload_speed: row => row["upspeed"],
+        dlspeed: row => row["dlspeed"],
+        upspeed: row => row["upspeed"],
         eta: row => row["eta"],
         ratio: row => row["ratio"],
         added_on: row => row["added_on"]
