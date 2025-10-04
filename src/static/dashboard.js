@@ -99,6 +99,7 @@ function fetchUserStats() {
             $("#total-upload").text(formatBytes(data["total_upload"]));
             $("#currently-leeching").text(data["currently_leeching"]);
             $("#total-download").text(formatBytes(data["total_download"]));
+            $("#server-ratio").text(formatRatio(data["server_ratio"]));
             $("#peers-total").text(data["peers_on_user_torrents"]);
             $("#grabs-total").text(data["grabs_total"]);
 
