@@ -6,7 +6,7 @@ ENV TZ=America/Chicago \
     PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1
 
-COPY requirements.txt logging.yaml ./
+COPY requirements.txt logging.yml ./
 
 RUN pip install -r requirements.txt
 
@@ -16,4 +16,4 @@ EXPOSE 80
 
 WORKDIR /app/src
 
-ENTRYPOINT exec uvicorn privateindexer_client.main:app --proxy-headers --workers 1 --host 0.0.0.0 --port 80 --log-config /app/logging.yaml
+ENTRYPOINT exec uvicorn privateindexer_client.main:app --proxy-headers --workers 1 --host 0.0.0.0 --port 80 --log-config /app/logging.yml
