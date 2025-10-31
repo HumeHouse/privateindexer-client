@@ -23,6 +23,9 @@ $(document).ready(() => {
         }, 1000);
     });
 
+    // listen for clicks on the delete button and call delete function
+    $('#confirm-delete-button').on("click", deleteTorrent);
+
     // listen for rows count dropdown change
     $("#rows-per-page").on("change", updateRowsPerPage);
 
@@ -49,6 +52,21 @@ $(document).ready(() => {
         applySortingAndRender();
     });
 });
+
+function toast(message, color, duration = 5) {
+    const toastID = "toast-" + Math.random().toString(36).substring(3, 9);
+    let toastContent;
+    toastContent = `
+        <div id="${toastID}" class="toast align-items-center border-0 text-bg-${color}" role="alert">
+          <div class="d-flex">
+            <div class="toast-body fw-bold">${message}</div>
+          </div>
+        </div>
+    `;
+    $("#toaster").append(toastContent);
+    const toastObject = new bootstrap.Toast($(`#${toastID}`), {"delay": duration * 1000});
+    toastObject.show();
+}
 
 function updateRowsPerPage() {
     rowsPerPage = parseInt($(this).val());
@@ -111,6 +129,30 @@ function fetchUserStats() {
 
             // delay next interval 60 seconds
             setTimeout(fetchUserStats, 60000);
+        });
+}
+
+function deleteTorrent() {
+    if (selectedTorrentId === null) {
+        return;
+    }
+    fetch("/dashboard/delete_torrent?" + new URLSearchParams({
+        "torrent_hash": selectedTorrentId,
+        "remove_downloads": $("#delete-file-checkbox").is(":checked")
+    }).toString(), {
+        method: "POST"
+    })
+        .then(response => {
+            if (response.ok) {
+                toast("Torrent deleted successfully", "success");
+                selectedTorrentId = null;
+            } else {
+                toast("Failed to delete torrent, check logs", "danger");
+            }
+        })
+        .catch(e => {
+            console.error("Error deleting torrent:", e);
+            toast("Error while trying to delete torrent, check logs", "danger");
         });
 }
 
@@ -395,6 +437,9 @@ function renderTable(torrents) {
 
 // populate bottom panel
 function populateInfoPanel(torrent) {
+    // show delete button if torrent is not seeding
+    $("#delete-button").toggleClass("d-none", ["uploading", "stalledUP"].includes(torrent["state"]));
+
     // general info
     const generalHtml = `
         <div class="row g-0">

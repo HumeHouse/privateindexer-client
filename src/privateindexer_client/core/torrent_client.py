@@ -7,7 +7,8 @@ import time
 import libtorrent as lt
 
 from privateindexer_client.core import database, utils
-from privateindexer_client.core.config import TORRENTING_PORT, TORRENTS_DIR, ANNOUNCE_TRACKER_URL, FASTRESUME_DIR, FASTRESUME_INTERVAL, ANNOUNCE_IP
+from privateindexer_client.core.config import TORRENTING_PORT, TORRENTS_DIR, ANNOUNCE_TRACKER_URL, FASTRESUME_DIR, FASTRESUME_INTERVAL, ANNOUNCE_IP, \
+    STALE_TORRENT_THRESHOLD
 from privateindexer_client.core.logger import log
 from privateindexer_client.core.thread_executor import FASTRESUME_EXECUTOR
 from privateindexer_client.core.utils import process_fastresume_file
@@ -207,13 +208,16 @@ async def torrent_exists_in_session(info_hash: str | bytes) -> bool:
         return False
 
 
-async def remove_torrent_by_hash(torrent_hash: str, remove_downloads: bool = False):
+async def remove_torrent_by_hash(hash_v1: str, remove_downloads: bool = False) -> bool:
     """
+    Only accepts hash_v1
     Remove a torrent from the libtorrent session if it exists
     Also removes fastresume data from the disk if it exists
+    Optionally removes download path for torrent
+    Returns bool True if successful, False otherwise
     """
     try:
-        info_hash = lt.sha1_hash(bytes.fromhex(torrent_hash))
+        info_hash = lt.sha1_hash(bytes.fromhex(hash_v1))
         existing = libtorrent_session.find_torrent(info_hash)
         if existing.is_valid():
             libtorrent_session.remove_torrent(existing)
@@ -223,7 +227,7 @@ async def remove_torrent_by_hash(torrent_hash: str, remove_downloads: bool = Fal
 
     # remove the fastresume/fastresume-ignore files if either exists
     try:
-        fastresume_file = os.path.join(FASTRESUME_DIR, f"{torrent_hash}.fastresume")
+        fastresume_file = os.path.join(FASTRESUME_DIR, f"{hash_v1}.fastresume")
         ignore_file = f"{fastresume_file}.ignore"
         for file in [fastresume_file, ignore_file]:
             if os.path.exists(file):
@@ -235,12 +239,19 @@ async def remove_torrent_by_hash(torrent_hash: str, remove_downloads: bool = Fal
     try:
         if remove_downloads:
             # try to remove the downloaded files if any exist
-            result = await database.fetch_one("SELECT download_path FROM torrents WHERE hash_v1 = ? or hash_v2 = ?", (torrent_hash, torrent_hash,))
+            result = await database.fetch_one("SELECT download_path FROM torrents WHERE hash_v1 = ?", (hash_v1,))
             if result and result.get("download_path"):
-                os.unlink(result["download_path"])
+                download_path = result["download_path"]
+                if os.path.isfile(download_path):
+                    os.unlink(download_path)
+                else:
+                    shutil.rmtree(download_path)
     except Exception as e:
         log.error(f"[TORCLIENT] Failed to remove downloads when removing torrent: {e}")
         return False
+
+    log.info(f"[TORCLIENT] Removed torrent with hash: {hash_v1}")
+    return True
 
 
 async def load_fastresume_data():
@@ -395,6 +406,19 @@ async def periodic_torrent_status_task():
                 name = status.name
                 if status.errc and status.errc.value() != 0:
                     log.error(f"[STATUS] Torrent '{name}' is in error state")
+
+                is_downloading = status.state == lt.torrent_status.downloading
+                added_delta = datetime.datetime.now() - datetime.datetime.fromtimestamp(int(status.added_time or 0))
+
+                # check if torrent is downloading and has been downloading for more than the threshold
+                if is_downloading and added_delta.total_seconds() > STALE_TORRENT_THRESHOLD:
+                    log.warning(f"[STATUS] Removing stale torrent: {name}")
+                    # get the infohash stored as raw bytes
+                    hash_v1 = status.info_hashes.v1.to_bytes().hex() if status.info_hashes.has_v1() else None
+
+                    # remove from client and database
+                    await remove_torrent_by_hash(hash_v1, True)
+                    await utils.remove_torrent_from_database(hash_v1)
 
         except Exception as e:
             log.error(f"[STATUS] Error in torrent status loop: {e}")

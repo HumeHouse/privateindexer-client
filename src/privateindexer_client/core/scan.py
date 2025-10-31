@@ -214,7 +214,7 @@ async def periodic_scan_task():
                 if not torrent_exists or (not media_exists and not download_exists):
                     removed_entries += 1
                     # remove from torrent client
-                    await torrent_client.remove_torrent_by_hash(torrent.get("hash_v2"))
+                    await torrent_client.remove_torrent_by_hash(torrent.get("hash_v1"))
                     # remove torrent file
                     if os.path.exists(torrent_path):
                         os.unlink(torrent_path)

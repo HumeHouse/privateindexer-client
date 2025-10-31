@@ -4,7 +4,7 @@ import threading
 
 from privateindexer_client.core.logger import log
 
-APP_VERSION = "1.3.9"
+APP_VERSION = "1.3.10"
 
 # gather/set environment variables for usage later
 DATABASE_FILE = "/app/data/torrents.db"
@@ -26,6 +26,8 @@ SCAN_INTERVAL = 60 * int(os.getenv("SCAN_INTERVAL", 30))
 SCAN_BATCH_SIZE = int(os.getenv("SCAN_BATCH_SIZE", 128))
 
 FASTRESUME_INTERVAL = 60 * int(os.getenv("FASTRESUME_INTERVAL", 60))
+
+STALE_TORRENT_THRESHOLD = 24 * 60 * 60 * int(os.getenv("STALE_TORRENT_THRESHOLD", 30))
 
 RADARR_URL = (os.getenv("RADARR_URL", "")).strip("/")
 RADARR_API_KEY = os.getenv("RADARR_API_KEY")
