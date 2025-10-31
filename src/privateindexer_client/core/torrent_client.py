@@ -7,7 +7,8 @@ import time
 import libtorrent as lt
 
 from privateindexer_client.core import database, utils
-from privateindexer_client.core.config import TORRENTING_PORT, TORRENTS_DIR, ANNOUNCE_TRACKER_URL, FASTRESUME_DIR, FASTRESUME_INTERVAL, ANNOUNCE_IP
+from privateindexer_client.core.config import TORRENTING_PORT, TORRENTS_DIR, ANNOUNCE_TRACKER_URL, FASTRESUME_DIR, FASTRESUME_INTERVAL, ANNOUNCE_IP, \
+    STALE_TORRENT_THRESHOLD
 from privateindexer_client.core.logger import log
 from privateindexer_client.core.thread_executor import FASTRESUME_EXECUTOR
 from privateindexer_client.core.utils import process_fastresume_file
@@ -405,6 +406,19 @@ async def periodic_torrent_status_task():
                 name = status.name
                 if status.errc and status.errc.value() != 0:
                     log.error(f"[STATUS] Torrent '{name}' is in error state")
+
+                is_downloading = status.state == lt.torrent_status.downloading
+                added_delta = datetime.datetime.now() - datetime.datetime.fromtimestamp(int(status.added_time or 0))
+
+                # check if torrent is downloading and has been downloading for more than the threshold
+                if is_downloading and added_delta.total_seconds() > STALE_TORRENT_THRESHOLD:
+                    log.warning(f"[STATUS] Removing stale torrent: {name}")
+                    # get the infohash stored as raw bytes
+                    hash_v1 = status.info_hashes.v1.to_bytes().hex() if status.info_hashes.has_v1() else None
+
+                    # remove from client and database
+                    await remove_torrent_by_hash(hash_v1, True)
+                    await utils.remove_torrent_from_database(hash_v1)
 
         except Exception as e:
             log.error(f"[STATUS] Error in torrent status loop: {e}")

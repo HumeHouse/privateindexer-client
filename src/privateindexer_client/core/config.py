@@ -27,6 +27,8 @@ SCAN_BATCH_SIZE = int(os.getenv("SCAN_BATCH_SIZE", 128))
 
 FASTRESUME_INTERVAL = 60 * int(os.getenv("FASTRESUME_INTERVAL", 60))
 
+STALE_TORRENT_THRESHOLD = 24 * 60 * 60 * int(os.getenv("STALE_TORRENT_THRESHOLD", 30))
+
 RADARR_URL = (os.getenv("RADARR_URL", "")).strip("/")
 RADARR_API_KEY = os.getenv("RADARR_API_KEY")
 
