@@ -400,6 +400,13 @@ async def add_torrent_to_database(name: str, size: int, torrent_path: str, uploa
         (name, size, torrent_path, uploaded, files, category, media_path, download_path, hash_v1, hash_v2,))
 
 
+async def remove_torrent_from_database(hash_v1: str) -> bool:
+    """
+    Delete torrent metadata from the database
+    """
+    await database.execute("DELETE FROM torrents WHERE hash_v1 = ?", (hash_v1,))
+
+
 def process_fastresume_file(fastresume_path: str, hash_v1: str, torrent_path: str | None):
     """
     Thread-safe way to read fastresume file bytes, returns raw data to main thread
