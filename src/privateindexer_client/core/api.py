@@ -6,7 +6,7 @@ import libtorrent as lt
 from fastapi import Depends, HTTPException, Query, File, Request, Form, APIRouter, status, UploadFile
 from fastapi.responses import PlainTextResponse, JSONResponse
 
-from privateindexer_client.core import torrent_client, utils, httpx_request
+from privateindexer_client.core import torrent_client, utils, httpx_request, database
 from privateindexer_client.core.config import API_KEY, DOWNLOADS_DIR, INDEXER_API_URL
 from privateindexer_client.core.logger import log
 
@@ -295,3 +295,52 @@ async def add_torrent(
     log.debug(f"[API] Torrent added: {torrent_file} ({request.headers.get("user-agent")})")
 
     return PlainTextResponse(result)
+
+
+@router.post("/torrents/delete", dependencies=[Depends(cookie_required)])
+async def delete_torrent(
+        request: Request,
+        hashes: str = Form(),
+        deleteFiles: bool = Form(False)
+):
+    """
+    Mimics qBittorrent endpoint /api/v2/torrents/delete
+    Accepts a string of torrent hashes, separated by a | for multiple hashes
+    Also accepts an optional deleteFiles parameter to remove downloaded torrent data
+    """
+    log.debug(f"[API] Torrent removal requested ({request.headers.get("user-agent")})")
+
+    split_hashes = hashes.split("|")
+
+    failures = 0
+
+    for torrent_hash in split_hashes:
+        # query database for torrent info
+        result = await database.fetch_one("SELECT hash_v1, torrent_path FROM torrents WHERE hash_v1 = ? or hash_v2 = ?", (torrent_hash, torrent_hash,))
+
+        if not result:
+            log.warning(f"[API] Torrent hash not found during delete request: {torrent_hash}")
+            failures += 1
+            continue
+
+        torrent_path = result["torrent_path"]
+        hash_v1 = result["hash_v1"]
+
+        try:
+            # remove torrent file
+            if os.path.exists(torrent_path):
+                os.unlink(torrent_path)
+
+            # remove from database
+            await utils.remove_torrent_from_database(hash_v1)
+        except Exception as e:
+            log.error(f"[API] Failed to delete torrent file with hash '{torrent_hash}': {e}")
+            failures += 1
+            continue
+
+        # remove from torrent client
+        if not await torrent_client.remove_torrent_by_hash(hash_v1, deleteFiles):
+            log.error(f"[API] Failed to remove torrent with hash '{torrent_hash}' from torrent client")
+            failures += 1
+
+    return "Ok." if failures == 0 else "Fails."
