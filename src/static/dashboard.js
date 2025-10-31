@@ -50,6 +50,21 @@ $(document).ready(() => {
     });
 });
 
+function toast(message, color, duration = 5) {
+    const toastID = "toast-" + Math.random().toString(36).substring(3, 9);
+    let toastContent;
+    toastContent = `
+        <div id="${toastID}" class="toast align-items-center border-0 text-bg-${color}" role="alert">
+          <div class="d-flex">
+            <div class="toast-body fw-bold">${message}</div>
+          </div>
+        </div>
+    `;
+    $("#toaster").append(toastContent);
+    const toastObject = new bootstrap.Toast($(`#${toastID}`), {"delay": duration * 1000});
+    toastObject.show();
+}
+
 function updateRowsPerPage() {
     rowsPerPage = parseInt($(this).val());
     currentPage = 1;
