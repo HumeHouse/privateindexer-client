@@ -224,10 +224,14 @@ async def add_torrent(
         torrent_name = torrents.filename
         log.debug(f"[API] Saving torrent '{torrent_name}' to temp directory")
         # write the file stream to temporary file
-        contents = await torrents.read()
-        torrent_file = os.path.join(tempfile.gettempdir(), torrent_name)
-        with open(torrent_file, "wb") as f:
-            f.write(contents)
+        try:
+            contents = await torrents.read()
+            torrent_file = os.path.join(tempfile.gettempdir(), torrent_name)
+            with open(torrent_file, "wb") as f:
+                f.write(contents)
+        except Exception as e:
+            log.error(f"[API] Error while saving torrent '{torrent_name}': {e}")
+            raise HTTPException(status_code=status.INTERNAL_SERVER_ERROR)
 
         log.debug(f"[API] Validating torrent: {torrent_name}")
         info = lt.torrent_info(torrent_file)
