@@ -267,14 +267,18 @@ async def add_torrent(
             log.warning(f"[API] Refusing to keep torrent, URL does not come from PrivateIndexer: {urls}")
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST)
         # download torrent from URL
-        async with httpx_request.get_client() as client:
-            response = await client.get(urls)
-            if response.status_code != 200:
-                log.error(f"[API] Failed to download new torrent file: {urls}")
-                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST)
-            torrent_file = os.path.join(tempfile.gettempdir(), os.path.basename(urls))
-            with open(torrent_file, "wb") as f:
-                f.write(response.content)
+        try:
+            async with httpx_request.get_client() as client:
+                response = await client.get(urls)
+                if response.status_code != 200:
+                    log.error(f"[API] Failed to download new torrent file: {urls}")
+                    raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST)
+                torrent_file = os.path.join(tempfile.gettempdir(), os.path.basename(urls))
+                with open(torrent_file, "wb") as f:
+                    f.write(response.content)
+        except Exception as e:
+            log.error(f"[API] Error while downloading URL '{urls}': {e}")
+            raise HTTPException(status_code=status.INTERNAL_SERVER_ERROR)
 
     # download subdirectory will be the name of the torrent
     info = lt.torrent_info(torrent_file)
