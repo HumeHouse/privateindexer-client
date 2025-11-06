@@ -12,7 +12,7 @@ async def test_connection():
     """
     try:
         async with httpx_request.get_client() as client:
-            response = await client.get(SONARR_URL + "/api", headers={"X-API-Key": SONARR_API_KEY}, timeout=30)
+            response = await client.get(f"{SONARR_URL}/api", headers={"X-API-Key": SONARR_API_KEY}, timeout=30)
 
             if response.status_code == 200:
                 log.info(f"[SONARR] Connected to Sonarr")
@@ -29,7 +29,7 @@ async def fetch_root_folders() -> list[str]:
     """
     try:
         async with httpx_request.get_client() as client:
-            response = await client.get(SONARR_URL + "/api/v3/rootfolder", headers={"X-API-Key": SONARR_API_KEY}, timeout=30)
+            response = await client.get(f"{SONARR_URL}/api/v3/rootfolder", headers={"X-API-Key": SONARR_API_KEY}, timeout=30)
 
             if response.status_code != 200:
                 log.warning(f"[SONARR] Failed to fetch root folders: {response.status_code}")
@@ -63,7 +63,7 @@ async def fetch_tv_library(tracked_root_folders: list[str]) -> list[dict]:
     """
     try:
         async with httpx_request.get_client() as client:
-            response = await client.get(SONARR_URL + "/api/v3/series", headers={"X-API-Key": SONARR_API_KEY}, timeout=30)
+            response = await client.get(f"{SONARR_URL}/api/v3/series", headers={"X-API-Key": SONARR_API_KEY}, timeout=30)
 
             if response.status_code != 200:
                 log.warning(f"[SONARR] Failed to fetch TV library: {response.status_code}")
@@ -93,7 +93,7 @@ async def fetch_series_episodes(series_id: str) -> list[dict]:
     try:
         async with httpx_request.get_client() as client:
             params = {"seriesID": series_id, }
-            response = await client.get(SONARR_URL + "/api/v3/episodeFile", headers={"X-API-Key": SONARR_API_KEY}, params=params, timeout=30)
+            response = await client.get(f"{SONARR_URL}/api/v3/episodeFile", headers={"X-API-Key": SONARR_API_KEY}, params=params, timeout=30)
 
             if response.status_code != 200:
                 log.warning(f"[SONARR] Failed to fetch episode files: {response.status_code}")
