@@ -141,6 +141,10 @@ function fetchUserStats() {
             console.error("Error fetching user stats from server, delayed 60s:", e);
             toast("Error fetching user stats from server", "danger");
 
+            // reset all displayed values to "?"
+            $("#torrents-added, #currently-seeding, #total-upload, #currently-leeching, #total-download, #server-ratio, #peers-total, #grabs-total")
+                .text("?");
+
             // delay next interval 60 seconds
             setTimeout(fetchUserStats, 60000);
         });
