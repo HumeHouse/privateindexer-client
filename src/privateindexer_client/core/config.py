@@ -36,7 +36,7 @@ SONARR_URL = (os.getenv("SONARR_URL", "")).strip("/")
 SONARR_API_KEY = os.getenv("SONARR_API_KEY")
 
 API_KEY = os.getenv("API_KEY")
-ANNOUNCE_TRACKER_URL = "https://tracker.humehouse.com/announce" + "?apikey=" + API_KEY
+ANNOUNCE_TRACKER_URL = f"https://tracker.humehouse.com/announce?apikey={API_KEY}"
 
 ANNOUNCE_IP = os.getenv("ANNOUNCE_IP")
 TORRENTING_PORT = int(os.getenv("TORRENTING_PORT", 6881))
