@@ -87,7 +87,7 @@ async def lifespan(_: FastAPI):
             params = {"v": APP_VERSION, "port": TORRENTING_PORT}
             if ANNOUNCE_IP:
                 params["announce_ip"] = ANNOUNCE_IP
-            indexer_response = await client.get(INDEXER_API_URL + "/user", headers={"X-API-Key": API_KEY}, params=params, timeout=10)
+            indexer_response = await client.get(f"{INDEXER_API_URL}/user", headers={"X-API-Key": API_KEY}, params=params, timeout=10)
             status_code = indexer_response.status_code
             if status_code == 200:
                 response_json = indexer_response.json()
