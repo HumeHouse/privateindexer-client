@@ -67,7 +67,7 @@ async def fetch_indexer_user_data():
     """
     try:
         async with httpx_request.get_client() as client:
-            response = await client.get(INDEXER_API_URL + "/user/stats", headers={"X-API-Key": API_KEY}, timeout=30)
+            response = await client.get(f"{INDEXER_API_URL}/user/stats", headers={"X-API-Key": API_KEY}, timeout=30)
             return response.json()
     except Exception as e:
         log.error(f"[INDEXER] Failed to fetch user stats: {e}")
@@ -87,7 +87,7 @@ async def send_torrent_to_indexer(torrent_path: str, category: int):
             data = {"category": category}
 
             async with httpx_request.get_client() as client:
-                response = await client.post(INDEXER_API_URL + "/upload", headers={"X-API-Key": API_KEY}, data=data, files=files)
+                response = await client.post(f"{INDEXER_API_URL}/upload", headers={"X-API-Key": API_KEY}, data=data, files=files)
 
                 # based on the response from API, we will know status of upload
                 if response.status_code == 200:
@@ -335,7 +335,7 @@ def find_existing_torrent(media_path: str, ignored_torrents: list[str]) -> str |
     basename = os.path.basename(media_path)
 
     # try to find the torrent file based on the file or directory name
-    torrent_file = os.path.join(TORRENTS_DIR, basename + ".torrent")
+    torrent_file = os.path.join(TORRENTS_DIR, f"{basename}.torrent")
     if os.path.exists(torrent_file):
         log.debug(f"[TORRENT] Matched '{media_path}' to '{torrent_file}' by name")
         return torrent_file
@@ -343,7 +343,7 @@ def find_existing_torrent(media_path: str, ignored_torrents: list[str]) -> str |
     # if this media is a file, we can try to strip the extension off and find a match for the filename
     if os.path.isfile(media_path):
         filename, _ = os.path.splitext(os.path.basename(media_path))
-        torrent_file = os.path.join(TORRENTS_DIR, filename + ".torrent")
+        torrent_file = os.path.join(TORRENTS_DIR, f"{filename}.torrent")
         if os.path.exists(torrent_file):
             log.debug(f"[TORRENT] Matched '{media_path}' to '{torrent_file}' by filename")
             return torrent_file

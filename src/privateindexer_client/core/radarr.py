@@ -11,7 +11,7 @@ async def test_connection():
     """
     try:
         async with httpx_request.get_client() as client:
-            response = await client.get(RADARR_URL + "/api", headers={"X-API-Key": RADARR_API_KEY}, timeout=30)
+            response = await client.get(f"{RADARR_URL}/api", headers={"X-API-Key": RADARR_API_KEY}, timeout=30)
 
             if response.status_code == 200:
                 log.info(f"[RADARR] Connected to Radarr")
@@ -28,7 +28,7 @@ async def fetch_root_folders() -> list[str]:
     """
     try:
         async with httpx_request.get_client() as client:
-            response = await client.get(RADARR_URL + "/api/v3/rootfolder", headers={"X-API-Key": RADARR_API_KEY}, timeout=30)
+            response = await client.get(f"{RADARR_URL}/api/v3/rootfolder", headers={"X-API-Key": RADARR_API_KEY}, timeout=30)
 
             if response.status_code != 200:
                 log.warning(f"[RADARR] Failed to fetch root folders: {response.status_code}")
@@ -61,7 +61,7 @@ async def fetch_movie_library(tracked_root_folders: list[str]) -> list[dict]:
     """
     try:
         async with httpx_request.get_client() as client:
-            response = await client.get(RADARR_URL + "/api/v3/movie", headers={"X-API-Key": RADARR_API_KEY}, timeout=30)
+            response = await client.get(f"{RADARR_URL}/api/v3/movie", headers={"X-API-Key": RADARR_API_KEY}, timeout=30)
 
             if response.status_code != 200:
                 log.warning(f"[RADARR] Failed to fetch movie library: {response.status_code}")
