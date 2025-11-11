@@ -25,7 +25,7 @@ async def periodic_sync_task():
 
             # call the sync endpoint to get the list of existing and missing torrents on the server
             async with httpx_request.get_client() as client:
-                response = await client.post(INDEXER_API_URL + "/sync", headers={"X-API-Key": API_KEY}, json=local_torrents)
+                response = await client.post(f"{INDEXER_API_URL}/sync", headers={"X-API-Key": API_KEY}, json=local_torrents)
 
                 # make sure the sync was successful on the server
                 if response.status_code != 200:
