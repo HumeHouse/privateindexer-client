@@ -76,7 +76,13 @@ function updateRowsPerPage() {
 
 function fetchMainData() {
     fetch("/dashboard/maindata")
-        .then(r => r.json())
+        .then(response => {
+            if (response.ok) {
+                return response.json();
+            } else {
+                throw new Error(`PrivateIndexer client API error: ${response.status}`);
+            }
+        })
         .then(data => {
             // keep the data stored in variable for later use
             torrentsCache = data["torrents"];
@@ -100,7 +106,8 @@ function fetchMainData() {
             setTimeout(fetchMainData, 5000);
         })
         .catch(e => {
-            console.error("Error fetching main data, delayed 30s:", e);
+            console.error("Error fetching data from client API, delayed 30s:", e);
+            toast("Error fetching data from client API", "danger");
 
             // delay next interval 30 seconds
             setTimeout(fetchMainData, 30000);
@@ -109,7 +116,13 @@ function fetchMainData() {
 
 function fetchUserStats() {
     fetch("/dashboard/user")
-        .then(r => r.json())
+        .then(response => {
+            if (response.ok) {
+                return response.json();
+            } else {
+                throw new Error(`PrivateIndexer server error: ${response.status}`);
+            }
+        })
         .then(data => {
             // update user stats elements
             $("#torrents-added").text(data["torrents_added_total"]);
@@ -125,7 +138,12 @@ function fetchUserStats() {
             setTimeout(fetchUserStats, 10000);
         })
         .catch(e => {
-            console.error("Error fetching user stats, delayed 60s:", e);
+            console.error("Error fetching user stats from server, delayed 60s:", e);
+            toast("Error fetching user stats from server", "danger");
+
+            // reset all displayed values to "?"
+            $("#torrents-added, #currently-seeding, #total-upload, #currently-leeching, #total-download, #server-ratio, #peers-total, #grabs-total")
+                .text("?");
 
             // delay next interval 60 seconds
             setTimeout(fetchUserStats, 60000);
