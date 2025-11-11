@@ -32,6 +32,14 @@ async def cookie_required(request: Request) -> Request:
     return request
 
 
+@router.get("/health")
+def get_health():
+    """
+    Endpoint to be used by Docker for checking the readiness of the API
+    """
+    return PlainTextResponse("OK")
+
+
 @router.get("/app/version")
 async def app_version():
     """
