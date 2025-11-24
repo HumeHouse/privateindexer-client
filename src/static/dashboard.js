@@ -131,7 +131,6 @@ function fetchUserStats() {
             $("#currently-leeching").text(data["currently_leeching"]);
             $("#total-download").text(formatBytes(data["total_download"]));
             $("#server-ratio").text(formatRatio(data["server_ratio"]));
-            $("#peers-total").text(data["peers_on_user_torrents"]);
             $("#grabs-total").text(data["grabs_total"]);
 
             // 10 second interval
@@ -142,7 +141,7 @@ function fetchUserStats() {
             toast("Error fetching user stats from server", "danger");
 
             // reset all displayed values to "?"
-            $("#torrents-added, #currently-seeding, #total-upload, #currently-leeching, #total-download, #server-ratio, #peers-total, #grabs-total")
+            $("#torrents-added, #currently-seeding, #total-upload, #currently-leeching, #total-download, #server-ratio, #grabs-total")
                 .text("?");
 
             // delay next interval 60 seconds
