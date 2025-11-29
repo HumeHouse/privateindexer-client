@@ -3,7 +3,7 @@ import aiosqlite
 from privateindexer_client.core.config import DATABASE_FILE
 from privateindexer_client.core.logger import log
 
-LATEST_SCHEMA_VERSION = 1
+LATEST_SCHEMA_VERSION = 0
 
 TORRENTS_TABLE_SQL = """
                      CREATE TABLE IF NOT EXISTS "torrents"
@@ -52,6 +52,12 @@ async def initialize():
         version_result = await db.execute("PRAGMA user_version")
         row = await version_result.fetchone()
         current_version = row[0]
+
+        # check if outdated
+        if current_version > LATEST_SCHEMA_VERSION:
+            log.error(
+                f"[DATABASE] Current database version ({current_version}) is higher than max supported version ({LATEST_SCHEMA_VERSION}) - application was most likely rolled back.")
+            exit(1)
 
         log.info(f"[DATABASE] Current schema version: {current_version}")
 
