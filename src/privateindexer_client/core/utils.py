@@ -74,17 +74,38 @@ async def fetch_indexer_user_data():
         return None
 
 
-async def send_torrent_to_indexer(torrent_path: str, category: int):
+async def send_torrent_to_indexer(torrent_path: str, category: int, torrent_name: str):
     """
-    Attempt to upload the torrent file along with the category to the PrivateIndexer server
+    Attempt to upload the torrent file along with the category and name to the PrivateIndexer server
     Will mark a file as uploaded in the database if the server API returns a 409 status code
     """
     try:
+        imdbid = None
+        tmdbid = None
+
+        result = await database.fetch_one("SELECT app_id FROM torrents WHERE torrent_path = ?", (torrent_path,))
+        if result and result.get("app_id"):
+            app_id = result["app_id"]
+            if category == RADARR_ROOT_CATEGORY:
+                movie_metadata = await radarr.fetch_movie_metadata(movie_id=app_id)
+                imdbid = movie_metadata["imdbId"]
+                tmdbid = movie_metadata["tmdbId"]
+            elif category == SONARR_ROOT_CATEGORY:
+                series_metadata = await sonarr.fetch_series_metadata(series_id=app_id)
+                imdbid = series_metadata["imdbId"]
+                tmdbid = series_metadata["tmdbId"]
+
         with open(torrent_path, "rb") as file:
             torrent_basename = os.path.basename(torrent_path)
             # build the request with all the necessary torrent metadata required by indexer
             files = {"torrent_file": (torrent_basename, file, "application/x-bittorrent")}
-            data = {"category": category}
+            data = {"category": category, "torrent_name": torrent_name}
+
+            if imdbid:
+                data["imdbid"] = imdbid
+
+            if tmdbid:
+                data["tmdbid"] = tmdbid
 
             async with httpx_request.get_client() as client:
                 response = await client.post(f"{INDEXER_API_URL}/upload", headers={"X-API-Key": API_KEY}, data=data, files=files)
