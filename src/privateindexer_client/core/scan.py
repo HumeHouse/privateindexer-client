@@ -8,6 +8,7 @@ from privateindexer_client.core import torrent_client, database, utils
 from privateindexer_client.core.config import SCAN_INTERVAL, DOWNLOADS_DIR, TORRENTS_DIR, PURGE_UNTRACKED_TORRENTS, SCAN_BATCH_SIZE
 from privateindexer_client.core.logger import log
 from privateindexer_client.core.thread_executor import SCAN_EXECUTOR
+from privateindexer_client.core.utils import TorrentCreationMetadata
 
 SCAN_PROCESS_STATE: int = 0
 SCAN_TOTAL_ITEMS: int = 0
@@ -20,6 +21,16 @@ class ScannerStates(Enum):
     SCANNING = 2
     PROCESSING = 3
     POST_SCAN = 4
+
+
+class ScanTorrentJob:
+    file_path: str
+    app_id: int = None
+    torrent_file: str = None
+    title: str = None
+
+    def __init__(self, file_path: str):
+        self.file_path = file_path
 
 
 async def scan_media_library() -> tuple[int, int, int, int]:
@@ -52,18 +63,20 @@ async def scan_media_library() -> tuple[int, int, int, int]:
     updated_files = 0
 
     loop = asyncio.get_running_loop()
-    files = await utils.get_all_media_files()
+    media_data_entries = await utils.get_managed_media_data()
 
     # set scan state to scanning and update progress values
-    SCAN_TOTAL_ITEMS = len(files)
+    SCAN_TOTAL_ITEMS = len(media_data_entries)
     SCAN_DONE_ITEMS = 0
     SCAN_PROCESS_STATE = ScannerStates.SCANNING.value
 
     # create a list to store files that need to be processed
-    to_process: list[tuple[str, str | None]] = []
+    scan_jobs: list[ScanTorrentJob] = []
 
     # loop through the files we intend to scan
-    for file_path in files:
+    for media_data_entry in media_data_entries:
+        file_path = media_data_entry.path
+
         # make sure we can see whatever was passed through from Radarr/Sonarr
         if not os.path.exists(file_path):
             log.debug(f"[SCAN] File path not found or accessible, skipped: {file_path}")
@@ -71,7 +84,6 @@ async def scan_media_library() -> tuple[int, int, int, int]:
             SCAN_DONE_ITEMS += 1
             continue
 
-        filename = os.path.basename(file_path)
         total_files += 1
 
         # ignore the media file if the current path is matches what is in the database
@@ -92,13 +104,14 @@ async def scan_media_library() -> tuple[int, int, int, int]:
             # try to update the media path in the database to match the current path
             result = await database.fetch_one("SELECT id, name, media_path FROM torrents WHERE torrent_path = ?", (torrent_file,))
             if result and result.get("id") is not None:
-                # check to see if the file was only moved, not renamed
-                if utils.file_exists_in_torrent(torrent_file, filename):
+                # check to see if the file path was only moved, not renamed or modified
+                if utils.path_exists_in_torrent(torrent_file, file_path):
                     updated_files += 1
                     # detect category in case it's not matching in the database
                     category_id = utils.detect_torznab_category(file_path)
                     # update the old media location to match current location
-                    await database.execute("UPDATE torrents SET media_path = ?, category = ? WHERE id = ?", (file_path, category_id, result["id"],))
+                    await database.execute("UPDATE torrents SET media_path = ?, category = ?, app_id = ? WHERE id = ?",
+                                           (file_path, category_id, media_data_entry.app_id, result["id"],))
                     log.info(f"[SCAN] Updated the media path for '{result["name"]}'")
                     # increment global items counter
                     SCAN_DONE_ITEMS += 1
@@ -106,42 +119,49 @@ async def scan_media_library() -> tuple[int, int, int, int]:
                 else:
                     log.info(f"[SCAN] File was renamed, media path not updated: '{result["name"]}'")
 
-        # once we've reached this point, we should add the file to the processing queue to be batched
-        to_process.append((file_path, torrent_file))
+        # construct the scan job
+        scan_job = ScanTorrentJob(file_path)
+        scan_job.app_id = media_data_entry.app_id
+        scan_job.torrent_file = torrent_file
+
+        if media_data_entry.title:
+            scan_job.title = media_data_entry.title
+
+        # add the scan job to the queue
+        scan_jobs.append(scan_job)
         # increment global items counter
         SCAN_DONE_ITEMS += 1
 
     # stop here if we don't have any new items to process
-    if not to_process:
+    if not scan_jobs:
         return total_files, ignored_files, updated_files, created_files
 
     # set scan state to processing and update global variables to track the processing files now
-    SCAN_TOTAL_ITEMS = len(to_process)
+    SCAN_TOTAL_ITEMS = len(scan_jobs)
     SCAN_DONE_ITEMS = 0
     SCAN_PROCESS_STATE = ScannerStates.PROCESSING.value
 
     # batch the items into processing groups to peridically save progress to database
-    batches = itertools.batched(to_process, SCAN_BATCH_SIZE)
+    batches: list[list[ScanTorrentJob]] = itertools.batched(scan_jobs, SCAN_BATCH_SIZE)
     # calculate number of batches we made based on number of items we need to process
-    num_batches = (len(to_process) + SCAN_BATCH_SIZE - 1) // SCAN_BATCH_SIZE
+    num_batches = (len(scan_jobs) + SCAN_BATCH_SIZE - 1) // SCAN_BATCH_SIZE
 
     log.info(f"[SCAN] {num_batches} batches created for processing {SCAN_TOTAL_ITEMS} items")
 
     batch_index = 0
     # process each batch of files, one at a time, synchronously
-    for batched_job in batches:
+    for batched_jobs in batches:
         batch_index += 1
         futures = []
 
-        log.info(f"[SCAN] Starting batch {batch_index} of {num_batches} ({len(batched_job)} items)")
+        log.info(f"[SCAN] Starting batch {batch_index} of {num_batches} ({len(batched_jobs)} items)")
 
-        # add each file/torrent pair to the execution queue
-        for job_item in batched_job:
-            file_path, torrent_file = job_item
-            log.debug(f"[SCAN] Queueing file for processing: '{file_path}'")
+        # add each scan job to the execution queue
+        for batch_job in batched_jobs:
+            log.debug(f"[SCAN] Queueing file for processing: '{batch_job.file_path}'")
 
             # dispatch the torrent creation to the pool of worker threads
-            future = loop.run_in_executor(SCAN_EXECUTOR, utils.create_torrent_threadsafe, file_path, torrent_file)
+            future = loop.run_in_executor(SCAN_EXECUTOR, utils.create_torrent_threadsafe, batch_job.file_path, batch_job.app_id, batch_job.torrent_file, batch_job.title)
             futures.append(future)
 
         log.info(f"[SCAN] Queued {len(futures)} files for processing")
@@ -151,26 +171,26 @@ async def scan_media_library() -> tuple[int, int, int, int]:
             # keep a rolling count of the total files completed in global variable
             SCAN_DONE_ITEMS += 1
             try:
-                metadata, is_new_file = await future
+                future_result: tuple[TorrentCreationMetadata, bool] = await future
+                metadata, is_new_file = future_result
                 if metadata:
 
                     # attempt to send torrent file to indexer server
-                    uploaded = await utils.send_torrent_to_indexer(metadata["torrent_path"], metadata["category"])
+                    uploaded = await utils.send_torrent_to_indexer(metadata.torrent_path, metadata.category, metadata.name)
 
                     # add the data for the torrent to the database
-                    await utils.add_torrent_to_database(metadata["name"], metadata["size"], metadata["torrent_path"], uploaded, metadata["files"],
-                                                        metadata["category"],
-                                                        media_path=metadata["media_path"], hash_v1=metadata["hash_v1"], hash_v2=metadata["hash_v2"])
+                    await utils.add_torrent_to_database(metadata.name, metadata.size, metadata.torrent_path, uploaded, metadata.files, metadata.category,
+                                                        media_path=metadata.media_path, hash_v1=metadata.hash_v1, hash_v2=metadata.hash_v2, app_id=metadata.app_id)
 
                     if is_new_file:
                         created_files += 1
                         # attempt to add the torrent to the libtorrent session right away for immediate seeding
-                        if await torrent_client.add_torrent_for_seeding(metadata["torrent_path"], metadata["media_path"]):
-                            log.info(f"[SCAN] Created and started seeding new torrent: {metadata["name"]}")
+                        if await torrent_client.add_torrent_for_seeding(metadata.torrent_path, metadata.media_path):
+                            log.info(f"[SCAN] Created and started seeding new torrent: {metadata.name}")
                         else:
-                            log.warning(f"[SCAN] Created but failed to start seeding new torrent: {metadata["name"]}")
+                            log.warning(f"[SCAN] Created but failed to start seeding new torrent: {metadata.name}")
                     else:
-                        log.debug(f"[SCAN] Updated existing torrent: {metadata["name"]}")
+                        log.debug(f"[SCAN] Updated existing torrent: {metadata.name}")
             except Exception as e:
                 log.error(f"[SCAN] Error in torrent post-torrent-creation process: {e}")
 

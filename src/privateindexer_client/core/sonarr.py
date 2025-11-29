@@ -71,16 +71,74 @@ async def fetch_tv_library(tracked_root_folders: list[str]) -> list[dict]:
 
             series_list = response.json()
 
-            # asynchronously fetch episodes for the series, only if they are located in our tracked root folders
-            tasks = [fetch_series_episodes(series["id"]) for series in series_list if series.get("rootFolderPath") in tracked_root_folders]
-            results = await asyncio.gather(*tasks, return_exceptions=True)
+        # asynchronously fetch episodes for the series, only if they are located in our tracked root folders
+        series_in_scope = [series for series in series_list if series["rootFolderPath"] in tracked_root_folders]
+        tasks = [fetch_series_episodes(series["id"]) for series in series_in_scope]
+        episodes_results = await asyncio.gather(*tasks, return_exceptions=True)
 
-            # build a list of just episode data
-            all_episode_files = [episode for res in results for episode in res]
+        # create a map that associates episodes with their series ID
+        series_episodes_map = {series_in_scope[i]["id"]: episodes_results[i] for i in range(len(series_in_scope)) if not isinstance(episodes_results[i], Exception)}
 
-            log.debug(f"[SONARR] Fetched TV library ({len(series_list)} series, {len(all_episode_files)} episodes)")
+        final_entries = []
 
-            return all_episode_files
+        # loop through each series to build a list of entries
+        for series in series_list:
+            series_id = series["id"]
+            series_episodes = series_episodes_map.get(series_id, [])
+
+            # skip if no episodes are found
+            if not series_episodes:
+                continue
+
+            # create a map for season stats
+            season_stats = {season["seasonNumber"]: season["statistics"] for season in series["seasons"]}
+
+            # group episodes by season number
+            seasons = {}
+            for episode in series_episodes:
+                season_number = episode["seasonNumber"]
+                seasons.setdefault(season_number, []).append(episode)
+
+            # work through each season
+            for season_number, season_episodes in seasons.items():
+                # get the percent of episodes for season that are currently tracked on disk
+                percent_of_episodes = season_stats[season_number]["percentOfEpisodes"]
+                missing_episode_count = season_stats[season_number]["totalEpisodeCount"] - season_stats[season_number]["episodeFileCount"]
+
+                # build season pack for full & ended seasons
+                if percent_of_episodes == 100 and missing_episode_count == 0:
+                    # TODO: figure out a way to add better quality tags to the title - right now we're just going to use the first episode's quality data and some metadata
+                    sample_episode_data = season_episodes[0]
+                    quality_name = sample_episode_data["quality"]["quality"]["name"]
+                    release_group = f"-{sample_episode_data["releaseGroup"]}" if sample_episode_data.get("releaseGroup") else ""
+                    media_info = sample_episode_data["mediaInfo"]
+                    hdr_info = f"[{media_info["videoDynamicRangeType"]}]" if media_info.get("videoDynamicRangeType") else ""
+                    quality_tags = f"[{quality_name}][{media_info["videoBitDepth"]}bit]{hdr_info}[{media_info["videoCodec"]}]({media_info["audioCodec"]} {media_info["audioChannels"]})"
+                    title = f"{series["title"]} ({series["year"]}) - S{str(season_number).zfill(2)} {quality_tags}{release_group}"
+
+                    # starting with the first episode, compare all episode paths to ensure they share a single directory
+                    path = os.path.dirname(sample_episode_data["path"])
+                    for episode in season_episodes:
+                        if os.path.dirname(episode["path"]) != path:
+                            log.warning(f"[SONARR] Episodes from '{series["title"]} Season {season_number} do not share a single parent directory, it will be skipped.")
+                            path = None
+
+                    # skip the season if episodes do not share a single directory
+                    if not path:
+                        continue
+
+                    final_entries.append(
+                        {"id": series_id, "title": title, "path": path, "season_pack": True, })
+
+                else:
+                    # if there are missing episodes, just build each episode one at a time
+                    for season_episode in season_episodes:
+                        final_entries.append(
+                            {"id": series_id, "path": season_episode["path"], "season_pack": False, })
+
+        log.debug(f"[SONARR] Fetched TV library ({len(final_entries)} series, {len(episodes_results)} episodes)")
+
+        return final_entries
     except Exception as e:
         log.error(f"[SONARR] Exception while fetching TV library: {e}")
         return []
