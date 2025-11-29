@@ -21,7 +21,7 @@ INDEXER_API_URL = "https://indexer.humehouse.com"
 
 MAX_THREADS = int(os.getenv("MAX_THREADS", 8))
 
-SYNC_INTERVAL = 60 * 60
+SYNC_INTERVAL = 60 * int(os.getenv("SYNC_INTERVAL", 60))
 SCAN_INTERVAL = 60 * int(os.getenv("SCAN_INTERVAL", 30))
 SCAN_BATCH_SIZE = int(os.getenv("SCAN_BATCH_SIZE", 128))
 
