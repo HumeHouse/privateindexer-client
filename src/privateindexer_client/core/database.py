@@ -72,7 +72,8 @@ async def initialize():
 
             migration_script = MIGRATIONS.get(current_version)
             if not migration_script:
-                raise Exception(f"[DATABASE] No migration script found for {current_version} to {next_version}")
+                log.error(f"[DATABASE] No migration script found for {current_version} to {next_version}")
+                exit(1)
 
             await migration_script(db)
 
