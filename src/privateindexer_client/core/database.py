@@ -3,7 +3,7 @@ import aiosqlite
 from privateindexer_client.core.config import DATABASE_FILE
 from privateindexer_client.core.logger import log
 
-LATEST_SCHEMA_VERSION = 0
+LATEST_SCHEMA_VERSION = 1
 
 TORRENTS_TABLE_SQL = """
                      CREATE TABLE IF NOT EXISTS "torrents"
