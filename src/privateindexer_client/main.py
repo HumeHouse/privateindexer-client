@@ -8,7 +8,7 @@ from fastapi.staticfiles import StaticFiles
 
 from privateindexer_client.core import torrent_client, scan, api, gui, httpx_request, database, utils, sync, radarr, sonarr
 from privateindexer_client.core.config import TORRENTS_DIR, SCAN_INTERVAL, INDEXER_API_URL, API_KEY, TORRENTING_PORT, DOWNLOADS_DIR, FASTRESUME_DIR, APP_VERSION, \
-    MAX_THREADS, FASTRESUME_INTERVAL, ANNOUNCE_IP, RADARR_URL, RADARR_API_KEY, SONARR_URL, SONARR_API_KEY
+    MAX_THREADS, FASTRESUME_INTERVAL, ANNOUNCE_IP, RADARR_URL, RADARR_API_KEY, SONARR_URL, SONARR_API_KEY, SYNC_INTERVAL
 from privateindexer_client.core.logger import log
 
 APP_TASKS: list[Task] = []
@@ -55,6 +55,7 @@ async def lifespan(_: FastAPI):
         exit(1)
 
     log.info(f"[APP] Scan interval: {SCAN_INTERVAL} seconds")
+    log.info(f"[APP] Sync interval: {SYNC_INTERVAL} seconds")
     log.info(f"[APP] Fastresume interval: {FASTRESUME_INTERVAL} seconds")
 
     log.info(f"[APP] Maximum threads: {MAX_THREADS}")
