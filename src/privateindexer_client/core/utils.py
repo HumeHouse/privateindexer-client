@@ -42,10 +42,7 @@ def add_torrent_category(name: str, save_dir: str):
         os.mkdir(save_dir)
 
     # we have to store them like this per qBittorrent's format
-    categories[name] = {
-        "name": name,
-        "savePath": save_dir
-    }
+    categories[name] = {"name": name, "savePath": save_dir}
     config_data["categories"] = categories
 
     config.save_config(config_data)
@@ -625,25 +622,13 @@ def map_torrent_to_qbit(torrent: lt.torrent_handle) -> dict:
 
     peers_list = []
     for p in torrent.get_peer_info():
-        peers_list.append({
-            "ip": p.ip[0],
-            "port": p.ip[1],
-            "client": p.client.decode("utf-8", errors="ignore") if isinstance(p.client, bytes) else str(p.client),
-            "flags": format_peer_flags(p),
-            "up_speed": p.up_speed,
-            "down_speed": p.down_speed,
-            "progress": p.progress,
-        })
+        peers_list.append({"ip": p.ip[0], "port": p.ip[1], "client": p.client.decode("utf-8", errors="ignore") if isinstance(p.client, bytes) else str(p.client),
+                           "flags": format_peer_flags(p), "up_speed": p.up_speed, "down_speed": p.down_speed, "progress": p.progress, })
     mapped["peers"] = peers_list
 
     trackers_list = []
     for t in torrent.trackers():
-        trackers_list.append({
-            "url": t["url"],
-            "verified": t["verified"],
-            "next_announce": t.get("next_announce"),
-            "min_announce": t.get("min_announce")
-        })
+        trackers_list.append({"url": t["url"], "verified": t["verified"], "next_announce": t.get("next_announce"), "min_announce": t.get("min_announce")})
     mapped["trackers"] = trackers_list
 
     return mapped
@@ -667,22 +652,13 @@ def save_persistent_stats(all_time_download: int, all_time_upload: int):
     """
     Save the all-time download and upload stats to the stats file
     """
-    data = {
-        "all_time_download": all_time_download,
-        "all_time_upload": all_time_upload
-    }
+    data = {"all_time_download": all_time_download, "all_time_upload": all_time_upload}
     with open(STATS_FILE, "w") as file:
         file.write(json.dumps(data))
 
 
-def map_stats_to_qbit(
-        stats_now: dict[str, int] | None,
-        time_now: float | None,
-        stats_prev: dict[str, int] | None,
-        time_prev: float | None,
-        all_time_download: int,
-        all_time_upload: int,
-) -> dict[str, int | str]:
+def map_stats_to_qbit(stats_now: dict[str, int] | None, time_now: float | None, stats_prev: dict[str, int] | None, time_prev: float | None, all_time_download: int,
+                      all_time_upload: int, ) -> dict[str, int | str]:
     """
     Converts the raw data from a current and previous update of libtorrent stats to match what qbit would normally return in an API request
     """
