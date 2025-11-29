@@ -219,7 +219,7 @@ async def periodic_scan_task():
             SCAN_PROCESS_STATE = ScannerStates.POST_SCAN.value
 
             removed_entries = 0
-            duplicate_entries = set()
+            duplicate_entries: dict[str, dict] = {}
 
             # here we perform various database integrity and value correction checks
             torrents = await database.fetch_all("SELECT * FROM torrents")
@@ -282,7 +282,6 @@ async def periodic_scan_task():
                 if media_path and os.path.isdir(media_path) and torrent["files"] > 1:
                     for searching_torrent in torrents:
                         searched_media_path = searching_torrent.get("media_path")
-                        searched_torrent_path = searching_torrent["torrent_path"]
 
                         # skip empty and identical ID matches
                         if not searched_media_path or searching_torrent["id"] == torrent["id"]:
@@ -292,21 +291,22 @@ async def periodic_scan_task():
                         if os.path.commonpath([searched_media_path, media_path]) != media_path:
                             continue
 
-                        duplicate_entries.add(searched_media_path)
+                        duplicate_entries[searching_torrent["id"]] = searching_torrent
+                        log.warning(f"[SCAN] Potential duplicate episode found for season pack '{torrent["name"]}': {searching_torrent['name']}")
 
-                        # only delete if user has enabled environment variable
-                        if PURGE_SEASON_PACK_EPISODES:
-                            removed_entries += 1
-                            # remove from torrent client
-                            await torrent_client.remove_torrent_by_hash(searching_torrent.get("hash_v1"))
-                            # remove torrent file
-                            if os.path.exists(searched_torrent_path):
-                                os.unlink(searched_torrent_path)
-                            # remove from database
-                            await database.execute("DELETE FROM torrents WHERE id = ?", (searching_torrent["id"],))
-                            log.info(f"[SCAN] Purged duplicate episode for season pack '{torrent["name"]}': {searching_torrent['name']}")
-                        else:
-                            log.warning(f"[SCAN] Potential duplicate episode found for season pack '{torrent["name"]}': {searching_torrent['name']}")
+            # purge duplicate episodes if the user has this option enabled
+            if PURGE_SEASON_PACK_EPISODES:
+                for duplicate_entry in duplicate_entries.values():
+                    duplicate_torrent_path = duplicate_entry["torrent_path"]
+                    removed_entries += 1
+                    # remove from torrent client
+                    await torrent_client.remove_torrent_by_hash(duplicate_entry.get("hash_v1"))
+                    # remove torrent file
+                    if os.path.exists(duplicate_torrent_path):
+                        os.unlink(duplicate_torrent_path)
+                    # remove from database
+                    await database.execute("DELETE FROM torrents WHERE id = ?", (duplicate_entry["id"],))
+                    log.info(f"[SCAN] Purged duplicate episode: {duplicate_entry['name']}")
 
             # only purge dangling torrents if the user has this option enabled
             if PURGE_UNTRACKED_TORRENTS:
@@ -320,9 +320,11 @@ async def periodic_scan_task():
                         os.unlink(torrent_path)
                         log.info(f"[SCAN] Removed danlging torrent file '{torrent_path}'")
 
+            duplicate_entries = len(duplicate_entries.keys())
+
             delta = datetime.datetime.now() - before
             log.info(f"[SCAN] Media library scan completed ({delta}): "
-                     f"total {total_files} files, {ignored_files} ignored, {updated_files} updated, {created_files} created, {removed_entries} removed, {len(duplicate_entries)} duplicates")
+                     f"total {total_files} files, {ignored_files} ignored, {updated_files} updated, {created_files} created, {removed_entries} removed, {duplicate_entries} duplicates")
 
         except Exception as e:
             log.error(f"[SCAN] Error during periodic scan: {e}")
