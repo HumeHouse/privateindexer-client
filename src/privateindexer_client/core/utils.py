@@ -16,6 +16,9 @@ _file_piece_hash_cache: dict[str, dict[int, list[bytes]]] = {}
 _torrent_info_cache: dict[str, dict[str, int | str]] = {}
 _torznab_category_paths: list[dict[str, str]] = []
 
+RADARR_ROOT_CATEGORY = 1000
+SONARR_ROOT_CATEGORY = 5000
+
 
 def detect_torznab_category(file_path: str) -> int:
     """
@@ -134,14 +137,14 @@ async def update_torznab_category_paths() -> set[dict[str, str]]:
 
         # add the root paths to tracking
         for radarr_root_folder in radarr_root_folders:
-            _torznab_category_paths.append({"id": 1000, "path": radarr_root_folder})
+            _torznab_category_paths.append({"id": RADARR_ROOT_CATEGORY, "path": radarr_root_folder})
 
     if SONARR_URL:
         sonarr_root_folders = await sonarr.fetch_root_folders()
 
         # add the root paths to tracking
         for sonarr_root_folder in sonarr_root_folders:
-            _torznab_category_paths.append({"id": 5000, "path": sonarr_root_folder})
+            _torznab_category_paths.append({"id": SONARR_ROOT_CATEGORY, "path": sonarr_root_folder})
 
     return _torznab_category_paths
 
