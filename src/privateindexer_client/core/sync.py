@@ -68,7 +68,7 @@ async def periodic_sync_task():
                 # make sure the torrent and either the media or the download files exist before uploading to the server
                 if os.path.exists(torrent_path) and (os.path.exists(media_path) or os.path.exists(download_path)):
                     log.debug(f"[SYNC] Attempting to resend torrent to indexer: '{torrent_metadata["name"]}'")
-                    if await utils.send_torrent_to_indexer(torrent_path, torrent_metadata["category"]):
+                    if await utils.send_torrent_to_indexer(torrent_path, torrent_metadata["category"], torrent_metadata["name"]):
                         await database.execute("UPDATE torrents SET uploaded = TRUE WHERE id = ?", (torrent_metadata["id"],))
                         uploaded += 1
                     else:

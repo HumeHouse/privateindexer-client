@@ -138,7 +138,7 @@ async def add_torrent_for_download(torrent_file: str, save_path: str) -> bool:
     # attempt to add the torrent to the client
     try:
         info = lt.torrent_info(torrent_file)
-        torrent_name = info.name()
+        torrent_name = os.path.splitext(os.path.basename(torrent_file))[0]
 
         # get the number of files in the torrent
         file_count = info.num_files()
