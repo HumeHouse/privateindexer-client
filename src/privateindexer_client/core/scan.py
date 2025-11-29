@@ -219,7 +219,7 @@ async def periodic_scan_task():
             SCAN_PROCESS_STATE = ScannerStates.POST_SCAN.value
 
             removed_entries = 0
-            duplicate_entries = 0
+            duplicate_entries = set()
 
             # here we perform various database integrity and value correction checks
             torrents = await database.fetch_all("SELECT * FROM torrents")
@@ -284,11 +284,15 @@ async def periodic_scan_task():
                         searched_media_path = searching_torrent.get("media_path")
                         searched_torrent_path = searching_torrent["torrent_path"]
 
-                        # skip empty and non-matching media paths, also skip identical ID matches
-                        if not searched_media_path or not searched_media_path.startswith(media_path) or searching_torrent["id"] == torrent["id"]:
+                        # skip empty and identical ID matches
+                        if not searched_media_path or searching_torrent["id"] == torrent["id"]:
                             continue
 
-                        duplicate_entries += 1
+                        # skip non-matching media paths
+                        if os.path.commonpath([searched_media_path, media_path]) != media_path:
+                            continue
+
+                        duplicate_entries.add(searched_media_path)
 
                         # only delete if user has enabled environment variable
                         if PURGE_SEASON_PACK_EPISODES:
@@ -318,7 +322,7 @@ async def periodic_scan_task():
 
             delta = datetime.datetime.now() - before
             log.info(f"[SCAN] Media library scan completed ({delta}): "
-                     f"total {total_files} files, {ignored_files} ignored, {updated_files} updated, {created_files} created, {removed_entries} removed, {duplicate_entries} duplicates")
+                     f"total {total_files} files, {ignored_files} ignored, {updated_files} updated, {created_files} created, {removed_entries} removed, {len(duplicate_entries)} duplicates")
 
         except Exception as e:
             log.error(f"[SCAN] Error during periodic scan: {e}")
