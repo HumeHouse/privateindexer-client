@@ -105,3 +105,23 @@ async def fetch_series_episodes(series_id: str) -> list[dict]:
     except Exception as e:
         log.error(f"[SONARR] Exception while fetching episode files: {e}")
         return []
+
+
+async def fetch_series_metadata(series_id: str) -> dict:
+    """
+    Fetches the metadata for the given series ID
+    """
+    try:
+        async with httpx_request.get_client() as client:
+            response = await client.get(f"{SONARR_URL}/api/v3/series/{series_id}", headers={"X-API-Key": SONARR_API_KEY}, timeout=30)
+
+            if response.status_code != 200:
+                log.warning(f"[SONARR] Failed to fetch series metadata: {response.status_code}")
+                return []
+
+            series_response = response.json()
+            log.debug(f"[SONARR] Fetched metadata for series ID {series_id}")
+            return series_response
+    except Exception as e:
+        log.error(f"[SONARR] Exception while fetching series metadata: {e}")
+        return []
