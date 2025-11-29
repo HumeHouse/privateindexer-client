@@ -1,4 +1,5 @@
 import datetime
+import enum
 import hashlib
 import json
 import os
@@ -8,8 +9,7 @@ import time
 import libtorrent as lt
 
 from privateindexer_client.core import config, httpx_request, database, radarr, sonarr
-from privateindexer_client.core.config import API_KEY, INDEXER_API_URL, TORRENTS_DIR, FASTRESUME_DIR, APP_VERSION, STATS_FILE, SONARR_URL, \
-    RADARR_URL
+from privateindexer_client.core.config import API_KEY, INDEXER_API_URL, TORRENTS_DIR, FASTRESUME_DIR, APP_VERSION, STATS_FILE, SONARR_URL, RADARR_URL
 from privateindexer_client.core.logger import log
 
 _file_piece_hash_cache: dict[str, dict[int, list[bytes]]] = {}
@@ -178,30 +178,57 @@ async def update_torznab_category_paths() -> set[dict[str, str]]:
     return _torznab_category_paths
 
 
-async def get_all_media_files() -> list[str]:
+async def get_managed_media_data() -> list[MediaDataEntry]:
     """
-    Returns list of file paths for all tracked media
+    Returns list of data dicts for all tracked media
+    Includes app ID (Sonarr/Radarr) and optionally a title
     """
     tracked_root_folders = [cat_info.get("path") for cat_info in _torznab_category_paths]
-    media_files = []
+    media_data = []
 
-    # fetch all movie files from Radarr if configured
-    if RADARR_URL:
-        radarr_movies = await radarr.fetch_movie_library(tracked_root_folders)
-        for movie in radarr_movies:
-            path = movie.get("movieFile", {}).get("path")
-            if path:
-                media_files.append(path)
+    try:
+        # fetch all movie files from Radarr if configured
+        if RADARR_URL:
+            radarr_movies = await radarr.fetch_movie_library(tracked_root_folders)
+            for movie in radarr_movies:
 
-    # fetch all TV episode files from Sonarr if configured
-    if SONARR_URL:
-        sonarr_episodes = await sonarr.fetch_tv_library(tracked_root_folders)
-        for episode in sonarr_episodes:
-            path = episode.get("path")
-            if path:
-                media_files.append(path)
+                path = movie.get("movieFile", {}).get("path")
+                if path:
+                    # build a movie entry for valid movies
+                    movie_entry = MediaDataEntry(MediaType.RADARR_MOVIE)
+                    movie_entry.app_id = movie["id"]
+                    movie_entry.path = path
 
-    return media_files
+                    media_data.append(movie_entry)
+    except Exception as e:
+        log.error(f"[RADARR] Exception while gathering media data: {e}")
+
+    try:
+        # fetch all TV episode files from Sonarr if configured
+        if SONARR_URL:
+            sonarr_series = await sonarr.fetch_tv_library(tracked_root_folders)
+            for series_entry in sonarr_series:
+
+                # build a season entry for season packs
+                if series_entry["season_pack"]:
+                    season_entry = MediaDataEntry(MediaType.SONARR_SEASON)
+                    season_entry.app_id = series_entry["id"]
+                    season_entry.path = series_entry["path"]
+                    season_entry.title = series_entry["title"]
+
+                    media_data.append(season_entry)
+
+                # build single episode entries for individual episodes
+                else:
+                    episode_entry = MediaDataEntry(MediaType.SONARR_EPISODE)
+                    episode_entry.app_id = series_entry["id"]
+                    episode_entry.path = series_entry["path"]
+
+                    media_data.append(episode_entry)
+    except Exception as e:
+        log.error(f"[SONARR] Exception while gathering media data: {e}")
+
+    return media_data
 
 
 def hash_file_by_pieces(file_path: str, piece_length: int) -> list[str]:
@@ -270,7 +297,7 @@ def torrent_matches_file(torrent_path: str, media_path: str) -> bool:
     return file_hashes == torrent_hashes
 
 
-def create_torrent(media_path: str, output_torrent_file: str = None) -> tuple[dict, bool]:
+def create_torrent(media_path: str, app_id: int, output_torrent_file: str = None, title: str = None) -> tuple[TorrentCreationMetadata, bool]:
     """
     Synchronous routine to build and generate a complete torrent file from the media passed in as media_path
     Checks if output torrent file already exists and skips the torrent generation process
@@ -286,29 +313,45 @@ def create_torrent(media_path: str, output_torrent_file: str = None) -> tuple[di
 
     else:
         is_new_file = True
-        log.debug(f"[TORRENT] Torrent for '{media_path}' does not exist, generating one")
+        is_file = os.path.isfile(media_path)
 
-        log.info(f"[TORRENT] Creating torrent for '{os.path.basename(media_path)}'")
+        # get the input path parent directory name
+        parent_directory = os.path.dirname(media_path)
+
+        # this will become the name of the new torrent, if it's a file, split off the extension
+        torrent_name = title or (os.path.splitext(os.path.basename(media_path))[0] if is_file else os.path.basename(media_path))
+
+        log.info(f"[TORRENT] Creating torrent '{torrent_name}'")
+
+        output_torrent_file = os.path.join(TORRENTS_DIR, f"{torrent_name}.torrent")
 
         # create the file storage object
         fs = lt.file_storage()
 
-        # add file to the filestorage
-        lt.add_files(fs, media_path)
+        # add file to fs for single-file torrents
+        if is_file:
+            size = os.path.getsize(media_path)
+            filename = os.path.basename(media_path)
+            fs.add_file(filename, size)
+
+        else:
+            # walk over the input path for multi-file torrents
+            for root, _, files in os.walk(media_path):
+                for file in files:
+                    size = os.path.getsize(os.path.join(root, file))
+                    filename = os.path.relpath(os.path.join(root, file), parent_directory)
+                    fs.add_file(filename, size)
 
         # create the torrent from the file storage object
         t = lt.create_torrent(fs)
         t.set_creator(f"PrivateIndexer Client v{APP_VERSION}")
         t.set_priv(True)
-        lt.set_piece_hashes(t, os.path.dirname(media_path))
-        torrent_data = t.generate()
 
-        # this will become the name of the new torrent, if it's a file, split off the extension
-        torrent_name, _ = os.path.splitext(os.path.basename(media_path)) if os.path.isfile(media_path) else os.path.basename(media_path)
-        output_torrent_file = os.path.join(TORRENTS_DIR, f"{torrent_name}.torrent")
+        # build peice map from parent directory
+        lt.set_piece_hashes(t, parent_directory)
 
         with open(output_torrent_file, "wb") as f:
-            f.write(lt.bencode(torrent_data))
+            f.write(lt.bencode(t.generate()))
 
     # attempt to pull the v1 and v2 hash information from the torrent file, otherwise fail and remove torrent file from disk
     try:
@@ -320,26 +363,37 @@ def create_torrent(media_path: str, output_torrent_file: str = None) -> tuple[di
 
         # get the number of files in the torrent
         file_count = info.num_files()
+
+        # get size of media
+        total_media_size = info.files().total_size()
     except Exception as e:
         log.error(f"[TORRENT] Failed to read hash for '{output_torrent_file}', it has been removed: {e}")
         os.unlink(output_torrent_file)
         return None, False
 
     category_id = detect_torznab_category(media_path)
-    # get size of media
-    total_media_size = os.path.getsize(media_path)
 
-    return ({"name": torrent_name, "size": total_media_size, "media_path": media_path, "torrent_path": output_torrent_file, "uploaded": False,
-             "files": file_count, "category": category_id, "hash_v1": torrent_hash_v1, "hash_v2": torrent_hash_v2},
-            is_new_file)
+    torrent_metadata = TorrentCreationMetadata()
+    torrent_metadata.app_id = app_id
+    torrent_metadata.name = title or torrent_name
+    torrent_metadata.size = total_media_size
+    torrent_metadata.media_path = media_path
+    torrent_metadata.torrent_path = output_torrent_file
+    torrent_metadata.uploaded = False
+    torrent_metadata.files = file_count
+    torrent_metadata.category = category_id
+    torrent_metadata.hash_v1 = torrent_hash_v1
+    torrent_metadata.hash_v2 = torrent_hash_v2
+
+    return torrent_metadata, is_new_file
 
 
-def create_torrent_threadsafe(media_path: str, output_torrent_file: str = None) -> tuple[dict, bool]:
+def create_torrent_threadsafe(media_path: str, app_id: int, output_torrent_file: str = None, title: str = None) -> tuple[TorrentCreationMetadata, bool]:
     """
     Wraps the create_torrent() routine in a try/accept to catch all runtime errors
     """
     try:
-        return create_torrent(media_path, output_torrent_file)
+        return create_torrent(media_path, app_id, output_torrent_file, title)
     except Exception as e:
         log.error(f"[TORRENT] Failed to create torrent for '{media_path}': {e}")
         return None, False
@@ -427,15 +481,15 @@ def find_media_for_torrent(torrent_path: str, media_dir: str) -> str | None:
 
 
 async def add_torrent_to_database(name: str, size: int, torrent_path: str, uploaded: bool, files: int, category: int, media_path: str = None, download_path: str = None,
-                                  hash_v1: str = None, hash_v2: str = None):
+                                  hash_v1: str = None, hash_v2: str = None, app_id: str = None):
     """
     Add torrent metadata into the database or update upon duplicate torrent_path
     """
     await database.execute(
-        "INSERT INTO torrents (name, size, torrent_path, uploaded, files, category, media_path, download_path, hash_v1, hash_v2)"
-        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
-        "ON CONFLICT(torrent_path) DO UPDATE SET name=excluded.name, size=excluded.size, uploaded=excluded.uploaded, files=excluded.files, category=excluded.category, media_path=excluded.media_path, download_path=excluded.download_path, hash_v1=excluded.hash_v1, hash_v2=excluded.hash_v2",
-        (name, size, torrent_path, uploaded, files, category, media_path, download_path, hash_v1, hash_v2,))
+        "INSERT INTO torrents (name, size, torrent_path, uploaded, files, category, media_path, download_path, hash_v1, hash_v2, app_id)"
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+        "ON CONFLICT(torrent_path) DO UPDATE SET name=excluded.name, size=excluded.size, uploaded=excluded.uploaded, files=excluded.files, category=excluded.category, media_path=excluded.media_path, download_path=excluded.download_path, hash_v1=excluded.hash_v1, hash_v2=excluded.hash_v2, app_id=excluded.app_id",
+        (name, size, torrent_path, uploaded, files, category, media_path, download_path, hash_v1, hash_v2, app_id))
 
 
 async def remove_torrent_from_database(hash_v1: str) -> bool:
