@@ -20,6 +20,35 @@ RADARR_ROOT_CATEGORY = 1000
 SONARR_ROOT_CATEGORY = 5000
 
 
+class MediaType(enum.Enum):
+    RADARR_MOVIE = 1
+    SONARR_EPISODE = 2
+    SONARR_SEASON = 3
+
+
+class MediaDataEntry:
+    media_type: MediaType
+    app_id: int = None
+    title: str = None
+    path: str = None
+
+    def __init__(self, media_type: MediaType):
+        self.media_type: MediaType = media_type
+
+
+class TorrentCreationMetadata:
+    app_id: int = None
+    name: str = None
+    size: int = None
+    media_path: str = None
+    torrent_path: str = None
+    uploaded: bool = None
+    files: int = None
+    category: int = None
+    hash_v1: str = None
+    hash_v2: str = None
+
+
 def detect_torznab_category(file_path: str) -> int:
     """
     Tries to match the file's path with the known torznab category directories and returns its ID
@@ -231,11 +260,7 @@ def torrent_matches_file(torrent_path: str, media_path: str) -> bool:
         piece_length = info.piece_length()
         # get piece hashes from torrent info
         torrent_hashes = [info.hash_for_piece(i) for i in range(info.num_pieces())]
-        _torrent_info_cache[torrent_path] = {
-            "piece_length": piece_length,
-            "total_size": total_size,
-            "torrent_hashes": torrent_hashes,
-        }
+        _torrent_info_cache[torrent_path] = {"piece_length": piece_length, "total_size": total_size, "torrent_hashes": torrent_hashes, }
 
     if os.path.getsize(media_path) != total_size:
         return False
@@ -290,15 +315,7 @@ def create_torrent(media_path: str, output_torrent_file: str = None) -> tuple[di
         info = lt.torrent_info(output_torrent_file)
         torrent_name = info.name()
         hashes = info.info_hashes()
-        if not hashes.has_v1():
-            log.error(f"[TORRENT] Torrent '{torrent_name}' did not generate a v1 hash, it has been removed")
-            os.unlink(output_torrent_file)
-            return None, False
         torrent_hash_v1 = str(hashes.v1)
-        if not hashes.has_v2():
-            log.error(f"[TORRENT] Torrent '{torrent_name}' did not generate a v2 hash, it has been removed")
-            os.unlink(output_torrent_file)
-            return None, False
         torrent_hash_v2 = str(hashes.v2)
 
         # get the number of files in the torrent
@@ -328,9 +345,9 @@ def create_torrent_threadsafe(media_path: str, output_torrent_file: str = None) 
         return None, False
 
 
-def file_exists_in_torrent(torrent_path: str, target_filename: str) -> bool:
+def path_exists_in_torrent(torrent_path: str, target_file_path: str) -> bool:
     """
-    Helper to check if file exists in torrent based on the index of a file inside the files() of a torrent_info object
+    Helper to check if a file path exists in torrent based on the index of a file inside the files() of a torrent_info object
     """
     # get the file storage from the torrent
     try:
@@ -340,10 +357,10 @@ def file_exists_in_torrent(torrent_path: str, target_filename: str) -> bool:
         # loop through all the files and check for matches
         for i in range(fs.num_files()):
             filename = os.path.basename(fs.file_path(i))
-            if filename == target_filename:
+            if filename == target_file_path:
                 return True
     except Exception as e:
-        log.error(f"[TORRENT] Failed to get file index for '{target_filename}' in torrent {torrent_path}: {e}")
+        log.error(f"[TORRENT] Failed to get file index for '{target_file_path}' in torrent {torrent_path}: {e}")
     return False
 
 
