@@ -47,17 +47,19 @@ below
 
 #### OPTIONAL VARIABLES
 
-| Variable                   | Default Value | Description                                                                                                                             |
-|----------------------------|---------------|-----------------------------------------------------------------------------------------------------------------------------------------|
-| `MAX_THREADS `             | `8`           | Number of threads to use for CPU & I/O bound tasks. Recommend matching CPU cores.                                                       |
-| `SCAN_INTERVAL`            | `30`          | Minutes between media library scans. We rebuild the media library from Radarr and Sonarr every scan, so be cautious setting too low.    |
-| `SCAN_BATCH_SIZE`          | `128`         | Number of items in the scan task to process at any given time. This should ideally be set to a multiple of your `MAX_THREADS` variable. |
-| `FASTRESUME_INTERVAL`      | `60`          | How often (in minutes) to save fastresume data. *Setting this too low can negatively impact your disk performance.*                     |
-| `ANNOUNCE_IP`              | **NONE**      | Rarely needed, advanced only. If for some reason your client is making requests from different IP than you appear to peers.             |
-| `TORRENTING_PORT`          | `6881`        | Port accepting connections from other torrent clients. (Make sure to bind this to host and forward in router.)                          |
-| `LOG_LEVEL`                | `INFO`        | Lowest log level to show in console. Can be `DEBUG`, `INFO`, `WARNING`, `ERROR`, or `CRITICAL` where `DEBUG` shows most amount of logs  |
-| `PURGE_UNTRACKED_TORRENTS` | `False`       | Enable this to have the client purge any dangling torent files that aren't currently tracked in the database - this can be destructive. |
-| `STALE_TORRENT_THRESHOLD`  | `30`          | Number of days a torrent is allowed to sit in downloading state before it is automatically purged from the torrent client.              |
+| Variable                     | Default Value | Description                                                                                                                                 |
+|------------------------------|---------------|---------------------------------------------------------------------------------------------------------------------------------------------|
+| `MAX_THREADS `               | `8`           | Number of threads to use for CPU & I/O bound tasks. Recommend matching CPU cores.                                                           |
+| `SCAN_INTERVAL`              | `30`          | Minutes between media library scans. We rebuild the media library from Radarr and Sonarr every scan, so be cautious setting too low.        |
+| `SYNC_INTERVAL`              | `60`          | Minutes between server sync task cycles. Sync cucles keep local database up-to-date with server database to ensure no torrents are missing. |
+| `SCAN_BATCH_SIZE`            | `128`         | Number of items in the scan task to process at any given time. This should ideally be set to a multiple of your `MAX_THREADS` variable.     |
+| `FASTRESUME_INTERVAL`        | `60`          | How often (in minutes) to save fastresume data. *Setting this too low can negatively impact your disk performance.*                         |
+| `ANNOUNCE_IP`                | **NONE**      | Rarely needed, advanced only. If for some reason your client is making requests from different IP than you appear to peers.                 |
+| `TORRENTING_PORT`            | `6881`        | Port accepting connections from other torrent clients. (Make sure to bind this to host and forward in router.)                              |
+| `LOG_LEVEL`                  | `INFO`        | Lowest log level to show in console. Can be `DEBUG`, `INFO`, `WARNING`, `ERROR`, or `CRITICAL` where `DEBUG` shows most amount of logs      |
+| `PURGE_UNTRACKED_TORRENTS`   | `False`       | Enable this to have the client purge any dangling torent files that aren't currently tracked in the database - this can be destructive.     |
+| `STALE_TORRENT_THRESHOLD`    | `30`          | Number of days a torrent is allowed to sit in downloading state before it is automatically purged from the torrent client.                  |
+| `PURGE_SEASON_PACK_EPISODES` | `False`       | Enable this to have the client purge individual episode torrents that are part of a tracked season pack torrent. Useful for de-duplication. |
 
 ### 2. Configure Volumes
 
