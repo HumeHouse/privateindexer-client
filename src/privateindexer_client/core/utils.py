@@ -111,6 +111,7 @@ async def send_torrent_to_indexer(torrent_path: str, category: int, torrent_name
     try:
         imdbid = None
         tmdbid = None
+        tvdbid = None
 
         result = await database.fetch_one("SELECT app_id FROM torrents WHERE torrent_path = ?", (torrent_path,))
         if result and result.get("app_id"):
@@ -123,6 +124,7 @@ async def send_torrent_to_indexer(torrent_path: str, category: int, torrent_name
                 series_metadata = await sonarr.fetch_series_metadata(series_id=app_id)
                 imdbid = series_metadata["imdbId"]
                 tmdbid = series_metadata["tmdbId"]
+                tvdbid = series_metadata["tvdbId"]
 
         with open(torrent_path, "rb") as file:
             torrent_basename = os.path.basename(torrent_path)
@@ -135,6 +137,9 @@ async def send_torrent_to_indexer(torrent_path: str, category: int, torrent_name
 
             if tmdbid:
                 data["tmdbid"] = tmdbid
+
+            if tvdbid:
+                data["tvdbid"] = tvdbid
 
             async with httpx_request.get_client() as client:
                 response = await client.post(f"{INDEXER_API_URL}/upload", headers={"X-API-Key": API_KEY}, data=data, files=files)
