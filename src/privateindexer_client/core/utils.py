@@ -27,26 +27,26 @@ class MediaType(enum.Enum):
 
 
 class MediaDataEntry:
-    media_type: MediaType
-    app_id: int = None
-    title: str = None
-    path: str = None
-
     def __init__(self, media_type: MediaType):
         self.media_type: MediaType = media_type
+        self.media_type: MediaType
+        self.app_id: int = None
+        self.title: str = None
+        self.path: str = None
 
 
 class TorrentCreationMetadata:
-    app_id: int = None
-    name: str = None
-    size: int = None
-    media_path: str = None
-    torrent_path: str = None
-    uploaded: bool = None
-    files: int = None
-    category: int = None
-    hash_v1: str = None
-    hash_v2: str = None
+    def __init__(self):
+        self.app_id: int = None
+        self.name: str = None
+        self.size: int = None
+        self.media_path: str = None
+        self.torrent_path: str = None
+        self.uploaded: bool = None
+        self.files: int = None
+        self.category: int = None
+        self.hash_v1: str = None
+        self.hash_v2: str = None
 
 
 def detect_torznab_category(file_path: str) -> int:
