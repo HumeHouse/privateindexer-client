@@ -238,7 +238,7 @@ async def fetch_tv_library(tracked_root_folders: list[str]) -> list[dict]:
                     aggregated_metadata = aggregate_season_metadata(season_episodes)
                     metadata_tags = build_tags_from_metadata(aggregated_metadata)
                     title = f"{series["title"]} ({series["year"]}) - S{str(season_number).zfill(2)} {metadata_tags}"
-                    log.info(title)
+                    log.debug(f"[SONARR] Season pack ({len(season_episodes)} episodes) grouped with title: {title}")
 
                     # starting with the first episode, compare all episode paths to ensure they share a single directory
                     path = os.path.dirname(season_episodes[0]["path"])
