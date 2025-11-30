@@ -6,6 +6,134 @@ from privateindexer_client.core.config import SONARR_URL, SONARR_API_KEY
 from privateindexer_client.core.logger import log
 
 
+class AggregatedSeasonMetadata:
+    def __init__(self):
+        self.qualities: set = set()
+        self.video_codecs: set = set()
+        self.audio_codecs: set = set()
+        self.audio_channels: set = set()
+        self.bit_depths: set = set()
+        self.hdr_types: set = set()
+        self.release_groups: set = set()
+
+
+def normalize_video_codec(codec: str | None) -> str | None:
+    """
+    Helper function to standardize the video codec
+    """
+    if not codec:
+        return None
+
+    codec = codec.strip().lower()
+
+    if codec in {"x265", "h265", "hevc", "h.265"}:
+        return "H265"
+
+    if codec in {"x264", "h264", "avc", "h.264"}:
+        return "H264"
+
+    # fallback to just uppercase codec if no matches
+    return codec.upper()
+
+
+def normalize_audio_codec(codec: str | None) -> str | None:
+    """
+    Helper function to standardize the audio codec
+    """
+    if not codec:
+        return None
+
+    codec = codec.strip().lower()
+
+    if codec in {"eac3", "ddp", "dd+", "dolby digital plus"}:
+        return "DDP"
+    if codec in {"dts", "dtshd"}:
+        return "DTS"
+    if codec in {"truehd"}:
+        return "TrueHD"
+
+    # fallback to just uppercase codec if no matches
+    return codec.upper()
+
+
+def aggregate_season_metadata(season_episodes: list[dict]) -> AggregatedSeasonMetadata:
+    """
+    Gathers info from each episode in a season and combines into a large aggregate object to be used for title formatting
+    """
+    aggregated = AggregatedSeasonMetadata()
+
+    for episode in season_episodes:
+        quality = episode["quality"]["quality"]["name"]
+        aggregated.qualities.add(quality)
+
+        media_info = episode["mediaInfo"]
+
+        video_codec = normalize_video_codec(media_info.get("videoCodec"))
+        audio_codec = normalize_audio_codec(media_info.get("audioCodec"))
+
+        aggregated.video_codecs.add(video_codec)
+        aggregated.audio_codecs.add(audio_codec)
+        aggregated.audio_channels.add(media_info.get("audioChannels"))
+        aggregated.bit_depths.add(f"{media_info.get("videoBitDepth")}bit")
+        aggregated.hdr_types.add(media_info.get("videoDynamicRangeType") or "")
+
+        if episode.get("releaseGroup") and len(episode["releaseGroup"].strip()) > 0:
+            aggregated.release_groups.add(episode["releaseGroup"])
+
+    return aggregated
+
+
+def build_tags_from_metadata(aggregated: AggregatedSeasonMetadata) -> str:
+    """
+    Assembles a final string of metadata tags from an aggregate metadata object to be appended to season pack titles
+    """
+
+    def tag(values: list[str], wrap: str = "[]") -> str:
+        # sort and get first 3 tags
+        clean_values = sorted(v for v in values if v)
+
+        # no tags → return empty
+        if not clean_values:
+            return ""
+
+        left, right = wrap
+
+        formatted = f"{left}{'+'.join(clean_values[:3])}{right}"
+
+        if len(clean_values) > 3:
+            formatted = f"{formatted}++"
+
+        return formatted
+
+    tags = [tag(aggregated.qualities), tag(aggregated.video_codecs), tag({str(bit_depth) for bit_depth in aggregated.bit_depths})]
+
+    if any(aggregated.hdr_types):
+        tags.append(tag(aggregated.hdr_types))
+
+    # add audio codecs and channels in parenthesis wrapper together
+    audio_entries = set()
+
+    for codec in sorted(v for v in aggregated.audio_codecs if v):
+        for ch in sorted(v for v in aggregated.audio_channels if v):
+            audio_entries.add(f"{codec} {ch}")
+
+    if audio_entries:
+        tags.append(tag(audio_entries, wrap="()"))
+
+    # put release groups at the end with hyphen separator
+    if aggregated.release_groups:
+        # sort and get first 3 release groups
+        release_groups = sorted(g for g in aggregated.release_groups if g)
+
+        # append all the groups
+        tags.append(f"-{"+".join(release_groups[:3])}")
+
+        if len(release_groups) > 3:
+            tags.append("++")
+
+    return "".join(tags)
+
+
 async def test_connection():
     """
     Tests connection to Sonarr API
@@ -107,17 +235,13 @@ async def fetch_tv_library(tracked_root_folders: list[str]) -> list[dict]:
 
                 # build season pack for full & ended seasons
                 if percent_of_episodes == 100 and missing_episode_count == 0:
-                    # TODO: figure out a way to add better quality tags to the title - right now we're just going to use the first episode's quality data and some metadata
-                    sample_episode_data = season_episodes[0]
-                    quality_name = sample_episode_data["quality"]["quality"]["name"]
-                    release_group = f"-{sample_episode_data["releaseGroup"]}" if sample_episode_data.get("releaseGroup") else ""
-                    media_info = sample_episode_data["mediaInfo"]
-                    hdr_info = f"[{media_info["videoDynamicRangeType"]}]" if media_info.get("videoDynamicRangeType") else ""
-                    quality_tags = f"[{quality_name}][{media_info["videoBitDepth"]}bit]{hdr_info}[{media_info["videoCodec"]}]({media_info["audioCodec"]} {media_info["audioChannels"]})"
-                    title = f"{series["title"]} ({series["year"]}) - S{str(season_number).zfill(2)} {quality_tags}{release_group}"
+                    aggregated_metadata = aggregate_season_metadata(season_episodes)
+                    metadata_tags = build_tags_from_metadata(aggregated_metadata)
+                    title = f"{series["title"]} ({series["year"]}) - S{str(season_number).zfill(2)} {metadata_tags}"
+                    log.debug(f"[SONARR] Season pack ({len(season_episodes)} episodes) grouped with title: {title}")
 
                     # starting with the first episode, compare all episode paths to ensure they share a single directory
-                    path = os.path.dirname(sample_episode_data["path"])
+                    path = os.path.dirname(season_episodes[0]["path"])
                     for episode in season_episodes:
                         if os.path.dirname(episode["path"]) != path:
                             log.warning(f"[SONARR] Episodes from '{series["title"]} Season {season_number} do not share a single parent directory, it will be skipped.")
@@ -127,14 +251,12 @@ async def fetch_tv_library(tracked_root_folders: list[str]) -> list[dict]:
                     if not path:
                         continue
 
-                    final_entries.append(
-                        {"id": series_id, "title": title, "path": path, "season_pack": True, })
+                    final_entries.append({"id": series_id, "title": title, "path": path, "season_pack": True, })
 
                 else:
                     # if there are missing episodes, just build each episode one at a time
                     for season_episode in season_episodes:
-                        final_entries.append(
-                            {"id": series_id, "path": season_episode["path"], "season_pack": False, })
+                        final_entries.append({"id": series_id, "path": season_episode["path"], "season_pack": False, })
 
         log.debug(f"[SONARR] Fetched TV library ({len(final_entries)} series, {len(episodes_results)} episodes)")
 

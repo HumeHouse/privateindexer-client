@@ -52,21 +52,12 @@ def create_libtorrent_session(app_version: str):
     _all_time_download, _all_time_upload = utils.load_persistent_stats()
 
 
-def get_session_stats() -> tuple[
-    dict[str, int] | None,
-    float | None,
-    dict[str, int] | None,
-    float | None,
-]:
+def get_session_stats() -> tuple[dict[str, int] | None, float | None, dict[str, int] | None, float | None,]:
     """
     Returns a 4-tuple of the current session stats including the timestamps they were gathered at
     """
-    return (
-        _session_stats_now.copy() if _session_stats_now else None,
-        _session_stats_time_now,
-        _session_stats_prev.copy() if _session_stats_prev else None,
-        _session_stats_time_prev,
-    )
+    return (_session_stats_now.copy() if _session_stats_now else None, _session_stats_time_now, _session_stats_prev.copy() if _session_stats_prev else None,
+            _session_stats_time_prev,)
 
 
 def get_all_time_stats() -> tuple[int, int,]:
@@ -410,8 +401,9 @@ async def periodic_torrent_status_task():
                 is_downloading = status.state == lt.torrent_status.downloading
                 added_delta = datetime.datetime.now() - datetime.datetime.fromtimestamp(int(status.added_time or 0))
 
-                # check if torrent is downloading and has been downloading for more than the threshold
-                if is_downloading and added_delta.total_seconds() > STALE_TORRENT_THRESHOLD:
+                # check if torrent is downloading and has been downloading for more than the threshold with no progress OR 2x the threshold with >0 progress
+                if is_downloading and ((added_delta.total_seconds() > STALE_TORRENT_THRESHOLD and status.progress == 0) or (
+                        added_delta.total_seconds() > 2 * STALE_TORRENT_THRESHOLD and status.progress > 0)):
                     log.warning(f"[STATUS] Removing stale torrent: {name}")
                     # get the infohash stored as raw bytes
                     hash_v1 = status.info_hashes.v1.to_bytes().hex() if status.info_hashes.has_v1() else None
@@ -419,6 +411,22 @@ async def periodic_torrent_status_task():
                     # remove from client and database
                     await remove_torrent_by_hash(hash_v1, True)
                     await utils.remove_torrent_from_database(hash_v1)
+                    continue
+
+                # check if torrent is downloading but has no download path stored in the database, in other words "frozen download"
+                # this means it probably lost one or more files and is not supposed to be in this state
+                if is_downloading:
+                    # get the infohash stored as raw bytes
+                    hash_v1 = status.info_hashes.v1.to_bytes().hex() if status.info_hashes.has_v1() else None
+
+                    # pull the download path from the database
+                    result = await database.fetch_one("SELECT download_path FROM torrents WHERE hash_v1 = ?", (hash_v1,))
+                    if result and not result.get("download_path"):
+                        log.info(f"[STATUS] Removing download-frozen torrent: {name}")
+
+                        # remove from client and database
+                        await remove_torrent_by_hash(hash_v1)
+                        await utils.remove_torrent_from_database(hash_v1)
 
         except Exception as e:
             log.error(f"[STATUS] Error in torrent status loop: {e}")

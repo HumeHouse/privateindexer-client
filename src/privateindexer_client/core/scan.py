@@ -24,13 +24,12 @@ class ScannerStates(Enum):
 
 
 class ScanTorrentJob:
-    file_path: str
-    app_id: int = None
-    torrent_file: str = None
-    title: str = None
-
     def __init__(self, file_path: str):
         self.file_path = file_path
+        self.file_path: str
+        self.app_id: int = None
+        self.torrent_file: str = None
+        self.title: str = None
 
 
 async def scan_media_library() -> tuple[int, int, int, int]:
