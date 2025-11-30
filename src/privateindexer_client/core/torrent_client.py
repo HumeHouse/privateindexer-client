@@ -52,21 +52,12 @@ def create_libtorrent_session(app_version: str):
     _all_time_download, _all_time_upload = utils.load_persistent_stats()
 
 
-def get_session_stats() -> tuple[
-    dict[str, int] | None,
-    float | None,
-    dict[str, int] | None,
-    float | None,
-]:
+def get_session_stats() -> tuple[dict[str, int] | None, float | None, dict[str, int] | None, float | None,]:
     """
     Returns a 4-tuple of the current session stats including the timestamps they were gathered at
     """
-    return (
-        _session_stats_now.copy() if _session_stats_now else None,
-        _session_stats_time_now,
-        _session_stats_prev.copy() if _session_stats_prev else None,
-        _session_stats_time_prev,
-    )
+    return (_session_stats_now.copy() if _session_stats_now else None, _session_stats_time_now, _session_stats_prev.copy() if _session_stats_prev else None,
+            _session_stats_time_prev,)
 
 
 def get_all_time_stats() -> tuple[int, int,]:
