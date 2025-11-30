@@ -127,14 +127,12 @@ async def fetch_tv_library(tracked_root_folders: list[str]) -> list[dict]:
                     if not path:
                         continue
 
-                    final_entries.append(
-                        {"id": series_id, "title": title, "path": path, "season_pack": True, })
+                    final_entries.append({"id": series_id, "title": title, "path": path, "season_pack": True, })
 
                 else:
                     # if there are missing episodes, just build each episode one at a time
                     for season_episode in season_episodes:
-                        final_entries.append(
-                            {"id": series_id, "path": season_episode["path"], "season_pack": False, })
+                        final_entries.append({"id": series_id, "path": season_episode["path"], "season_pack": False, })
 
         log.debug(f"[SONARR] Fetched TV library ({len(final_entries)} series, {len(episodes_results)} episodes)")
 
