@@ -411,6 +411,22 @@ async def periodic_torrent_status_task():
                     # remove from client and database
                     await remove_torrent_by_hash(hash_v1, True)
                     await utils.remove_torrent_from_database(hash_v1)
+                    continue
+
+                # check if torrent is downloading but has no download path stored in the database, in other words "frozen download"
+                # this means it probably lost one or more files and is not supposed to be in this state
+                if is_downloading:
+                    # get the infohash stored as raw bytes
+                    hash_v1 = status.info_hashes.v1.to_bytes().hex() if status.info_hashes.has_v1() else None
+
+                    # pull the download path from the database
+                    result = await database.fetch_one("SELECT download_path FROM torrents WHERE hash_v1 = ?", (hash_v1,))
+                    if result and not result.get("download_path"):
+                        log.info(f"[STATUS] Removing download-frozen torrent: {name}")
+
+                        # remove from client and database
+                        await remove_torrent_by_hash(hash_v1)
+                        await utils.remove_torrent_from_database(hash_v1)
 
         except Exception as e:
             log.error(f"[STATUS] Error in torrent status loop: {e}")
