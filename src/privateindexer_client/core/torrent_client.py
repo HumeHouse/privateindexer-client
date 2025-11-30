@@ -410,8 +410,9 @@ async def periodic_torrent_status_task():
                 is_downloading = status.state == lt.torrent_status.downloading
                 added_delta = datetime.datetime.now() - datetime.datetime.fromtimestamp(int(status.added_time or 0))
 
-                # check if torrent is downloading and has been downloading for more than the threshold
-                if is_downloading and added_delta.total_seconds() > STALE_TORRENT_THRESHOLD:
+                # check if torrent is downloading and has been downloading for more than the threshold with no progress OR 2x the threshold with >0 progress
+                if is_downloading and ((added_delta.total_seconds() > STALE_TORRENT_THRESHOLD and status.progress == 0) or (
+                        added_delta.total_seconds() > 2 * STALE_TORRENT_THRESHOLD and status.progress > 0)):
                     log.warning(f"[STATUS] Removing stale torrent: {name}")
                     # get the infohash stored as raw bytes
                     hash_v1 = status.info_hashes.v1.to_bytes().hex() if status.info_hashes.has_v1() else None
