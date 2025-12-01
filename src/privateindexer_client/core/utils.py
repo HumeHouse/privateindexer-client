@@ -29,7 +29,6 @@ class MediaType(enum.Enum):
 class MediaDataEntry:
     def __init__(self, media_type: MediaType):
         self.media_type: MediaType = media_type
-        self.media_type: MediaType
         self.app_id: int = None
         self.title: str = None
         self.path: str = None
