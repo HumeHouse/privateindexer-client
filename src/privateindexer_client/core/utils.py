@@ -151,7 +151,7 @@ async def send_torrent_to_indexer(torrent_path: str, category: int, torrent_name
                     log.info(f"[INDEXER] Successfully sent '{torrent_name}' to indexer")
                     return True
                 elif response.status_code == 409:
-                    log.info(f"[INDEXER] Torrent {torrent_name} already exists on indexer, marking as uploaded")
+                    log.info(f"[INDEXER] Torrent '{torrent_name}' already exists on indexer, marking as uploaded")
                     return True
                 else:
                     log.warning(f"[INDEXER] Failed to send '{torrent_name}' to indexer, will retry later: {response.status_code} - {response.text}")
