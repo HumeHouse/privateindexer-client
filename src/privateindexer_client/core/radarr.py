@@ -92,7 +92,7 @@ async def fetch_movie_metadata(movie_id: str) -> dict:
                 log.warning(f"[RADARR] Failed to fetch movie metadata: {response.status_code}")
                 return []
 
-            movie_response = response.json()[0]
+            movie_response = response.json()
             log.debug(f"[RADARR] Fetched metadata for movie ID {movie_id}")
             return movie_response
     except Exception as e:
