@@ -25,8 +25,7 @@ class ScannerStates(Enum):
 
 class ScanTorrentJob:
     def __init__(self, file_path: str):
-        self.file_path = file_path
-        self.file_path: str
+        self.file_path: str = file_path
         self.app_id: int = None
         self.torrent_file: str = None
         self.title: str = None
