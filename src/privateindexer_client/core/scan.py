@@ -275,6 +275,7 @@ async def periodic_scan_task():
                     updated_files += 1
                     await database.execute("UPDATE torrents SET media_path = NULL WHERE id = ?", (torrent["id"],))
                     log.info(f"[SCAN] Invalid media path for '{torrent["name"]}', purged media path from database")
+                    continue
 
                 # case where we have a season pack tracked, but its individual episodes are still being seeded
                 if media_path and os.path.isdir(media_path) and torrent["files"] > 1:
@@ -291,6 +292,7 @@ async def periodic_scan_task():
 
                         duplicate_entries[searching_torrent["id"]] = searching_torrent
                         log.warning(f"[SCAN] Potential duplicate episode found for season pack '{torrent["name"]}': {searching_torrent['name']}")
+                        continue
 
             # purge duplicate episodes if the user has this option enabled
             if PURGE_SEASON_PACK_EPISODES:
