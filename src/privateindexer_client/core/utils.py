@@ -120,13 +120,13 @@ async def send_torrent_to_indexer(torrent_path: str, category: int, torrent_name
         if app_id:
             if category == RADARR_ROOT_CATEGORY:
                 movie_metadata = await radarr.fetch_movie_metadata(movie_id=app_id)
-                imdbid = movie_metadata["imdbId"]
-                tmdbid = movie_metadata["tmdbId"]
+                imdbid = movie_metadata.get("imdbId")
+                tmdbid = movie_metadata.get("tmdbId")
             elif category == SONARR_ROOT_CATEGORY:
                 series_metadata = await sonarr.fetch_series_metadata(series_id=app_id)
-                imdbid = series_metadata["imdbId"]
-                tmdbid = series_metadata["tmdbId"]
-                tvdbid = series_metadata["tvdbId"]
+                imdbid = series_metadata.get("imdbId")
+                tmdbid = series_metadata.get("tmdbId")
+                tvdbid = series_metadata.get("tvdbId")
 
         with open(torrent_path, "rb") as file:
             torrent_basename = os.path.basename(torrent_path)
