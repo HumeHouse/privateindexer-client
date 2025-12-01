@@ -133,8 +133,8 @@ function fetchUserStats() {
             $("#server-ratio").text(formatRatio(data["server_ratio"]));
             $("#grabs-total").text(data["grabs_total"]);
 
-            // 10 second interval
-            setTimeout(fetchUserStats, 10000);
+            // 30 second interval
+            setTimeout(fetchUserStats, 30000);
         })
         .catch(e => {
             console.error("Error fetching user stats from server, delayed 60s:", e);
