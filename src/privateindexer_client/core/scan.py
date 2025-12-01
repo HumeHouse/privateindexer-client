@@ -52,8 +52,9 @@ async def scan_media_library() -> tuple[int, int, int, int]:
     # set scan state to pre-scan
     SCAN_PROCESS_STATE = ScannerStates.PRE_SCAN.value
 
-    torrents = await database.fetch_all("SELECT media_path, torrent_path FROM torrents")
+    torrents = await database.fetch_all("SELECT media_path, torrent_path, app_id FROM torrents")
     existing_media = {t["media_path"]: t["torrent_path"] for t in torrents}
+    existing_app_ids = {t["media_path"]: t["app_id"] for t in torrents}
 
     total_files = 0
     ignored_files = 0
@@ -86,9 +87,14 @@ async def scan_media_library() -> tuple[int, int, int, int]:
 
         # ignore the media file if the current path is matches what is in the database
         if file_path in existing_media:
-            torrent_path = existing_media[file_path]
+            # check if the app_id is correct in the database
+            if existing_app_ids[file_path] != media_data_entry.app_id:
+                # trigger a re-upload to make sure the app metadata gets synced to the server again
+                await database.execute("UPDATE torrents SET app_id = ?, uploaded = FALSE WHERE media_path = ?", (media_data_entry.app_id, file_path,))
+                log.info(f"[SCAN] Updated app ID for media at '{file_path}', will re-upload to server during next sync")
+
             # only ignore the creation process if the torrent file exists
-            if os.path.exists(torrent_path):
+            if os.path.exists(existing_media[file_path]):
                 ignored_files += 1
                 # increment global items counter
                 SCAN_DONE_ITEMS += 1
