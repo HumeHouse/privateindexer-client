@@ -25,8 +25,7 @@ class ScannerStates(Enum):
 
 class ScanTorrentJob:
     def __init__(self, file_path: str):
-        self.file_path = file_path
-        self.file_path: str
+        self.file_path: str = file_path
         self.app_id: int = None
         self.torrent_file: str = None
         self.title: str = None
@@ -53,8 +52,9 @@ async def scan_media_library() -> tuple[int, int, int, int]:
     # set scan state to pre-scan
     SCAN_PROCESS_STATE = ScannerStates.PRE_SCAN.value
 
-    torrents = await database.fetch_all("SELECT media_path, torrent_path FROM torrents")
+    torrents = await database.fetch_all("SELECT media_path, torrent_path, app_id FROM torrents")
     existing_media = {t["media_path"]: t["torrent_path"] for t in torrents}
+    existing_app_ids = {t["media_path"]: t["app_id"] for t in torrents}
 
     total_files = 0
     ignored_files = 0
@@ -87,9 +87,14 @@ async def scan_media_library() -> tuple[int, int, int, int]:
 
         # ignore the media file if the current path is matches what is in the database
         if file_path in existing_media:
-            torrent_path = existing_media[file_path]
+            # check if the app_id is correct in the database
+            if existing_app_ids[file_path] != media_data_entry.app_id:
+                # trigger a re-upload to make sure the app metadata gets synced to the server again
+                await database.execute("UPDATE torrents SET app_id = ?, uploaded = FALSE WHERE media_path = ?", (media_data_entry.app_id, file_path,))
+                log.info(f"[SCAN] Updated app ID for media at '{file_path}', will re-upload to server during next sync")
+
             # only ignore the creation process if the torrent file exists
-            if os.path.exists(torrent_path):
+            if os.path.exists(existing_media[file_path]):
                 ignored_files += 1
                 # increment global items counter
                 SCAN_DONE_ITEMS += 1
@@ -276,6 +281,7 @@ async def periodic_scan_task():
                     updated_files += 1
                     await database.execute("UPDATE torrents SET media_path = NULL WHERE id = ?", (torrent["id"],))
                     log.info(f"[SCAN] Invalid media path for '{torrent["name"]}', purged media path from database")
+                    continue
 
                 # case where we have a season pack tracked, but its individual episodes are still being seeded
                 if media_path and os.path.isdir(media_path) and torrent["files"] > 1:
@@ -292,6 +298,7 @@ async def periodic_scan_task():
 
                         duplicate_entries[searching_torrent["id"]] = searching_torrent
                         log.warning(f"[SCAN] Potential duplicate episode found for season pack '{torrent["name"]}': {searching_torrent['name']}")
+                        continue
 
             # purge duplicate episodes if the user has this option enabled
             if PURGE_SEASON_PACK_EPISODES:
