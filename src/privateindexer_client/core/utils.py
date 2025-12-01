@@ -103,7 +103,7 @@ async def fetch_indexer_user_data():
         return None
 
 
-async def send_torrent_to_indexer(torrent_path: str, category: int, torrent_name: str):
+async def send_torrent_to_indexer(torrent_path: str, category: int, torrent_name: str, app_id: int = None):
     """
     Attempt to upload the torrent file along with the category and name to the PrivateIndexer server
     Will mark a file as uploaded in the database if the server API returns a 409 status code
@@ -113,9 +113,12 @@ async def send_torrent_to_indexer(torrent_path: str, category: int, torrent_name
         tmdbid = None
         tvdbid = None
 
-        result = await database.fetch_one("SELECT app_id FROM torrents WHERE torrent_path = ?", (torrent_path,))
-        if result and result.get("app_id"):
-            app_id = result["app_id"]
+        if app_id is None:
+            result = await database.fetch_one("SELECT app_id FROM torrents WHERE torrent_path = ?", (torrent_path,))
+            if result and result.get("app_id"):
+                app_id = result["app_id"]
+
+        if app_id:
             if category == RADARR_ROOT_CATEGORY:
                 movie_metadata = await radarr.fetch_movie_metadata(movie_id=app_id)
                 imdbid = movie_metadata["imdbId"]
