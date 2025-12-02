@@ -112,7 +112,7 @@ def build_tags_from_metadata(aggregated: AggregatedSeasonMetadata) -> str:
 
     for codec in sorted(v for v in aggregated.audio_codecs if v):
         for ch in sorted(v for v in aggregated.audio_channels if v):
-            audio_entries.add(f"{codec} {ch}")
+            audio_entries.add(f"{codec} {ch:.1f}")
 
     if audio_entries:
         tags.append(tag(audio_entries, wrap="()"))
