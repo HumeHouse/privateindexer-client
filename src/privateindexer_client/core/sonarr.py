@@ -98,10 +98,7 @@ def build_tags_from_metadata(aggregated: AggregatedSeasonMetadata) -> str:
 
         left, right = wrap
 
-        formatted = f"{left}{'+'.join(clean_values[:3])}{right}"
-
-        if len(clean_values) > 3:
-            formatted = f"{formatted}++"
+        formatted = f"{left}{'+'.join(clean_values[:3])}{"++" if len(clean_values) > 3 else ""}{right}"
 
         return formatted
 
