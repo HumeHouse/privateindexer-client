@@ -52,7 +52,7 @@ async def scan_media_library() -> tuple[int, int, int, int]:
     # set scan state to pre-scan
     SCAN_PROCESS_STATE = ScannerStates.PRE_SCAN.value
 
-    torrents = await database.fetch_all("SELECT media_path, torrent_path, app_id FROM torrents")
+    torrents = await database.fetch_all("SELECT media_path, torrent_path, app_id FROM torrents WHERE media_path IS NOT NULL")
     existing_media = {t["media_path"]: t["torrent_path"] for t in torrents}
     existing_app_ids = {t["media_path"]: t["app_id"] for t in torrents}
 
