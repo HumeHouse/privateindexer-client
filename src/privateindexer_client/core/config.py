@@ -4,7 +4,7 @@ import threading
 
 from privateindexer_client.core.logger import log
 
-APP_VERSION = "1.4.6"
+APP_VERSION = "1.4.7"
 
 # gather/set environment variables for usage later
 DATABASE_FILE = "/app/data/torrents.db"
@@ -43,7 +43,7 @@ TORRENTING_PORT = int(os.getenv("TORRENTING_PORT", 6881))
 
 PURGE_UNTRACKED_TORRENTS = os.getenv("PURGE_UNTRACKED_TORRENTS", False)
 
-PURGE_SEASON_PACK_EPISODES = os.getenv("PURGE_SEASON_PACK_EPISODES", False)
+PURGE_SEASON_PACK_EPISODES = os.getenv("PURGE_SEASON_PACK_EPISODES", True)
 
 config_lock = threading.Lock()
 _config_cache = None
