@@ -24,7 +24,7 @@ TORRENTS_TABLE_SQL = """
                      )
                      """
 
-MIGRATIONS = {0: database_migrations.v0_to_v1, 1: database_migrations.v0_to_v1, }
+MIGRATIONS = {0: database_migrations.v0_to_v1, 1: database_migrations.v1_to_v2, }
 
 
 async def initialize():
