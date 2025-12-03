@@ -3,7 +3,7 @@ import aiosqlite
 from privateindexer_client.core.logger import log
 
 
-async def migrate_0_to_1(db: aiosqlite.Connection):
+async def v0_to_v1(db: aiosqlite.Connection):
     """
     Adds app_id column to torrents table
     """
@@ -15,7 +15,7 @@ async def migrate_0_to_1(db: aiosqlite.Connection):
         log.info("[DATABASE] Added app_id column to torrents table")
 
 
-async def migrate_1_to_2(db: aiosqlite.Connection):
+async def v1_to_v2(db: aiosqlite.Connection):
     """
     Rewrites the category 1000 values to category 2000 to conform to Newznab specification
     """

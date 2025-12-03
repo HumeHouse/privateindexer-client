@@ -1,7 +1,7 @@
 import aiosqlite
 
+from privateindexer_client.core import database_migrations
 from privateindexer_client.core.config import DATABASE_FILE
-from privateindexer_client.core.database_migrations import migrate_0_to_1, migrate_1_to_2
 from privateindexer_client.core.logger import log
 
 LATEST_SCHEMA_VERSION = 2
@@ -24,7 +24,7 @@ TORRENTS_TABLE_SQL = """
                      )
                      """
 
-MIGRATIONS = {0: migrate_0_to_1, 1: migrate_1_to_2, }
+MIGRATIONS = {0: database_migrations.v0_to_v1, 1: database_migrations.v0_to_v1, }
 
 
 async def initialize():
