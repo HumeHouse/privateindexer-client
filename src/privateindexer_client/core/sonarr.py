@@ -63,19 +63,22 @@ def aggregate_season_metadata(season_episodes: list[dict]) -> AggregatedSeasonMe
     aggregated = AggregatedSeasonMetadata()
 
     for episode in season_episodes:
-        quality = episode["quality"]["quality"]["name"]
+        quality = (episode.get("quality", {}).get("quality", {}).get("name", "Unknown"))
         aggregated.qualities.add(quality)
 
-        media_info = episode["mediaInfo"]
+        if episode.get("mediaInfo"):
+            media_info = episode["mediaInfo"]
 
-        video_codec = normalize_video_codec(media_info.get("videoCodec"))
-        audio_codec = normalize_audio_codec(media_info.get("audioCodec"))
+            video_codec = normalize_video_codec(media_info.get("videoCodec"))
+            audio_codec = normalize_audio_codec(media_info.get("audioCodec"))
 
-        aggregated.video_codecs.add(video_codec)
-        aggregated.audio_codecs.add(audio_codec)
-        aggregated.audio_channels.add(media_info.get("audioChannels"))
-        aggregated.bit_depths.add(f"{media_info.get("videoBitDepth")}bit")
-        aggregated.hdr_types.add(media_info.get("videoDynamicRangeType") or "")
+            aggregated.video_codecs.add(video_codec)
+            aggregated.audio_codecs.add(audio_codec)
+            aggregated.audio_channels.add(media_info.get("audioChannels"))
+            aggregated.bit_depths.add(f"{media_info.get("videoBitDepth")}bit")
+            aggregated.hdr_types.add(media_info.get("videoDynamicRangeType") or "")
+        else:
+            log.warning(f"[SONARR] Episode has no media info tracked by app: {episode.get("path", "Unknown path")}")
 
         if episode.get("releaseGroup") and len(episode["releaseGroup"].strip()) > 0:
             aggregated.release_groups.add(episode["releaseGroup"])
