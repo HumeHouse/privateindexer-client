@@ -1,10 +1,10 @@
 import aiosqlite
 
 from privateindexer_client.core.config import DATABASE_FILE
-from privateindexer_client.core.database_migrations import migrate_0_to_1
+from privateindexer_client.core.database_migrations import migrate_0_to_1, migrate_1_to_2
 from privateindexer_client.core.logger import log
 
-LATEST_SCHEMA_VERSION = 1
+LATEST_SCHEMA_VERSION = 2
 
 TORRENTS_TABLE_SQL = """
                      CREATE TABLE IF NOT EXISTS "torrents"
@@ -24,7 +24,7 @@ TORRENTS_TABLE_SQL = """
                      )
                      """
 
-MIGRATIONS = {0: migrate_0_to_1, }
+MIGRATIONS = {0: migrate_0_to_1, 1: migrate_1_to_2, }
 
 
 async def initialize():
