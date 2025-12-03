@@ -16,7 +16,7 @@ _file_piece_hash_cache: dict[str, dict[int, list[bytes]]] = {}
 _torrent_info_cache: dict[str, dict[str, int | str]] = {}
 _torznab_category_paths: list[dict[str, str]] = []
 
-RADARR_ROOT_CATEGORY = 1000
+RADARR_ROOT_CATEGORY = 2000
 SONARR_ROOT_CATEGORY = 5000
 
 
