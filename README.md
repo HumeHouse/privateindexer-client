@@ -59,7 +59,7 @@ below
 | `LOG_LEVEL`                  | `INFO`        | Lowest log level to show in console. Can be `DEBUG`, `INFO`, `WARNING`, `ERROR`, or `CRITICAL` where `DEBUG` shows most amount of logs      |
 | `PURGE_UNTRACKED_TORRENTS`   | `False`       | Enable this to have the client purge any dangling torent files that aren't currently tracked in the database - this can be destructive.     |
 | `STALE_TORRENT_THRESHOLD`    | `30`          | Number of days a torrent is allowed to sit in downloading state before it is automatically purged from the torrent client.                  |
-| `PURGE_SEASON_PACK_EPISODES` | `False`       | Enable this to have the client purge individual episode torrents that are part of a tracked season pack torrent. Useful for de-duplication. |
+| `PURGE_SEASON_PACK_EPISODES` | `True`        | Enable this to have the client purge individual episode torrents that are part of a tracked season pack torrent. Useful for de-duplication. |
 
 ### 2. Configure Volumes
 
