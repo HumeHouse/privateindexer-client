@@ -77,7 +77,6 @@ class Cache:
         """
         self.file_piece_hash_cache.setdefault(file_path, {})
         self.file_piece_hash_cache[file_path][piece_length] = hashes
-        log.info(len(self.file_piece_hash_cache))
 
     def get_torrent_object(self, torrent_path: str) -> dict | None:
         """
