@@ -1,4 +1,5 @@
 from concurrent.futures.process import ProcessPoolExecutor
+from concurrent.futures.thread import ThreadPoolExecutor
 
 from privateindexer_client.core.config import MAX_THREADS
 
@@ -6,3 +7,5 @@ from privateindexer_client.core.config import MAX_THREADS
 FASTRESUME_EXECUTOR = ProcessPoolExecutor(max_workers=MAX_THREADS)
 # torrent creation threaded workload - can use all threads
 SCAN_EXECUTOR = ProcessPoolExecutor(max_workers=MAX_THREADS)
+# file hashing thread pool
+HASH_EXECUTOR = ThreadPoolExecutor(max_workers=MAX_THREADS)
