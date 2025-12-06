@@ -7,6 +7,7 @@ from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
 from privateindexer_client.core import torrent_client, scan, api, gui, httpx_request, database, utils, sync, radarr, sonarr
+from privateindexer_client.core.cache import Cache
 from privateindexer_client.core.config import TORRENTS_DIR, SCAN_INTERVAL, INDEXER_API_URL, API_KEY, TORRENTING_PORT, DOWNLOADS_DIR, FASTRESUME_DIR, APP_VERSION, \
     MAX_THREADS, FASTRESUME_INTERVAL, ANNOUNCE_IP, RADARR_URL, RADARR_API_KEY, SONARR_URL, SONARR_API_KEY, SYNC_INTERVAL
 from privateindexer_client.core.logger import log
@@ -109,6 +110,11 @@ async def lifespan(_: FastAPI):
         log.error(f"[APP] Failed to validate API key: {e}")
         exit(1)
 
+    log.info("[APP] Loading cache")
+
+    cache = Cache.get_instance()
+    cache.load()
+
     log.info("[APP] Running startup tasks")
 
     asyncio.create_task(startup_tasks())
@@ -130,6 +136,11 @@ async def lifespan(_: FastAPI):
             task.cancel()
         except Exception:
             pass
+
+    log.info("[APP] Saving cache")
+
+    cache = Cache.get_instance()
+    cache.save()
 
     log.info("[APP] Saving fastresume data")
 
