@@ -233,28 +233,25 @@ async def fetch_tv_library(tracked_root_folders: list[str]) -> list[dict]:
                 percent_of_episodes = season_stats[season_number]["percentOfEpisodes"]
                 missing_episode_count = season_stats[season_number]["totalEpisodeCount"] - season_stats[season_number]["episodeFileCount"]
 
-                # build season pack for full & ended seasons
-                if percent_of_episodes == 100 and missing_episode_count == 0:
+                # add all the episode paths to a set to ensure non are unique
+                episode_paths = {os.path.dirname(episode["path"]) for episode in season_episodes}
+                shared_directory = len(episode_paths) == 1
+
+                # skip the season if episodes do not share a single directory
+                if not shared_directory:
+                    log.warning(f"[SONARR] Skipping season pack for '{series["title"]}' (Season {season_number}), must share a single parent directory")
+
+                # build season pack for full seasons which share a single directory
+                if percent_of_episodes == 100 and missing_episode_count == 0 and shared_directory:
                     aggregated_metadata = aggregate_season_metadata(season_episodes)
                     metadata_tags = build_tags_from_metadata(aggregated_metadata)
                     title = f"{series["title"]} ({series["year"]}) - S{str(season_number).zfill(2)} {metadata_tags}"
                     log.debug(f"[SONARR] Season pack ({len(season_episodes)} episodes) grouped with title: {title}")
 
-                    # starting with the first episode, compare all episode paths to ensure they share a single directory
-                    path = os.path.dirname(season_episodes[0]["path"])
-                    for episode in season_episodes:
-                        if os.path.dirname(episode["path"]) != path:
-                            log.warning(f"[SONARR] Episodes from '{series["title"]} Season {season_number} do not share a single parent directory, it will be skipped.")
-                            path = None
-
-                    # skip the season if episodes do not share a single directory
-                    if not path:
-                        continue
-
-                    final_entries.append({"id": series_id, "title": title, "path": path, "season_pack": True, })
+                    final_entries.append({"id": series_id, "title": title, "path": episode_paths.pop(), "season_pack": True, })
 
                 else:
-                    # if there are missing episodes, just build each episode one at a time
+                    # if there are missing episodes or non-shared directory, just build each episode one at a time
                     for season_episode in season_episodes:
                         final_entries.append({"id": series_id, "path": season_episode["path"], "season_pack": False, })
 
