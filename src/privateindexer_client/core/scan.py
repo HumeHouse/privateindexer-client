@@ -7,7 +7,7 @@ from enum import Enum
 from privateindexer_client.core import torrent_client, database, utils
 from privateindexer_client.core.config import SCAN_INTERVAL, DOWNLOADS_DIR, TORRENTS_DIR, PURGE_UNTRACKED_TORRENTS, SCAN_BATCH_SIZE, PURGE_SEASON_PACK_EPISODES
 from privateindexer_client.core.logger import log
-from privateindexer_client.core.thread_executor import SCAN_EXECUTOR, HASH_EXECUTOR
+from privateindexer_client.core.thread_executor import CREATE_EXECUTOR, HASH_EXECUTOR
 from privateindexer_client.core.utils import TorrentCreationMetadata
 
 SCAN_PROCESS_STATE: int = 0
@@ -165,7 +165,8 @@ async def scan_media_library() -> tuple[int, int, int, int]:
             log.debug(f"[SCAN] Queueing file for processing: '{batch_job.file_path}'")
 
             # dispatch the torrent creation to the pool of worker threads
-            future = loop.run_in_executor(SCAN_EXECUTOR, utils.create_torrent_threadsafe, batch_job.file_path, batch_job.app_id, batch_job.torrent_file, batch_job.title)
+            future = loop.run_in_executor(CREATE_EXECUTOR, utils.create_torrent_threadsafe,
+                                          batch_job.file_path, batch_job.app_id, batch_job.torrent_file, batch_job.title)
             futures.append(future)
 
         log.info(f"[SCAN] Queued {len(futures)} files for processing")
