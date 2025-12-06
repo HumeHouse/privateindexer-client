@@ -63,7 +63,7 @@ def aggregate_season_metadata(season_episodes: list[dict]) -> AggregatedSeasonMe
     aggregated = AggregatedSeasonMetadata()
 
     for episode in season_episodes:
-        quality = (episode.get("quality", {}).get("quality", {}).get("name", "Unknown"))
+        quality = episode.get("quality", {}).get("quality", {}).get("name", "Unknown")
         aggregated.qualities.add(quality)
 
         if episode.get("mediaInfo"):
