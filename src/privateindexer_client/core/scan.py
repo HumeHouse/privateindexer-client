@@ -7,7 +7,7 @@ from enum import Enum
 from privateindexer_client.core import torrent_client, database, utils
 from privateindexer_client.core.config import SCAN_INTERVAL, DOWNLOADS_DIR, TORRENTS_DIR, PURGE_UNTRACKED_TORRENTS, SCAN_BATCH_SIZE, PURGE_SEASON_PACK_EPISODES
 from privateindexer_client.core.logger import log
-from privateindexer_client.core.thread_executor import SCAN_EXECUTOR
+from privateindexer_client.core.thread_executor import CREATE_EXECUTOR, HASH_EXECUTOR
 from privateindexer_client.core.utils import TorrentCreationMetadata
 
 SCAN_PROCESS_STATE: int = 0
@@ -102,7 +102,7 @@ async def scan_media_library() -> tuple[int, int, int, int]:
 
         log.debug(f"[SCAN] Trying to locate torrent file for: '{file_path}'")
         # ignore the media file if we can find a matching torrent file for it
-        find_future = loop.run_in_executor(SCAN_EXECUTOR, utils.find_existing_torrent, file_path, list(existing_media.values()))
+        find_future = loop.run_in_executor(HASH_EXECUTOR, utils.find_existing_torrent, file_path, list(existing_media.values()))
         torrent_file = await find_future
         if torrent_file:
             # try to update the media path in the database to match the current path
@@ -165,7 +165,8 @@ async def scan_media_library() -> tuple[int, int, int, int]:
             log.debug(f"[SCAN] Queueing file for processing: '{batch_job.file_path}'")
 
             # dispatch the torrent creation to the pool of worker threads
-            future = loop.run_in_executor(SCAN_EXECUTOR, utils.create_torrent_threadsafe, batch_job.file_path, batch_job.app_id, batch_job.torrent_file, batch_job.title)
+            future = loop.run_in_executor(CREATE_EXECUTOR, utils.create_torrent_threadsafe,
+                                          batch_job.file_path, batch_job.app_id, batch_job.torrent_file, batch_job.title)
             futures.append(future)
 
         log.info(f"[SCAN] Queued {len(futures)} files for processing")

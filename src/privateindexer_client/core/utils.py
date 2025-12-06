@@ -9,11 +9,10 @@ import time
 import libtorrent as lt
 
 from privateindexer_client.core import config, httpx_request, database, radarr, sonarr
+from privateindexer_client.core.cache import Cache
 from privateindexer_client.core.config import API_KEY, INDEXER_API_URL, TORRENTS_DIR, FASTRESUME_DIR, APP_VERSION, STATS_FILE, SONARR_URL, RADARR_URL
 from privateindexer_client.core.logger import log
 
-_file_piece_hash_cache: dict[str, dict[int, list[bytes]]] = {}
-_torrent_info_cache: dict[str, dict[str, int | str]] = {}
 _torznab_category_paths: list[dict[str, str]] = []
 
 RADARR_ROOT_CATEGORY = 2000
@@ -241,15 +240,7 @@ async def get_managed_media_data() -> list[MediaDataEntry]:
 def hash_file_by_pieces(file_path: str, piece_length: int) -> list[str]:
     """
     Return list of SHA1 hashes (hex) of file split into piece_length chunks
-    Caches results per file_path and piece_length
     """
-    # try to return a value from the peice length cache
-    if file_path in _file_piece_hash_cache:
-        if piece_length in _file_piece_hash_cache[file_path]:
-            log.debug(f"[TORRENT] Cache hit for file '{file_path}'")
-            return _file_piece_hash_cache[file_path][piece_length]
-    log.debug(f"[TORRENT] Cache miss for file '{file_path}'")
-
     hashes = []
     before = datetime.datetime.now()
 
@@ -265,11 +256,6 @@ def hash_file_by_pieces(file_path: str, piece_length: int) -> list[str]:
     delta = datetime.datetime.now() - before
     log.debug(f"[TORRENT] Hashed {len(hashes)}x {piece_length} Byte chunks from '{file_path}' in {delta}")
 
-    # store in cache
-    if file_path not in _file_piece_hash_cache:
-        _file_piece_hash_cache[file_path] = {}
-    _file_piece_hash_cache[file_path][piece_length] = hashes
-
     return hashes
 
 
@@ -279,27 +265,38 @@ def torrent_matches_file(torrent_path: str, media_path: str) -> bool:
     Calculates hash of the media and compares to the hashes found in the torrent file
     """
     # check if torrent piece hashes are cached
-    cached_data = _torrent_info_cache.get(torrent_path)
+    cache = Cache.get_instance()
+    cached_data = cache.get_torrent_object(torrent_path)
+
     if cached_data:
-        log.debug(f"[TORRENT] Cache hit for '{torrent_path}'")
         # read the data from the cache
         total_size = cached_data["total_size"]
         piece_length = cached_data["piece_length"]
         torrent_hashes = cached_data["torrent_hashes"]
     else:
-        log.debug(f"[TORRENT] Cache miss for '{torrent_path}'")
         # read torrent info from file
         info = lt.torrent_info(torrent_path)
         total_size = info.total_size()
         piece_length = info.piece_length()
         # get piece hashes from torrent info
         torrent_hashes = [info.hash_for_piece(i) for i in range(info.num_pieces())]
-        _torrent_info_cache[torrent_path] = {"piece_length": piece_length, "total_size": total_size, "torrent_hashes": torrent_hashes, }
+
+        # store in cache
+        torrent_object = {"piece_length": piece_length, "total_size": total_size, "torrent_hashes": torrent_hashes, }
+        cache.put_torrent_object(torrent_path, torrent_object)
 
     if os.path.getsize(media_path) != total_size:
         return False
 
-    file_hashes = hash_file_by_pieces(media_path, piece_length)
+    # check if file hashes are cached
+    file_hashes = cache.get_file_piece(media_path, piece_length)
+
+    # if no cache exists, generate new hashes
+    if file_hashes is None:
+        file_hashes = hash_file_by_pieces(media_path, piece_length)
+
+        # store in cache
+        cache.put_file_piece(media_path, piece_length, file_hashes)
 
     return file_hashes == torrent_hashes
 
@@ -453,7 +450,6 @@ def find_existing_torrent(media_path: str, ignored_torrents: list[str]) -> str |
             continue
         torrent_path = os.path.join(TORRENTS_DIR, torrent_file)
         if torrent_path in ignored_torrents:
-            log.debug(f"[TORRENT] Ignoring '{torrent_path}' during comparison")
             continue
         try:
             if torrent_matches_file(torrent_path, media_path):
