@@ -41,7 +41,11 @@ class Cache:
             log.debug(f"[CACHE] Loaded {len(self.file_piece_hash_cache)} file hash lists")
 
         except Exception as e:
-            log.error(f"[CACHE] Error loading cache: {e}")
+            # on fail, reset the dict and delete the file since it may just be corrupt
+            self.file_piece_hash_cache = {}
+            os.unlink(CACHE_FILE)
+
+            log.error(f"[CACHE] Error loading cache, file purged: {e}")
 
     def save(self):
         """
