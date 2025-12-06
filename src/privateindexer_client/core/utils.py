@@ -453,7 +453,6 @@ def find_existing_torrent(media_path: str, ignored_torrents: list[str]) -> str |
             continue
         torrent_path = os.path.join(TORRENTS_DIR, torrent_file)
         if torrent_path in ignored_torrents:
-            log.debug(f"[TORRENT] Ignoring '{torrent_path}' during comparison")
             continue
         try:
             if torrent_matches_file(torrent_path, media_path):
