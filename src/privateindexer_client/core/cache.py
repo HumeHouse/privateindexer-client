@@ -1,8 +1,37 @@
+import asyncio
+import datetime
 import os
 import pickle
 
-from privateindexer_client.core.config import CACHE_FILE
+from privateindexer_client.core.config import CACHE_FILE, CACHE_CLEAN_INTERVAL
 from privateindexer_client.core.logger import log
+
+
+async def periodic_cache_clean_task():
+    """
+    Periodically checks cache for stale hashes
+    """
+    log.debug("[CACHE] Task loop started")
+    while True:
+        await asyncio.sleep(CACHE_CLEAN_INTERVAL)
+        try:
+            log.info(f"[CACHE] Starting cache clean operation")
+            before = datetime.datetime.now()
+
+            cache = Cache().get_instance()
+            file_hashes = cache.file_piece_hash_cache.copy()
+
+            cleaned = 0
+
+            for file_path in file_hashes:
+                if not os.path.exists(file_path):
+                    cache.delete_all_file_piece(file_path)
+                    cleaned += 1
+
+            delta = datetime.datetime.now() - before
+            log.info(f"[CACHE] Cache clean completed ({delta}): {len(cache.file_piece_hash_cache)} total, {cleaned} cleaned")
+        except Exception as e:
+            log.error(f"[CACHE] Error during cache clean task: {e}")
 
 
 class Cache:
@@ -77,6 +106,12 @@ class Cache:
         """
         self.file_piece_hash_cache.setdefault(file_path, {})
         self.file_piece_hash_cache[file_path][piece_length] = hashes
+
+    def delete_all_file_piece(self, file_path: str):
+        """
+        Removes a file hash in cache
+        """
+        self.file_piece_hash_cache.pop(file_path, None)
 
     def get_torrent_object(self, torrent_path: str) -> dict | None:
         """
