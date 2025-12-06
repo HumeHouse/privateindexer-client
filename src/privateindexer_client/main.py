@@ -6,7 +6,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
-from privateindexer_client.core import torrent_client, scan, api, gui, httpx_request, database, utils, sync, radarr, sonarr
+from privateindexer_client.core import torrent_client, scan, api, gui, httpx_request, database, utils, sync, radarr, sonarr, cache
 from privateindexer_client.core.cache import Cache
 from privateindexer_client.core.config import TORRENTS_DIR, SCAN_INTERVAL, INDEXER_API_URL, API_KEY, TORRENTING_PORT, DOWNLOADS_DIR, FASTRESUME_DIR, APP_VERSION, \
     MAX_THREADS, FASTRESUME_INTERVAL, ANNOUNCE_IP, RADARR_URL, RADARR_API_KEY, SONARR_URL, SONARR_API_KEY, SYNC_INTERVAL
@@ -32,6 +32,7 @@ async def startup_tasks():
         asyncio.create_task(torrent_client.periodic_fastresume_task(), name="fastresume"),
         asyncio.create_task(torrent_client.periodic_alerts_task(), name="alerts"),
         asyncio.create_task(sync.periodic_sync_task(), name="sync"),
+        asyncio.create_task(cache.periodic_cache_clean_task(), name="cache_clean"),
     ]
 
 
