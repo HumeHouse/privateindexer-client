@@ -298,7 +298,6 @@ function applySortingAndRender() {
         dlspeed: row => row["dlspeed"],
         upspeed: row => row["upspeed"],
         eta: row => row["eta"],
-        ratio: row => row["ratio"],
         added_on: row => row["added_on"]
     };
 
@@ -399,7 +398,6 @@ function renderTable(torrents) {
                 <td>${formatSpeed(torrent["dlspeed"])}</td>
                 <td>${formatSpeed(torrent["upspeed"])}</td>
                 <td>${formatTime(torrent["eta"])}</td>
-                <td>${formatRatio(torrent["ratio"])}</td>
                 <td>${new Date(torrent["added_on"] * 1000).toLocaleString()}</td>
             `);
 
