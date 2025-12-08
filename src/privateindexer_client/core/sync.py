@@ -33,22 +33,18 @@ async def periodic_sync_task():
                     continue
 
             synced_torrents = response.json()
-            found_torrents = synced_torrents["found"]
-            missing_torrents = synced_torrents["missing"]
+            missing_ids = synced_torrents["missing_ids"]
+            existing = total - len(missing_ids)
             uploaded = 0
             failed = 0
 
             # assemble metadata lookup map for the missing torrents
             torrents_to_upload = []
-            if missing_torrents:
-                missing_ids = [t["id"] for t in missing_torrents]
-                if not missing_ids:
-                    log.error("[SYNC] Missing torrents had no IDs from server")
-                else:
-                    placeholders = ", ".join(["?"] * len(missing_ids))
-                    query = f"SELECT id, name, category, torrent_path, media_path, download_path, app_id FROM torrents WHERE id IN ({placeholders})"
-                    missing_torrent_data = await database.fetch_all(query, tuple(missing_ids))
-                    torrents_to_upload.extend(missing_torrent_data)
+            if missing_ids:
+                placeholders = ", ".join(["?"] * len(missing_ids))
+                query = f"SELECT id, name, category, torrent_path, media_path, download_path, app_id FROM torrents WHERE id IN ({placeholders})"
+                missing_torrent_data = await database.fetch_all(query, tuple(missing_ids))
+                torrents_to_upload.extend(missing_torrent_data)
 
             # fetch torrents which need to be uploaded to server
             not_uploaded = await database.fetch_all("SELECT id, name, category, torrent_path, media_path, download_path, app_id FROM torrents WHERE uploaded = FALSE")
@@ -76,7 +72,7 @@ async def periodic_sync_task():
 
             delta = datetime.datetime.now() - before
             log.info(
-                f"[SYNC] Server sync task completed ({delta}): {len(found_torrents)} tracked, {len(missing_torrents)} missing, {uploaded} uploaded, {failed} failed")
+                f"[SYNC] Server sync task completed ({delta}): {existing} existing, {len(missing_ids)} missing, {uploaded} uploaded, {failed} failed")
 
         except Exception as e:
             log.error(f"[SYNC] Error during sync task: {e}")
