@@ -460,25 +460,26 @@ function populateInfoPanel(torrent) {
         <div class="row g-0">
             <div class="col-md-4">
                 <dl class="row mb-2 g-0">
-                    <dt class="col-4 text-end">Time Active:</dt><dd class="ms-2 col-7">${formatTime(torrent["time_active"])}</dd>
                     <dt class="col-4 text-end">Downloaded:</dt><dd class="ms-2 col-7">${formatBytes(torrent["downloaded"])} (${formatBytes(torrent["downloaded_session"])} this session)</dd>
                     <dt class="col-4 text-end">Download Speed:</dt><dd class="ms-2 col-7">${formatSpeed(torrent["dlspeed"])}</dd>
-                    <dt class="col-4 text-end">Ratio:</dt><dd class="ms-2 col-7">${formatRatio(torrent["ratio"])}</dd>
+                    <dt class="col-4 text-end">Progress:</dt><dd class="ms-2 col-7">${(torrent["progress"] * 100).toFixed(1)}%</dd>
+                    
                     <dt class="col-4 text-end">Info Hash v1:</dt><dd class="ms-2 col-7">${torrent["infohash_v1"]}</dd>
                     <dt class="col-4 text-end">Info Hash v2:</dt><dd class="ms-2 col-7">${torrent["infohash_v2"] || "N/A"}</dd>
                 </dl>
             </div>
             <div class="col-md-4">
                 <dl class="row mb-2 g-0">
-                    <dt class="col-4 text-end">ETA:</dt><dd class="ms-2 col-7">${formatTime(torrent["eta"])}</dd>
                     <dt class="col-4 text-end">Uploaded:</dt><dd class="ms-2 col-7">${formatBytes(torrent["uploaded"])} (${formatBytes(torrent["uploaded_session"])} this session)</dd>
+                    <dt class="col-4 text-end">Upload Speed:</dt><dd class="ms-2 col-7">${formatSpeed(torrent["upspeed"])}</dd>
                     <dt class="col-4 text-end">Seeds:</dt><dd class="ms-2 col-7">${torrent["num_seeds"]} / ${torrent["num_complete"]}</dd>
                     <dt class="col-4 text-end">Peers:</dt><dd class="ms-2 col-7">${torrent["num_leechs"]} / ${torrent["num_incomplete"]}</dd>
                 </dl>
             </div>
             <div class="col-md-4">
                 <dl class="row mb-2 g-0">
-                    <dt class="col-4 text-end">Progress:</dt><dd class="ms-2 col-7">${(torrent["progress"] * 100).toFixed(1)}%</dd>
+                    <dt class="col-4 text-end">Time Active:</dt><dd class="ms-2 col-7">${formatTime(torrent["time_active"])}</dd>
+                    <dt class="col-4 text-end">ETA:</dt><dd class="ms-2 col-7">${formatTime(torrent["eta"])}</dd>
                     <dt class="col-4 text-end">Added On:</dt><dd class="ms-2 col-7">${new Date(torrent["added_on"] * 1000).toLocaleString()}</dd>
                     <dt class="col-4 text-end">Save Path:</dt><dd class="ms-2 col-7">${torrent["save_path"]}</dd>
                 </dl>
