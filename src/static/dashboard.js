@@ -1,5 +1,5 @@
 let selectedTorrentId = null;
-let sortConfig = {column: null, direction: null};
+let sortConfig = {column: "added_on", direction: "desc"};
 let torrentsCache = [];
 let currentPage = 1;
 let rowsPerPage = 500;
