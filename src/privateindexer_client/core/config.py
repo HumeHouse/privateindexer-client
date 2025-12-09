@@ -49,6 +49,8 @@ PURGE_UNTRACKED_TORRENTS = os.getenv("PURGE_UNTRACKED_TORRENTS", False)
 
 PURGE_SEASON_PACK_EPISODES = os.getenv("PURGE_SEASON_PACK_EPISODES", True)
 
+LEW_MEMORY_MODE = os.getenv("LEW_MEMORY_MODE", "false").lower() == "true"
+
 config_lock = threading.Lock()
 _config_cache = None
 
