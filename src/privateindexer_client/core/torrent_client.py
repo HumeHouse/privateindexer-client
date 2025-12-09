@@ -45,6 +45,7 @@ def create_libtorrent_session(app_version: str):
                      "unchoke_slots_limit": -1,  # unlimited number of unchoked peers
                      "connections_limit": -1,  # unlimited connections
                      "seed_choking_algorithm": lt.seed_choking_algorithm_t.fastest_upload,  # choke based on upload speed
+                     "mixed_mode_algorithm": 0,  # disable TCP/uTP load balancer algorithm
                      })
 
     # add the manual announce IP if configured
