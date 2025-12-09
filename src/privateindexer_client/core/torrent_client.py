@@ -8,7 +8,7 @@ import libtorrent as lt
 
 from privateindexer_client.core import database, utils
 from privateindexer_client.core.config import TORRENTING_PORT, TORRENTS_DIR, ANNOUNCE_TRACKER_URL, FASTRESUME_DIR, FASTRESUME_INTERVAL, ANNOUNCE_IP, \
-    STALE_TORRENT_THRESHOLD
+    STALE_TORRENT_THRESHOLD, LEW_MEMORY_MODE
 from privateindexer_client.core.logger import log
 from privateindexer_client.core.thread_executor import FASTRESUME_EXECUTOR
 from privateindexer_client.core.utils import process_fastresume_file
@@ -27,22 +27,25 @@ def create_libtorrent_session(app_version: str):
     Initialize a libtorrent session with custom settings
     """
     global libtorrent_session, _all_time_download, _all_time_upload
-    settings = {"listen_interfaces": f"0.0.0.0:{TORRENTING_PORT}",  # listen on all IPv4 interfaces
-                "active_downloads": -1,  # allow unlimited downloads
-                "active_seeds": -1,  # allow unlimited seeds
-                "enable_dht": False, "enable_lsd": False, "enable_upnp": False,  # disable non-private torrent features
-                "out_enc_policy": 0,  # force encrypted outgoing connections
-                "in_enc_policy": 0,  # force encrypted incoming connections
-                "validate_https_trackers": False,  # necessary because of OPENSSL stuff
-                "user_agent": f"privateindexer-client/{app_version}",  # send custom user agent
-                "always_send_user_agent": True,  # always send the user agent with every tracker request
-                "seed_time_limit": -1,  # no seed limit for torrents
-                "active_tracker_limit": -1,  # unlimited trackers
-                "active_limit": -1,  # unlimited number of torrents
-                "unchoke_slots_limit": -1,  # unlimited number of unchoked peers
-                "connections_limit": -1,  # unlimited connections
-                "seed_choking_algorithm": lt.seed_choking_algorithm_t.fastest_upload,  # choke based on upload speed
-                }
+
+    settings: dict = lt.min_memory_usage() if LEW_MEMORY_MODE else {}
+
+    settings.update({"listen_interfaces": f"0.0.0.0:{TORRENTING_PORT}",  # listen on all IPv4 interfaces
+                     "active_downloads": -1,  # allow unlimited downloads
+                     "active_seeds": -1,  # allow unlimited seeds
+                     "enable_dht": False, "enable_lsd": False, "enable_upnp": False,  # disable non-private torrent features
+                     "out_enc_policy": 0,  # force encrypted outgoing connections
+                     "in_enc_policy": 0,  # force encrypted incoming connections
+                     "validate_https_trackers": False,  # necessary because of OPENSSL stuff
+                     "user_agent": f"privateindexer-client/{app_version}",  # send custom user agent
+                     "always_send_user_agent": True,  # always send the user agent with every tracker request
+                     "seed_time_limit": -1,  # no seed limit for torrents
+                     "active_tracker_limit": -1,  # unlimited trackers
+                     "active_limit": -1,  # unlimited number of torrents
+                     "unchoke_slots_limit": -1,  # unlimited number of unchoked peers
+                     "connections_limit": -1,  # unlimited connections
+                     "seed_choking_algorithm": lt.seed_choking_algorithm_t.fastest_upload,  # choke based on upload speed
+                     })
 
     # add the manual announce IP if configured
     if ANNOUNCE_IP:
