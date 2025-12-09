@@ -61,6 +61,7 @@ below
 | `STALE_TORRENT_THRESHOLD`    | `30`          | Number of days a torrent is allowed to sit in downloading state before it is automatically purged from the torrent client.                    |
 | `PURGE_SEASON_PACK_EPISODES` | `True`        | Enable this to have the client purge individual episode torrents that are part of a tracked season pack torrent. Useful for de-duplication.   |
 | `CACHE_CLEAN_INTERVAL`       | `12`          | Hours between cache clean task cycles. Cache clean is important to keep cache file size trimmed and up-to-date with what is actually on disk. |
+| `LEW_MEMORY_MODE`            | `False`       | Enable this to set libtorrent into a low memory profile to help reduce the amount of RAM used by the torrent client. Lew caused this.         |
 
 ### 2. Configure Volumes
 
