@@ -280,7 +280,7 @@ function updateClientStats(torrents, stats) {
     $("#dl-rate").text(formatSpeed(stats["dl_info_speed"]));
     $("#session-ul").text(formatBytes(stats["up_info_data"]));
     $("#total-ul").text(formatBytes(stats["alltime_ul"]));
-    $("#ul-rate").text(formatSpeed(stats["ul_info_speed"]));
+    $("#ul-rate").text(formatSpeed(stats["up_info_speed"]));
     $("#global-ratio").text(formatRatio(stats["global_ratio"]));
 }
 
