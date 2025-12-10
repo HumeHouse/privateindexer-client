@@ -31,8 +31,6 @@ def create_libtorrent_session(app_version: str):
     settings: dict = lt.min_memory_usage() if LEW_MEMORY_MODE else {}
 
     settings.update({"listen_interfaces": f"0.0.0.0:{TORRENTING_PORT}",  # listen on all IPv4 interfaces
-                     "active_downloads": -1,  # allow unlimited downloads
-                     "active_seeds": -1,  # allow unlimited seeds
                      "enable_dht": False, "enable_lsd": False, "enable_upnp": False,  # disable non-private torrent features
                      "out_enc_policy": 0,  # force encrypted outgoing connections
                      "in_enc_policy": 0,  # force encrypted incoming connections
@@ -41,12 +39,8 @@ def create_libtorrent_session(app_version: str):
                      "always_send_user_agent": True,  # always send the user agent with every tracker request
                      "seed_time_limit": -1,  # no seed limit for torrents
                      "active_tracker_limit": -1,  # unlimited trackers
-                     "active_limit": -1,  # unlimited number of torrents
-                     "unchoke_slots_limit": -1,  # unlimited number of unchoked peers
-                     "connections_limit": -1,  # unlimited connections
                      "seed_choking_algorithm": lt.seed_choking_algorithm_t.fastest_upload,  # choke based on upload speed
                      "mixed_mode_algorithm": 0,  # disable TCP/uTP load balancer algorithm
-                     "max_queued_disk_bytes": -1,  # unlimited queued disk bytes
                      })
 
     # enable/disable uTP
@@ -54,6 +48,31 @@ def create_libtorrent_session(app_version: str):
         "enable_incoming_utp": ALLOW_UTP_CONNECTIONS,  # incoming uTP connections
         "enable_outgoing_utp": ALLOW_UTP_CONNECTIONS,  # outgoing uTP connections
     })
+
+    # enable some extra memory-saving settings
+    if LEW_MEMORY_MODE:
+        settings.update({
+            "max_queued_disk_bytes": 1024 * 512,  # limit disk queue (1/2 default)
+            "connections_limit": 200,  # set a lower connection limit (default)
+            "max_peerlist_size": 10000,  # limit the number of peers we keep (1/3 default)
+            "unchoke_slots_limit": 4,  # limit unchoked peers (1/2 default)
+        })
+    else:
+        settings.update({
+            "max_queued_disk_bytes": -1,  # unlimited queued disk bytes
+            "connections_limit": -1,  # unlimited connections
+            "unchoke_slots_limit": -1,  # unlimited number of unchoked peers
+            "active_limit": -1,  # unlimited number of torrents
+            "active_downloads": -1,  # allow unlimited downloads
+            "active_seeds": -1,  # allow unlimited seeds
+            "max_out_request_queue": 1500,  # increase number of outstanding requests to send to a peer 3x (default 500)
+            "file_pool_size": 250,  # increase file pool size (default 40)
+            "connection_speed": 500,  # bump connection rate to 500/s (default 30)
+            "send_buffer_low_watermark": 1048576,  # bump low buffer 10x (default 10*1024)
+            "send_buffer_watermark": 3145728,  # bump buffer 6x (default 500*1024)
+            "send_buffer_watermark_factor": 150,  # bump factor 3x (default 50)
+            "max_peer_recv_buffer_size": 6291456,  # bump peer receive by 3x (default 2*1024*1024)
+        })
 
     # add the manual announce IP if configured
     if ANNOUNCE_IP:
