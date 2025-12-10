@@ -575,13 +575,14 @@ def process_fastresume_file(fastresume_path: str, hash_v1: str, torrent_path: st
         return None, hash_v1, torrent_path
 
 
-def fastresume_ignore_exists(torrent_hash: str) -> bool:
+def fastresume_ignore_exists(torrent_hash: str) -> str | bool:
     """
     Checks if a fastresume ignore file exists in the FASTRESUME_DIR for the given torrent hash
+    Returns fastresume ignore file path if true
     """
     ignore_file = os.path.join(FASTRESUME_DIR, f"{torrent_hash}.fastresume.ignore")
 
-    return os.path.exists(ignore_file)
+    return ignore_file if os.path.exists(ignore_file) else False
 
 
 def save_fastresume_to_disk(alert: lt.save_resume_data_alert) -> str | None:
