@@ -31,6 +31,8 @@ SCAN_BATCH_SIZE = int(os.getenv("SCAN_BATCH_SIZE", 128))
 
 FASTRESUME_INTERVAL = 60 * int(os.getenv("FASTRESUME_INTERVAL", 60))
 
+MEMORY_LOG_INTERVAL = int(os.getenv("MEMORY_LOG_INTERVAL", 0))
+
 STALE_TORRENT_THRESHOLD = 24 * 60 * 60 * int(os.getenv("STALE_TORRENT_THRESHOLD", 30))
 
 RADARR_URL = (os.getenv("RADARR_URL", "")).strip("/")

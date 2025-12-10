@@ -6,11 +6,11 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
-from privateindexer_client.core import torrent_client, scan, api, gui, httpx_request, database, utils, sync, radarr, sonarr, cache, lidarr
+from privateindexer_client.core import torrent_client, scan, api, gui, httpx_request, database, utils, sync, radarr, sonarr, cache, lidarr, memory
 from privateindexer_client.core.cache import Cache
 from privateindexer_client.core.config import TORRENTS_DIR, SCAN_INTERVAL, INDEXER_API_URL, API_KEY, TORRENTING_PORT, DOWNLOADS_DIR, FASTRESUME_DIR, APP_VERSION, \
     MAX_THREADS, FASTRESUME_INTERVAL, ANNOUNCE_IP, RADARR_URL, RADARR_API_KEY, SONARR_URL, SONARR_API_KEY, SYNC_INTERVAL, CACHE_CLEAN_INTERVAL, LEW_MEMORY_MODE, \
-    LIDARR_URL, LIDARR_API_KEY
+    LIDARR_URL, LIDARR_API_KEY, MEMORY_LOG_INTERVAL
 from privateindexer_client.core.logger import log
 
 APP_TASKS: list[Task] = []
@@ -27,20 +27,24 @@ async def startup_tasks():
     log.info("[APP] Creating periodic tasks")
 
     # send the system task to the asyncio scheduler and store them in the app state
-    APP_TASKS = [
+    APP_TASKS.extend([
         asyncio.create_task(scan.periodic_scan_task(), name="scan"),
         asyncio.create_task(torrent_client.periodic_torrent_status_task(), name="status"),
         asyncio.create_task(torrent_client.periodic_fastresume_task(), name="fastresume"),
         asyncio.create_task(torrent_client.periodic_alerts_task(), name="alerts"),
         asyncio.create_task(sync.periodic_sync_task(), name="sync"),
         asyncio.create_task(cache.periodic_cache_clean_task(), name="cache_clean"),
-    ]
+    ])
 
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     global APP_TASKS
     log.info(f"[APP] Starting PrivateIndexer client v{APP_VERSION}")
+
+    if MEMORY_LOG_INTERVAL > 0:
+        log.info(f"[APP] Started memory logging every {MEMORY_LOG_INTERVAL} seconds")
+        APP_TASKS.append(asyncio.create_task(memory.periodic_memory_task(), name="memory"))
 
     # initialize the database
     await database.initialize()
