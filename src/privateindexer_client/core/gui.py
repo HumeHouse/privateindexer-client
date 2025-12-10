@@ -81,6 +81,10 @@ async def delete_torrent(torrent_hash: str = Query(), remove_downloads: bool = Q
     torrent_path = result["torrent_path"]
     hash_v1 = result["hash_v1"]
 
+    # remove from torrent client
+    if await torrent_client.remove_torrent_by_hash(hash_v1, remove_downloads):
+        return PlainTextResponse("Successfully removed torrent")
+
     try:
         # remove torrent file
         if os.path.exists(torrent_path):
@@ -92,7 +96,4 @@ async def delete_torrent(torrent_hash: str = Query(), remove_downloads: bool = Q
         log.error(f"[GUI] Failed to delete torrent file: {e}")
         raise HTTPException(status_code=HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to delete torrent file from disk")
 
-    # remove from torrent client
-    if await torrent_client.remove_torrent_by_hash(hash_v1, remove_downloads):
-        return PlainTextResponse("Successfully removed torrent")
     raise HTTPException(status_code=HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to remove torrent from client")
