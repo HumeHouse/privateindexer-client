@@ -8,7 +8,7 @@ import libtorrent as lt
 
 from privateindexer_client.core import database, utils
 from privateindexer_client.core.config import TORRENTING_PORT, TORRENTS_DIR, ANNOUNCE_TRACKER_URL, FASTRESUME_DIR, FASTRESUME_INTERVAL, ANNOUNCE_IP, \
-    STALE_TORRENT_THRESHOLD, LEW_MEMORY_MODE
+    STALE_TORRENT_THRESHOLD, LEW_MEMORY_MODE, ALLOW_UTP_CONNECTIONS
 from privateindexer_client.core.logger import log
 from privateindexer_client.core.thread_executor import FASTRESUME_EXECUTOR
 from privateindexer_client.core.utils import process_fastresume_file
@@ -47,6 +47,12 @@ def create_libtorrent_session(app_version: str):
                      "seed_choking_algorithm": lt.seed_choking_algorithm_t.fastest_upload,  # choke based on upload speed
                      "mixed_mode_algorithm": 0,  # disable TCP/uTP load balancer algorithm
                      })
+
+    # enable/disable uTP
+    settings.update({
+        "enable_incoming_utp": ALLOW_UTP_CONNECTIONS,  # incoming uTP connections
+        "enable_outgoing_utp": ALLOW_UTP_CONNECTIONS,  # outgoing uTP connections
+    })
 
     # add the manual announce IP if configured
     if ANNOUNCE_IP:
