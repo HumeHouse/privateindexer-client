@@ -67,6 +67,7 @@ below
 | `CACHE_CLEAN_INTERVAL`      | `12`          | `INTEGER` (hours)   | Hours between cache clean task cycles. Cache clean is important to keep cache file size trimmed and up-to-date with what is actually on disk.           |
 | `LEW_MEMORY_MODE`           | `False`       | `BOOLEAN`           | Enable this to set libtorrent into a low memory profile to help reduce the amount of RAM used by the torrent client. Lew caused this.                   |
 | `ALLOW_UTP_CONNECTIONS`     | `False`       | `BOOLEAN`           | Enable this to allow the client to connect to peers using uTP instead of TCP. This may result in lower transfer speeds.                                 |
+| `MEMORY_LOG_INTERVAL`       | `0`           | `INTEGER` (seconds) | Set this to something >0 to display thread memory utilization in the console at a desired interval. Most commonly used for debugging at ~5 seconds.     |
 
 ### 2. Configure Volumes
 
