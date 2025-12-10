@@ -115,10 +115,10 @@ async def lifespan(_: FastAPI):
         log.error(f"[APP] Failed to validate API key: {e}")
         exit(1)
 
-    log.info("[APP] Loading cache")
-
+    log.debug("[APP] Loading cache")
     cache = Cache.get_instance()
-    cache.load()
+    cache_size = cache.load()
+    log.info(f"[APP] Cache loaded, {cache_size} entries")
 
     log.info("[APP] Running startup tasks")
 
