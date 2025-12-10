@@ -7,27 +7,26 @@ services:
     image: ghcr.io/humehouse/privateindexer-client:latest
     container_name: privateindexer-client
     restart: unless-stopped
-    stop_grace_period: 5m
+    # careful not to let Docker kill the container, it could prevent fastresume data from being saved during shutdown
+    # stop_grace_period: 5m
     environment:
-      DOWNLOADS_DIR: /path/to/downloads
-      MAX_THREADS: 8
-      FASTRESUME_INTERVAL: 60
-      SCAN_INTERVAL: 15
+      DOWNLOADS_DIR: /data/privateindexer/downloads
+      MAX_THREADS: 16 # 16 threads
       API_KEY: keyhere
       TORRENTING_PORT: 6881
-      RADARR_URL: https://radarr.example.com
+      RADARR_URL: https://radarr.humehouse.com
       RADARR_API_KEY: keyhere
-      SONARR_URL: https://sonarr.example.com
+      SONARR_URL: https://sonarr.humehouse.com
       SONARR_API_KEY: keyhere
     volumes:
-      - /path/to/client/data:/app/data
-      - /path/to/movies:/path/to/movies
-      - /path/to/tv:/path/to/tv
+      - /humehouse/privateindexer/client_data:/app/data # mount the persistent data storage location to the host somewhere
+      - /data/privateindexer/downloads:/data/privateindexer/downloads # mount the downloads location on the host to the DOWNLOADS_DIR in the container
+      - /data/media/movies:/data/media/movies # mount the movies directory - this should match what Radarr sees
+      - /data/media/shows:/data/media/shows # mount the tv series directory - this should match what Sonarr sees
     networks:
       - privateindexer-net
     ports:
       - "6881:6881"
-      - "6881:6881/udp"
       - "8080:80"
     logging:
       options:
