@@ -581,12 +581,7 @@ def fastresume_ignore_exists(torrent_hash: str) -> bool:
     """
     ignore_file = os.path.join(FASTRESUME_DIR, f"{torrent_hash}.fastresume.ignore")
 
-    # skip saving data if a fastresume-ignore file exists for this hash
-    exists = os.path.exists(ignore_file)
-    if exists:
-        log.debug(f"[FASTRESUME] Found fastresume-ignore file for hash: {torrent_hash}")
-        return True
-    return False
+    return os.path.exists(ignore_file)
 
 
 def save_fastresume_to_disk(alert: lt.save_resume_data_alert) -> str | None:
