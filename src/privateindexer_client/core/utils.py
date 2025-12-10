@@ -8,14 +8,15 @@ import time
 
 import libtorrent as lt
 
-from privateindexer_client.core import config, httpx_request, database, radarr, sonarr
+from privateindexer_client.core import config, httpx_request, database, radarr, sonarr, lidarr
 from privateindexer_client.core.cache import Cache
-from privateindexer_client.core.config import API_KEY, INDEXER_API_URL, TORRENTS_DIR, FASTRESUME_DIR, APP_VERSION, STATS_FILE, SONARR_URL, RADARR_URL
+from privateindexer_client.core.config import API_KEY, INDEXER_API_URL, TORRENTS_DIR, FASTRESUME_DIR, APP_VERSION, STATS_FILE, SONARR_URL, RADARR_URL, LIDARR_URL
 from privateindexer_client.core.logger import log
 
 _torznab_category_paths: list[dict[str, str]] = []
 
 RADARR_ROOT_CATEGORY = 2000
+LIDARR_ROOT_CATEGORY = 3000
 SONARR_ROOT_CATEGORY = 5000
 
 
@@ -23,6 +24,8 @@ class MediaType(enum.Enum):
     RADARR_MOVIE = 1
     SONARR_EPISODE = 2
     SONARR_SEASON = 3
+    LIDARR_TRACK = 4
+    LIDARR_ALBUM = 5
 
 
 class MediaDataEntry:
@@ -110,6 +113,8 @@ async def send_torrent_to_indexer(torrent_path: str, category: int, torrent_name
         imdbid = None
         tmdbid = None
         tvdbid = None
+        artist = None
+        album = None
 
         if app_id is None:
             result = await database.fetch_one("SELECT app_id FROM torrents WHERE torrent_path = ?", (torrent_path,))
@@ -126,6 +131,10 @@ async def send_torrent_to_indexer(torrent_path: str, category: int, torrent_name
                 imdbid = series_metadata.get("imdbId")
                 tmdbid = series_metadata.get("tmdbId")
                 tvdbid = series_metadata.get("tvdbId")
+            elif category == LIDARR_ROOT_CATEGORY:
+                album_metadata = await lidarr.fetch_album_metadata(album_id=app_id)
+                artist = album_metadata.get("artist", {}).get("artistName")
+                album = album_metadata.get("title")
 
         with open(torrent_path, "rb") as file:
             torrent_basename = os.path.basename(torrent_path)
@@ -141,6 +150,12 @@ async def send_torrent_to_indexer(torrent_path: str, category: int, torrent_name
 
             if tvdbid:
                 data["tvdbid"] = tvdbid
+
+            if artist:
+                data["artist"] = artist
+
+            if album:
+                data["album"] = album
 
             async with httpx_request.get_client() as client:
                 response = await client.post(f"{INDEXER_API_URL}/upload", headers={"X-API-Key": API_KEY}, data=data, files=files)
@@ -180,6 +195,13 @@ async def update_torznab_category_paths() -> set[dict[str, str]]:
         # add the root paths to tracking
         for sonarr_root_folder in sonarr_root_folders:
             _torznab_category_paths.append({"id": SONARR_ROOT_CATEGORY, "path": sonarr_root_folder})
+
+    if LIDARR_URL:
+        lidarr_root_folders = await lidarr.fetch_root_folders()
+
+        # add the root paths to tracking
+        for lidarr_root_folder in lidarr_root_folders:
+            _torznab_category_paths.append({"id": LIDARR_ROOT_CATEGORY, "path": lidarr_root_folder})
 
     return _torznab_category_paths
 
@@ -233,6 +255,31 @@ async def get_managed_media_data() -> list[MediaDataEntry]:
                     media_data.append(episode_entry)
     except Exception as e:
         log.error(f"[SONARR] Exception while gathering media data: {e}")
+
+    try:
+        # fetch all music track files from Lidarr if configured
+        if LIDARR_URL:
+            lidarr_tracks = await lidarr.fetch_music_library(tracked_root_folders)
+            for music_entry in lidarr_tracks:
+
+                # build an album entry for full albums
+                if music_entry["album"]:
+                    album_entry = MediaDataEntry(MediaType.LIDARR_ALBUM)
+                    album_entry.app_id = music_entry["id"]
+                    album_entry.path = music_entry["path"]
+                    album_entry.title = music_entry["title"]
+
+                    media_data.append(album_entry)
+
+                # build single track entries for individual tracks
+                else:
+                    track_entry = MediaDataEntry(MediaType.LIDARR_TRACK)
+                    track_entry.app_id = music_entry["id"]
+                    track_entry.path = music_entry["path"]
+
+                    media_data.append(track_entry)
+    except Exception as e:
+        log.error(f"[LIDARR] Exception while gathering media data: {e}")
 
     return media_data
 

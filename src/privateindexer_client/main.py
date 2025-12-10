@@ -6,10 +6,11 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
-from privateindexer_client.core import torrent_client, scan, api, gui, httpx_request, database, utils, sync, radarr, sonarr, cache
+from privateindexer_client.core import torrent_client, scan, api, gui, httpx_request, database, utils, sync, radarr, sonarr, cache, lidarr
 from privateindexer_client.core.cache import Cache
 from privateindexer_client.core.config import TORRENTS_DIR, SCAN_INTERVAL, INDEXER_API_URL, API_KEY, TORRENTING_PORT, DOWNLOADS_DIR, FASTRESUME_DIR, APP_VERSION, \
-    MAX_THREADS, FASTRESUME_INTERVAL, ANNOUNCE_IP, RADARR_URL, RADARR_API_KEY, SONARR_URL, SONARR_API_KEY, SYNC_INTERVAL, CACHE_CLEAN_INTERVAL, LEW_MEMORY_MODE
+    MAX_THREADS, FASTRESUME_INTERVAL, ANNOUNCE_IP, RADARR_URL, RADARR_API_KEY, SONARR_URL, SONARR_API_KEY, SYNC_INTERVAL, CACHE_CLEAN_INTERVAL, LEW_MEMORY_MODE, \
+    LIDARR_URL, LIDARR_API_KEY
 from privateindexer_client.core.logger import log
 
 APP_TASKS: list[Task] = []
@@ -78,6 +79,14 @@ async def lifespan(_: FastAPI):
             exit(1)
 
         await sonarr.test_connection()
+
+    # test Lidarr connection if user has it configured
+    if LIDARR_URL:
+        if not LIDARR_API_KEY:
+            log.error(f"[APP] No API key provided for Lidarr")
+            exit(1)
+
+        await lidarr.test_connection()
 
     log.debug(f"[APP] Opening libtorrent session")
     # init the libtorrent client session
