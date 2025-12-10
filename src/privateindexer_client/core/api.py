@@ -288,13 +288,8 @@ async def add_torrent(
             log.error(f"[API] Error while downloading URL '{urls}': {e}")
             raise HTTPException(status_code=status.INTERNAL_SERVER_ERROR)
 
-    # download subdirectory will be the name of the torrent
-    info = lt.torrent_info(torrent_file)
-    download_subdir, _ = os.path.splitext(info.name())
-    save_path = os.path.join(save_dir, download_subdir)
-
     # attempt to add the torrent to the download client and match qBittorrent return text
-    result = "Ok." if await torrent_client.add_torrent_for_download(torrent_file, save_path) else "Fails."
+    result = "Ok." if await torrent_client.add_torrent_for_download(torrent_file, save_dir) else "Fails."
 
     # remove the temporary file if it still exists
     if os.path.exists(torrent_file):
