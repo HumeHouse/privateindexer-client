@@ -80,19 +80,21 @@ below
 
 ### 3. Port forwarding
 
-- The Torrenting Port
-    - You should bind **and port forward** the `TORRENTING_PORT` to your Docker host to allow incoming connections for
-      seeding.
-  - When you forward the port at your router, you only need to forward TCP traffic unless you enable
-    `ALLOW_UTP_CONNECTIONS`.
-  - NOTE: Map the same port you're using **INSIDE** the container to the port **OUTSIDE** the container on the
-    host. Otherwise the client will start advertising a different port than it's actually reachable on.
+The Torrenting Port
 
-- The Webserver Port
-    - The built-in torrent client runs a web server on port 80 inside the container for RESTful API control of the
-      client.
-    - You can map the web server port to any port on the host or none at all if you connect from within the Docker
-      network like if using nginx reverse proxy.
+- You should bind **and port forward** the `TORRENTING_PORT` to your Docker host to allow incoming connections for
+  seeding.
+- When you forward the port at your router, you only need to forward TCP traffic unless you enable
+  `ALLOW_UTP_CONNECTIONS`.
+- NOTE: Map the same port you're using **INSIDE** the container to the port **OUTSIDE** the container on the
+  host. Otherwise the client will start advertising a different port than it's actually reachable on.
+
+The Webserver Port
+
+- The built-in torrent client runs a web server on port 80 inside the container for RESTful API control of the
+  client.
+- You can map the web server port to any port on the host or none at all if you connect from within the Docker
+  network like if using nginx reverse proxy.
 
 ### 4. Start Client
 
@@ -170,21 +172,23 @@ Navigate to `https://your-hostname:8080/dashboard` to view the dashboard
 - Filter through torrents by name using the `Filter` search box at the top of the 'Name' column
 - Sort torrents by clicking any of the column headers
 
-- Your client stats are displayed at the top center
-    - Uploading: number of torrents you are actively uploading (seeding) from **this local client**
-    - Downloading: number of torrents you are actively downloading (leeching) to  **this local client**
-  - Torrents: number of torrents added to **this local client**
-  - Ratio: your total downloaded data vs. your total uploaded data (most trackers want this to be at least 1)
-    - Peers: number of external clients connected to **this local client** (can be seeds or leeches)
+Your client stats are displayed at the top center
 
-- Your server stats are displayed in the top right corner
-    - Uploads: number of torrents you've sent to the server
-    - DL: amount of data you've downloaded from peers in the swarm in total
-    - L: number of torrents you are actively downloading (leeching) from the swarm (all locations)
-    - UL: amount of data you've uploaded to peers in the swarm in total
-    - S: number of torrents you are actively seeding to the swarm (all locations)
-    - Ratio: same as the client ratio above, except this value is tracked by the server, not the client
-    - Grabs: number of times **other users** have downloaded files that you have uploaded
+- Uploading: number of torrents you are actively uploading (seeding) from **this local client**
+- Downloading: number of torrents you are actively downloading (leeching) to  **this local client**
+- Torrents: number of torrents added to **this local client**
+- Ratio: your total downloaded data vs. your total uploaded data (most trackers want this to be at least 1)
+- Peers: number of external clients connected to **this local client** (can be seeds or leeches)
+
+Your server stats are displayed in the top right corner
+
+- Uploads: number of torrents you've sent to the server
+- DL: amount of data you've downloaded from peers in the swarm in total
+- L: number of torrents you are actively downloading (leeching) from the swarm (all locations)
+- UL: amount of data you've uploaded to peers in the swarm in total
+- S: number of torrents you are actively seeding to the swarm (all locations)
+- Ratio: same as the client ratio above, except this value is tracked by the server, not the client
+- Grabs: number of times **other users** have downloaded files that you have uploaded
 
 ---
 
