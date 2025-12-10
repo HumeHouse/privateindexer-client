@@ -154,8 +154,7 @@ function deleteTorrent() {
         return;
     }
     fetch("/dashboard/delete_torrent?" + new URLSearchParams({
-        "torrent_hash": selectedTorrentId,
-        "remove_downloads": $("#delete-file-checkbox").is(":checked")
+        "torrent_hash": selectedTorrentId, "remove_downloads": $("#delete-file-checkbox").is(":checked")
     }).toString(), {
         method: "POST"
     })
@@ -341,8 +340,16 @@ function formatBytes(bytes) {
     return (bytes / Math.pow(1024, i)).toFixed(1) + " " + units[i];
 }
 
+function formatBits(bits) {
+    if (!bits || bits <= 0) return "0 b";
+    const units = ["b", "Kb", "Mb", "Gb", "Tb"];
+    const i = Math.floor(Math.log(bits) / Math.log(1000));
+    return (bits / Math.pow(1000, i)).toFixed(1) + " " + units[i];
+}
+
 function formatSpeed(bytesPerSec) {
-    return formatBytes(bytesPerSec) + "/s";
+    const bitsPerSec = bytesPerSec * 8;
+    return formatBits(bitsPerSec) + "ps";
 }
 
 function formatTime(seconds) {
@@ -384,12 +391,17 @@ function renderTable(torrents) {
 
         row.toggleClass("d-none", !torrent["name"].toLowerCase().includes(filter));
 
+        let barClass = "bg-success";
+        if (progress < 100) {
+            barClass = "bg-notice";
+        }
+
         row.html(`
                 <td>${torrent["name"]}</td>
                 <td>${formatBytes(torrent["size"])}</td>
                 <td>
                     <div class="progress" style="height:1.5rem;">
-                        <div class="progress-bar bg-success" role="progressbar" style="width: ${progress}%">${progress}%</div>
+                        <div class="progress-bar ${barClass} overflow-visible" role="progressbar" style="width: ${progress}%">${progress}%</div>
                     </div>
                 </td>
                 <td class="${rowClass}">${formatState(torrent["state"])}</td>
@@ -478,7 +490,6 @@ function populateInfoPanel(torrent) {
             </div>
             <div class="col-md-4">
                 <dl class="row mb-2 g-0">
-                    <dt class="col-4 text-end">Time Active:</dt><dd class="ms-2 col-7">${formatTime(torrent["time_active"])}</dd>
                     <dt class="col-4 text-end">ETA:</dt><dd class="ms-2 col-7">${formatTime(torrent["eta"])}</dd>
                     <dt class="col-4 text-end">Added On:</dt><dd class="ms-2 col-7">${new Date(torrent["added_on"] * 1000).toLocaleString()}</dd>
                     <dt class="col-4 text-end">Save Path:</dt><dd class="ms-2 col-7">${torrent["save_path"]}</dd>
@@ -545,6 +556,12 @@ function populateInfoPanel(torrent) {
                 flagsList += `<span style="cursor:help;" class="badge me-1 ${className}" title="${flag[1]}">${flag[0]}</span>`;
             });
         }
+
+        let barClass = "bg-success";
+        if (progress < 100) {
+            barClass = "bg-notice";
+        }
+
         peersHtml += `<tr>
                 <td>${peer["ip"]}</td>
                 <td>${peer["port"]}</td>
@@ -554,7 +571,7 @@ function populateInfoPanel(torrent) {
                 <td>${formatSpeed(peer["up_speed"])}</td>
                 <td>
                     <div class="progress" style="height:1.5rem;">
-                    <div class="progress-bar bg-success" role="progressbar" style="width: ${progress}%">${progress}%</div>
+                    <div class="progress-bar ${barClass} overflow-visible" role="progressbar" style="width: ${progress}%">${progress}%</div>
                     </div>
                 </td>
             </tr>`;

@@ -6,11 +6,10 @@ import time
 
 import libtorrent as lt
 
-from privateindexer_client.core import database, utils
+from privateindexer_client.core import database, utils, thread_executor
 from privateindexer_client.core.config import TORRENTING_PORT, TORRENTS_DIR, ANNOUNCE_TRACKER_URL, FASTRESUME_DIR, FASTRESUME_INTERVAL, ANNOUNCE_IP, \
-    STALE_TORRENT_THRESHOLD, LEW_MEMORY_MODE
+    STALE_TORRENT_THRESHOLD, LEW_MEMORY_MODE, ALLOW_UTP_CONNECTIONS
 from privateindexer_client.core.logger import log
-from privateindexer_client.core.thread_executor import FASTRESUME_EXECUTOR
 from privateindexer_client.core.utils import process_fastresume_file
 
 libtorrent_session: lt.session
@@ -31,8 +30,6 @@ def create_libtorrent_session(app_version: str):
     settings: dict = lt.min_memory_usage() if LEW_MEMORY_MODE else {}
 
     settings.update({"listen_interfaces": f"0.0.0.0:{TORRENTING_PORT}",  # listen on all IPv4 interfaces
-                     "active_downloads": -1,  # allow unlimited downloads
-                     "active_seeds": -1,  # allow unlimited seeds
                      "enable_dht": False, "enable_lsd": False, "enable_upnp": False,  # disable non-private torrent features
                      "out_enc_policy": 0,  # force encrypted outgoing connections
                      "in_enc_policy": 0,  # force encrypted incoming connections
@@ -41,16 +38,48 @@ def create_libtorrent_session(app_version: str):
                      "always_send_user_agent": True,  # always send the user agent with every tracker request
                      "seed_time_limit": -1,  # no seed limit for torrents
                      "active_tracker_limit": -1,  # unlimited trackers
-                     "active_limit": -1,  # unlimited number of torrents
-                     "unchoke_slots_limit": -1,  # unlimited number of unchoked peers
-                     "connections_limit": -1,  # unlimited connections
                      "seed_choking_algorithm": lt.seed_choking_algorithm_t.fastest_upload,  # choke based on upload speed
                      "mixed_mode_algorithm": 0,  # disable TCP/uTP load balancer algorithm
                      })
 
+    # enable/disable uTP
+    settings.update({
+        "enable_incoming_utp": ALLOW_UTP_CONNECTIONS,  # incoming uTP connections
+        "enable_outgoing_utp": ALLOW_UTP_CONNECTIONS,  # outgoing uTP connections
+    })
+
+    # enable some extra memory-saving settings
+    if LEW_MEMORY_MODE:
+        settings.update({
+            "max_queued_disk_bytes": 1024 * 512,  # limit disk queue (1/2 default)
+            "connections_limit": 200,  # set a lower connection limit (default)
+            "max_peerlist_size": 10000,  # limit the number of peers we keep (1/3 default)
+            "unchoke_slots_limit": 4,  # limit unchoked peers (1/2 default)
+        })
+    else:
+        settings.update({
+            "max_queued_disk_bytes": -1,  # unlimited queued disk bytes
+            "connections_limit": -1,  # unlimited connections
+            "unchoke_slots_limit": -1,  # unlimited number of unchoked peers
+            "active_limit": -1,  # unlimited number of torrents
+            "active_downloads": -1,  # allow unlimited downloads
+            "active_seeds": -1,  # allow unlimited seeds
+            "max_out_request_queue": 1500,  # increase number of outstanding requests to send to a peer 3x (default 500)
+            "file_pool_size": 250,  # increase file pool size (default 40)
+            "connection_speed": 500,  # bump connection rate to 500/s (default 30)
+            "send_buffer_low_watermark": 1048576,  # bump low buffer 10x (default 10*1024)
+            "send_buffer_watermark": 3145728,  # bump buffer 6x (default 500*1024)
+            "send_buffer_watermark_factor": 150,  # bump factor 3x (default 50)
+            "max_peer_recv_buffer_size": 6291456,  # bump peer receive by 3x (default 2*1024*1024)
+        })
+
     # add the manual announce IP if configured
     if ANNOUNCE_IP:
         settings["announce_ip"] = ANNOUNCE_IP
+
+    log.debug("[TORCLIENT] Settings active:")
+    for key, value in settings.items():
+        log.debug(f"[TORCLIENT] {key}: {value}")
 
     libtorrent_session = lt.session(settings)
     _all_time_download, _all_time_upload = utils.load_persistent_stats()
@@ -165,6 +194,8 @@ async def add_torrent_for_download(torrent_file: str, save_path: str) -> bool:
         except Exception as e:
             log.error(f"[TORCLIENT] Failed to save torrent file for {torrent_name}: {e}")
 
+        save_path = os.path.join(save_path, torrent_hash_v1)
+
         params = {"ti": info, "save_path": save_path}
 
         # create the save path if it doesn't exist
@@ -263,13 +294,16 @@ async def load_fastresume_data():
     loop = asyncio.get_running_loop()
     futures = []
 
+    # spawn a new executor
+    executor = thread_executor.get_fastresume_executor()
+
     # loop through the files in the fastresume directory
     for fname in os.listdir(FASTRESUME_DIR):
         # ignore files we don't care about
         if not fname.endswith(".fastresume"):
             continue
         fastresume_path = os.path.join(FASTRESUME_DIR, fname)
-        hash_v1 = fname.replace(".fastresume", "")
+        hash_v1 = os.path.splitext(fname)[0]
         torrent_path = torrent_hash_path_map.get(hash_v1)
 
         # remove fastresume files which do not have a matching torrent file
@@ -283,7 +317,7 @@ async def load_fastresume_data():
 
         log.debug(f"[FASTRESUME] Queueing fastresume data processing for hash: {hash_v1}")
         # dispatch the fastresume file to the pool of worker threads
-        futures.append(loop.run_in_executor(FASTRESUME_EXECUTOR, process_fastresume_file, fastresume_path, hash_v1, torrent_path))
+        futures.append(loop.run_in_executor(executor, process_fastresume_file, fastresume_path, hash_v1, torrent_path))
 
     log.info(f"[FASTRESUME] Queued {len(futures)} fastresume data files for processing")
 
@@ -311,6 +345,9 @@ async def load_fastresume_data():
                 libtorrent_session.async_add_torrent(atp)
         except Exception as e:
             log.error(f"[FASTRESUME] Error in fastresume data post-processing: {e}")
+
+    executor.shutdown()
+    log.debug(f"[FASTRESUME] Executor workers closed")
 
     log.info(f"[FASTRESUME] Checking for torrents without fastresume data")
 
@@ -403,7 +440,15 @@ async def periodic_torrent_status_task():
                     log.error(f"[STATUS] Torrent '{name}' is in error state")
 
                 is_downloading = status.state == lt.torrent_status.downloading
+                is_seeding = status.state == lt.torrent_status.seeding
                 added_delta = datetime.datetime.now() - datetime.datetime.fromtimestamp(int(status.added_time or 0))
+
+                # check if torrent is not currently seeding but has a fastresume ignore file - remove if true
+                if not is_seeding:
+                    hash_v1 = status.info_hashes.v1.to_bytes().hex() if status.info_hashes.has_v1() else None
+                    ignore_file = utils.fastresume_ignore_exists(hash_v1)
+                    if ignore_file:
+                        os.unlink(ignore_file)
 
                 # check if torrent is downloading and has been downloading for more than the threshold with no progress OR 2x the threshold with >0 progress
                 if is_downloading and ((added_delta.total_seconds() > STALE_TORRENT_THRESHOLD and status.progress == 0) or (
@@ -424,13 +469,13 @@ async def periodic_torrent_status_task():
                     hash_v1 = status.info_hashes.v1.to_bytes().hex() if status.info_hashes.has_v1() else None
 
                     # pull the download path from the database
-                    result = await database.fetch_one("SELECT download_path FROM torrents WHERE hash_v1 = ?", (hash_v1,))
+                    result = await database.fetch_one("SELECT download_path, torrent_path FROM torrents WHERE hash_v1 = ?", (hash_v1,))
                     if result and not result.get("download_path"):
                         log.info(f"[STATUS] Removing download-frozen torrent: {name}")
 
                         # remove from client and database
                         await remove_torrent_by_hash(hash_v1)
-                        await utils.remove_torrent_from_database(hash_v1)
+                        await utils.remove_torrent_from_database(hash_v1, torrent_file=result["torrent_path"])
 
         except Exception as e:
             log.error(f"[STATUS] Error in torrent status loop: {e}")
@@ -470,6 +515,9 @@ async def periodic_alerts_task():
         try:
             alerts = libtorrent_session.pop_alerts()
             for alert in alerts:
+
+                if isinstance(alert, lt.performance_alert):
+                    log.warning(f"[ALERTS] Performance alert detected: {alert}")
 
                 # process fastresume available alerts
                 if isinstance(alert, lt.save_resume_data_alert):

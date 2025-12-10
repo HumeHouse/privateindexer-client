@@ -288,13 +288,8 @@ async def add_torrent(
             log.error(f"[API] Error while downloading URL '{urls}': {e}")
             raise HTTPException(status_code=status.INTERNAL_SERVER_ERROR)
 
-    # download subdirectory will be the name of the torrent
-    info = lt.torrent_info(torrent_file)
-    download_subdir, _ = os.path.splitext(info.name())
-    save_path = os.path.join(save_dir, download_subdir)
-
     # attempt to add the torrent to the download client and match qBittorrent return text
-    result = "Ok." if await torrent_client.add_torrent_for_download(torrent_file, save_path) else "Fails."
+    result = "Ok." if await torrent_client.add_torrent_for_download(torrent_file, save_dir) else "Fails."
 
     # remove the temporary file if it still exists
     if os.path.exists(torrent_file):
@@ -334,21 +329,17 @@ async def delete_torrent(
         torrent_path = result["torrent_path"]
         hash_v1 = result["hash_v1"]
 
-        try:
-            # remove torrent file
-            if os.path.exists(torrent_path):
-                os.unlink(torrent_path)
-
-            # remove from database
-            await utils.remove_torrent_from_database(hash_v1)
-        except Exception as e:
-            log.error(f"[API] Failed to delete torrent file with hash '{torrent_hash}': {e}")
-            failures += 1
-            continue
-
         # remove from torrent client
         if not await torrent_client.remove_torrent_by_hash(hash_v1, deleteFiles):
             log.error(f"[API] Failed to remove torrent with hash '{torrent_hash}' from torrent client")
             failures += 1
+
+        try:
+            # remove from database and delete torrent file
+            await utils.remove_torrent_from_database(hash_v1, torrent_file=torrent_path)
+        except Exception as e:
+            log.error(f"[API] Failed to delete torrent file with hash '{torrent_hash}': {e}")
+            failures += 1
+            continue
 
     return "Ok." if failures == 0 else "Fails."
