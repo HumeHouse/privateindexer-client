@@ -85,8 +85,8 @@ below
       seeding.
   - When you forward the port at your router, you only need to forward TCP traffic unless you enable
     `ALLOW_UTP_CONNECTIONS`.
-    - NOTE: Map the same port you're using **INSIDE** the container to the port **OUTSIDE** the container on the host.
-      Otherwise the client will start advertising a different port than it's actually reachable on.
+  - NOTE: Map the same port you're using **INSIDE** the container to the port **OUTSIDE** the container on the
+    host. Otherwise the client will start advertising a different port than it's actually reachable on.
 
 - The Webserver Port
     - The built-in torrent client runs a web server on port 80 inside the container for RESTful API control of the
