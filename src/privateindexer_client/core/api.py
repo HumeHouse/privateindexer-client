@@ -335,12 +335,8 @@ async def delete_torrent(
             failures += 1
 
         try:
-            # remove torrent file
-            if os.path.exists(torrent_path):
-                os.unlink(torrent_path)
-
-            # remove from database
-            await utils.remove_torrent_from_database(hash_v1)
+            # remove from database and delete torrent file
+            await utils.remove_torrent_from_database(hash_v1, torrent_file=torrent_path)
         except Exception as e:
             log.error(f"[API] Failed to delete torrent file with hash '{torrent_hash}': {e}")
             failures += 1
