@@ -229,6 +229,8 @@ async def periodic_scan_task():
             removed_entries = 0
             duplicate_entries: dict[str, dict] = {}
 
+            loop = asyncio.get_running_loop()
+
             # here we perform various database integrity and value correction checks
             torrents = await database.fetch_all("SELECT * FROM torrents")
             for torrent in torrents:
@@ -258,17 +260,26 @@ async def periodic_scan_task():
                     await database.execute("UPDATE torrents SET media_path = NULL WHERE id = ?", (torrent["id"],))
                     log.info(f"[SCAN] Media files missing for '{torrent["name"]}', purged media path from database")
 
-                # case if this is an external torrent (should have a download path), try to locate the download media if it's missing
-                if download_path and not download_exists:
-                    log.debug(f"[SCAN] Trying to locate download media for: {torrent_path}")
-                    download_path = utils.find_media_for_torrent(torrent_path, DOWNLOADS_DIR)
-                    download_exists = os.path.exists(download_path) if download_path else False
+                # case if this is an external torrent (should have a download path), try to locate the download media if it's missing or invalid
+                if download_path and (not download_exists or download_path == DOWNLOADS_DIR or
+                                      download_path == os.path.join(DOWNLOADS_DIR, (utils.detect_torrent_category(download_path)))):
+                    log.info(f"[SCAN] Trying to locate download media for: {torrent_path}")
 
-                    # update the database if the download path exists
-                    if download_exists:
+                    # locate the download in the hash thread pool
+                    find_future = loop.run_in_executor(HASH_EXECUTOR, utils.find_media_for_torrent, torrent_path, DOWNLOADS_DIR)
+                    download_path = await find_future
+
+                    if download_path:
+                        download_exists = os.path.exists(download_path) if download_path else False
+
                         updated_files += 1
-                        await database.execute("UPDATE torrents SET download_path = ? WHERE id = ?", (download_path, torrent["id"],))
-                        log.info(f"[SCAN] Updated the download path for '{torrent["name"]}'")
+                        # update the database if the download path exists
+                        if download_exists:
+                            await database.execute("UPDATE torrents SET download_path = ? WHERE id = ?", (download_path, torrent["id"],))
+                            log.info(f"[SCAN] Updated the download path for '{torrent["name"]}'")
+                        else:
+                            await database.execute("UPDATE torrents SET download_path = NULL WHERE id = ?", (torrent["id"],))
+                            log.info(f"[SCAN] Removed the download path for '{torrent["name"]}', no file could be matched")
 
                 # case where media exists but the torznab category is unknown (0), try to fix it
                 if media_exists and torrent["category"] == 0:
