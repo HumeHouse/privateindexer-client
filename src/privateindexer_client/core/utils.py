@@ -242,6 +242,7 @@ def generate_media_hash(media_path: str) -> list[bytes]:
     Return list of SHA1 hashes (hex) of media using libtorrent
     """
     before = datetime.datetime.now()
+    log.debug(f"[TORRENT] Generating hashes for '{media_path}'")
 
     try:
         # initialize a file storage and add the media to it
@@ -457,7 +458,7 @@ def find_existing_torrent(media_path: str, ignored_torrents: list[str]) -> str |
         except Exception as e:
             log.error(f"[TORRENT] Error comparing hash for '{media_path}' to '{torrent_file}': {e}")
 
-    log.debug(f"[TORRENT] Couldn't find torrent file for: '{media_path}")
+    log.debug(f"[TORRENT] Couldn't find torrent file for: {media_path}")
     return None
 
 
@@ -479,7 +480,7 @@ def find_media_for_torrent(torrent_path: str, media_dir: str) -> str | None:
             except Exception as e:
                 log.error(f"[TORRENT] Error comparing hash for '{file_path}' to '{torrent_path}': {e}")
 
-    log.debug(f"[TORRENT] Couldn't find media for: '{torrent_path}")
+    log.debug(f"[TORRENT] Couldn't find media for: {torrent_path}")
     return None
 
 

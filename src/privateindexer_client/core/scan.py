@@ -100,7 +100,7 @@ async def scan_media_library() -> tuple[int, int, int, int]:
                 SCAN_DONE_ITEMS += 1
                 continue
 
-        log.debug(f"[SCAN] Trying to locate torrent file for: '{file_path}'")
+        log.debug(f"[SCAN] Trying to locate torrent file for: {file_path}")
         # ignore the media file if we can find a matching torrent file for it
         find_future = loop.run_in_executor(HASH_EXECUTOR, utils.find_existing_torrent, file_path, list(existing_media.values()))
         torrent_file = await find_future
@@ -124,7 +124,7 @@ async def scan_media_library() -> tuple[int, int, int, int]:
                     SCAN_DONE_ITEMS += 1
                     continue
                 else:
-                    log.info(f"[SCAN] File was renamed, media path not updated: '{result["name"]}'")
+                    log.info(f"[SCAN] File was renamed, media path not updated: {result["name"]}")
 
         # construct the scan job
         scan_job = ScanTorrentJob(file_path)
@@ -165,7 +165,7 @@ async def scan_media_library() -> tuple[int, int, int, int]:
 
         # add each scan job to the execution queue
         for batch_job in batched_jobs:
-            log.debug(f"[SCAN] Queueing file for processing: '{batch_job.file_path}'")
+            log.debug(f"[SCAN] Queueing file for processing: {batch_job.file_path}")
 
             # dispatch the torrent creation to the pool of worker threads
             future = loop.run_in_executor(CREATE_EXECUTOR, utils.create_torrent_threadsafe,
@@ -260,7 +260,7 @@ async def periodic_scan_task():
 
                 # case if this is an external torrent (should have a download path), try to locate the download media if it's missing
                 if download_path and not download_exists:
-                    log.debug(f"[SCAN] Trying to locate download media for: '{torrent_path}'")
+                    log.debug(f"[SCAN] Trying to locate download media for: {torrent_path}")
                     download_path = utils.find_media_for_torrent(torrent_path, DOWNLOADS_DIR)
                     download_exists = os.path.exists(download_path) if download_path else False
 
