@@ -481,6 +481,9 @@ async def periodic_alerts_task():
             alerts = libtorrent_session.pop_alerts()
             for alert in alerts:
 
+                if isinstance(alert, lt.performance_alert):
+                    log.warning(f"[ALERTS] Performance alert detected: {alert}")
+
                 # process fastresume available alerts
                 if isinstance(alert, lt.save_resume_data_alert):
                     utils.save_fastresume_to_disk(alert)
