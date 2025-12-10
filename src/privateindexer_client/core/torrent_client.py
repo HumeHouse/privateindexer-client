@@ -435,7 +435,16 @@ async def periodic_torrent_status_task():
                     log.error(f"[STATUS] Torrent '{name}' is in error state")
 
                 is_downloading = status.state == lt.torrent_status.downloading
+                is_seeding = status.state == lt.torrent_status.seeding
                 added_delta = datetime.datetime.now() - datetime.datetime.fromtimestamp(int(status.added_time or 0))
+
+                # check if torrent is not currently seeding but has a fastresume ignore file - remove if true
+                if not is_seeding:
+                    hash_v1 = status.info_hashes.v1.to_bytes().hex() if status.info_hashes.has_v1() else None
+                    if utils.fastresume_ignore_exists(hash_v1):
+                        ignore_file = os.path.join(FASTRESUME_DIR, f"{hash_v1}.fastresume.ignore")
+                        if os.path.exists(ignore_file):
+                            os.unlink(ignore_file)
 
                 # check if torrent is downloading and has been downloading for more than the threshold with no progress OR 2x the threshold with >0 progress
                 if is_downloading and ((added_delta.total_seconds() > STALE_TORRENT_THRESHOLD and status.progress == 0) or (
