@@ -340,8 +340,16 @@ function formatBytes(bytes) {
     return (bytes / Math.pow(1024, i)).toFixed(1) + " " + units[i];
 }
 
+function formatBits(bits) {
+    if (!bits || bits <= 0) return "0 b";
+    const units = ["b", "Kb", "Mb", "Gb", "Tb"];
+    const i = Math.floor(Math.log(bits) / Math.log(1000));
+    return (bits / Math.pow(1000, i)).toFixed(1) + " " + units[i];
+}
+
 function formatSpeed(bytesPerSec) {
-    return formatBytes(bytesPerSec) + "/s";
+    const bitsPerSec = bytesPerSec * 8;
+    return formatBits(bitsPerSec) + "ps";
 }
 
 function formatTime(seconds) {
