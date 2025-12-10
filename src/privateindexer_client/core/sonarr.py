@@ -265,7 +265,7 @@ async def fetch_tv_library(tracked_root_folders: list[str]) -> list[dict]:
             else:
                 individual_episodes += 1
 
-        log.debug(f"[SONARR] Fetched TV library ({season_packs} season packs, {individual_episodes} individual episodes)")
+        log.info(f"[SONARR] Fetched TV library ({season_packs} season packs, {individual_episodes} individual episodes)")
 
         return final_entries
     except Exception as e:
