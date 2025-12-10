@@ -195,6 +195,8 @@ async def add_torrent_for_download(torrent_file: str, save_path: str) -> bool:
         except Exception as e:
             log.error(f"[TORCLIENT] Failed to save torrent file for {torrent_name}: {e}")
 
+        save_path = os.path.join(save_path, torrent_hash_v1)
+
         params = {"ti": info, "save_path": save_path}
 
         # create the save path if it doesn't exist
