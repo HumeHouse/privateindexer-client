@@ -229,9 +229,10 @@ async def fetch_tv_library(tracked_root_folders: list[str]) -> list[dict]:
 
             # work through each season
             for season_number, season_episodes in seasons.items():
+                current_season_stats = season_stats[season_number]
                 # get the percent of episodes for season that are currently tracked on disk
-                percent_of_episodes = season_stats[season_number]["percentOfEpisodes"]
-                missing_episode_count = season_stats[season_number]["totalEpisodeCount"] - season_stats[season_number]["episodeFileCount"]
+                percent_of_episodes = current_season_stats["percentOfEpisodes"]
+                missing_episode_count = current_season_stats["totalEpisodeCount"] - current_season_stats["episodeFileCount"]
 
                 # add all the episode paths to a set to ensure non are unique
                 episode_paths = {os.path.dirname(episode["path"]) for episode in season_episodes}
