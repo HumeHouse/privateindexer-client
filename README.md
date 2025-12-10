@@ -1,10 +1,11 @@
 # PrivateIndexer Client
 
-This is the client container for the HumeHouse PrivateIndexer.
-It pulls from Radarr and Sonarr, creates torrents, and communicates with the PrivateIndexer server.
+This is the client container for the HumeHouse PrivateIndexer swam.
+It pulls data from Radarr/Sonarr/Lidarr, creates torrents for media, and communicates with the PrivateIndexer server.
 There is also a built-in torrent client that will automatically start seeding all your media for you.
 The built-in torrent client also provides qBittorrent-compatible API endpoints for usage with the *arr suite apps.
-You can view a basic dashboard by visiting `http://hostname:8080/dashboard` from a browser if you use the example.
+You can view a basic dashboard by visiting `http://hostname:8080/dashboard` from a browser if you use the example at the
+bottom of the README.
 
 ---
 
@@ -31,10 +32,10 @@ below
 
 #### REQURIED VARIABLES
 
-| Variable        | Description                                                                                                    | Example           |
-|-----------------|----------------------------------------------------------------------------------------------------------------|-------------------|
-| `DOWNLOADS_DIR` | Path inside the container that downloads are saved to. (Make sure to mount it to the host somewhere - step 2.) | `/data/downloads` |
-| `API_KEY`       | Your assigned API key (contact David if you don’t have one).                                                   | `abcdef123456`    |
+| Variable        | Description                                                                                                        | Example           |
+|-----------------|--------------------------------------------------------------------------------------------------------------------|-------------------|
+| `DOWNLOADS_DIR` | Path **inside the container** that downloads are saved to. (Make sure to mount it to the host somewhere - step 2.) | `/data/downloads` |
+| `API_KEY`       | Your assigned API key (contact David if you don’t have one).                                                       | `abcdef123456`    |
 
 #### RADARR/SONARR VARIABLES (OPTIONAL, AT LEAST 1 REQUIRED)
 
@@ -42,26 +43,29 @@ below
 |------------------|---------------------------------------------------------------------------------------------------------|--------------------------------|
 | `RADARR_URL`     | Full protocol and host string for connecting to Radarr. Port definitions are allowed at the end of URL. | `https://radarr.humehouse.com` |
 | `RADARR_API_KEY` | Your Radarr API key, found under `Settings > General > Security`                                        | `abcdef123456`                 |
-| `SONARR_URL`     | Same as `RADARR_URL` but for Sonarr                                                                     | `https://sonarr.humehouse.com` |
+| `SONARR_URL`     | Same purpose as `RADARR_URL` but for Sonarr                                                             | `https://sonarr.humehouse.com` |
 | `SONARR_API_KEY` | Your Sonarr API key, found under `Settings > General > Security`                                        | `abcdef123456`                 |
+| `LIDARR_URL`     | Same purpose as `RADARR_URL` but for Lidarr                                                             | `https://lidarr.humehouse.com` |
+| `LIDARR_API_KEY` | Your Lidarr API key, found under `Settings > General > Security`                                        |                                |
 
 #### OPTIONAL VARIABLES
 
-| Variable                     | Default Value | Description                                                                                                                                   |
-|------------------------------|---------------|-----------------------------------------------------------------------------------------------------------------------------------------------|
-| `MAX_THREADS `               | `8`           | Number of threads to use for CPU & I/O bound tasks. Recommend matching CPU cores.                                                             |
-| `SCAN_INTERVAL`              | `30`          | Minutes between media library scans. We rebuild the media library from Radarr and Sonarr every scan, so be cautious setting too low.          |
-| `SYNC_INTERVAL`              | `60`          | Minutes between server sync task cycles. Sync cucles keep local database up-to-date with server database to ensure no torrents are missing.   |
-| `SCAN_BATCH_SIZE`            | `128`         | Number of items in the scan task to process at any given time. This should ideally be set to a multiple of your `MAX_THREADS` variable.       |
-| `FASTRESUME_INTERVAL`        | `60`          | How often (in minutes) to save fastresume data. *Setting this too low can negatively impact your disk performance.*                           |
-| `ANNOUNCE_IP`                | **NONE**      | Rarely needed, advanced only. If for some reason your client is making requests from different IP than you appear to peers.                   |
-| `TORRENTING_PORT`            | `6881`        | Port accepting connections from other torrent clients. (Make sure to bind this to host and forward in router.)                                |
-| `LOG_LEVEL`                  | `INFO`        | Lowest log level to show in console. Can be `DEBUG`, `INFO`, `WARNING`, `ERROR`, or `CRITICAL` where `DEBUG` shows most amount of logs        |
-| `PURGE_UNTRACKED_TORRENTS`   | `False`       | Enable this to have the client purge any dangling torent files that aren't currently tracked in the database - this can be destructive.       |
-| `STALE_TORRENT_THRESHOLD`    | `30`          | Number of days a torrent is allowed to sit in downloading state before it is automatically purged from the torrent client.                    |
-| `PURGE_SEASON_PACK_EPISODES` | `True`        | Enable this to have the client purge individual episode torrents that are part of a tracked season pack torrent. Useful for de-duplication.   |
-| `CACHE_CLEAN_INTERVAL`       | `12`          | Hours between cache clean task cycles. Cache clean is important to keep cache file size trimmed and up-to-date with what is actually on disk. |
-| `LEW_MEMORY_MODE`            | `False`       | Enable this to set libtorrent into a low memory profile to help reduce the amount of RAM used by the torrent client. Lew caused this.         |
+| Variable                   | Default Value | Type                | Description                                                                                                                                   |
+|----------------------------|---------------|---------------------|-----------------------------------------------------------------------------------------------------------------------------------------------|
+| `MAX_THREADS `             | `8`           | `INTEGER`           | Number of threads to use for CPU & I/O bound tasks. Recommend matching CPU cores.                                                             |
+| `SCAN_INTERVAL`            | `30`          | `INTEGER` (minutes) | Minutes between media library scans. We rebuild the media library from Radarr and Sonarr every scan, so be cautious setting too low.          |
+| `SYNC_INTERVAL`            | `60`          | `INTEGER` (minutes) | Minutes between server sync task cycles. Sync cucles keep local database up-to-date with server database to ensure no torrents are missing.   |
+| `SCAN_BATCH_SIZE`          | `128`         | `INTEGER`           | Number of items in the scan task to process at any given time. This should ideally be set to a multiple of your `MAX_THREADS` variable.       |
+| `FASTRESUME_INTERVAL`      | `60`          | `INTEGER` (minutes) | How often (in minutes) to save fastresume data. *Setting this too low can negatively impact your disk performance.*                           |
+| `ANNOUNCE_IP`              | **NONE**      | `TEXT` (IPv4)       | Rarely needed, advanced only. If for some reason your client is making requests from different IP than you appear to peers.                   |
+| `TORRENTING_PORT`          | `6881`        | `INTEGER`           | Port accepting connections from other torrent clients. (Make sure to bind this to host and forward in router.)                                |
+| `LOG_LEVEL`                | `INFO`        | `TEXT`              | Lowest log level to show in console. Can be `DEBUG`, `INFO`, `WARNING`, `ERROR`, or `CRITICAL` where `DEBUG` shows most amount of logs        |
+| `PURGE_UNTRACKED_TORRENTS` | `False`       | `BOOLEAN`           | Enable this to have the client purge any dangling torent files that aren't currently tracked in the database - this can be destructive.       |
+| `STALE_TORRENT_THRESHOLD`  | `30`          | `INTEGER` (days)    | Number of days a torrent is allowed to sit in downloading state before it is automatically purged from the torrent client.                    |
+| `PURGE_DUPLICATE_SEEDS`    | `True`        | `BOOLEAN`           | Disable this to prevent purging individual torrents that are part of a tracked multi-file torrent. Enabling is useful for de-duplication.     |
+| `CACHE_CLEAN_INTERVAL`     | `12`          | `INTEGER` (hours)   | Hours between cache clean task cycles. Cache clean is important to keep cache file size trimmed and up-to-date with what is actually on disk. |
+| `LEW_MEMORY_MODE`          | `False`       | `BOOLEAN`           | Enable this to set libtorrent into a low memory profile to help reduce the amount of RAM used by the torrent client. Lew caused this.         |
+| `ALLOW_UTP_CONNECTIONS`    | `False`       | `BOOLEAN`           | Enable this to allow the client to connect to peers using uTP instead of TCP. This may result in lower transfer speeds.                       |
 
 ### 2. Configure Volumes
 
@@ -70,14 +74,16 @@ below
 | `/app/data` | Persistent storage inside the app for storing torrent files (.torrent), fastresume data, and torrent metadata for cache. | `/humehouse/privateindexer/client/data:/app/data` |
 | *Downloads* | Directory where downloads will be stored. `DOWNLOADS_DIR` MUST be accessible from this directory (Try to match them.)    | `/data/downloads:/data/downloads`                 |
 | *Movies*    | Movie library location(s). **This should match Radarr's configuration exactly.**                                         | `/data/media/movies:/data/media/movies`           |
-| *TV series* | Movie library location(s). **This should match Sonarr's configuration exactly.**                                         | `/data/media/shows:/data/media/shows`             |
+| *TV series* | TV library location(s). **This should match Sonarr's configuration exactly.**                                            | `/data/media/shows:/data/media/shows`             |
+| *Music*     | Music library location(s). **This should match Lidarr's configuration exactly.**                                         | `/data/media/music:/data/media/music`             |
 
 ### 3. Port forwarding
 
 - The Torrenting Port
     - You should bind **and port forward** the `TORRENTING_PORT` to your Docker host to allow incoming connections for
       seeding.
-    - When you forward the port at your router, make sure to use **both UDP and TCP** to maximize connection potential.
+  - When you forward the port at your router, you only need to forward TCP traffic unless you enable
+    `ALLOW_UTP_CONNECTIONS`.
     - NOTE: Map the same port you're using **INSIDE** the container to the port **OUTSIDE** the container on the host.
       Otherwise the client will start advertising a different port than it's actually reachable on.
 
@@ -95,17 +101,18 @@ Start container:
 docker compose up -d
 ```
 
-View logs of client:
+View logs and follow console:
 
 ```bash
-docker logs -f privateindexer-client
+docker compose logs client -f
 ```
 
 ### 5. Connect the indexer to Prowlarr
 
-This is required if you would like to have PrivateIndexer torrents show up in your torrent search results.
+This is required if you would like to have PrivateIndexer torrents show up in your torrent search results or have
+Radarr/Sonarr/Lidarr auto-search and pull torrents from the PrivateIndexer swarm.
 You can still add the indexer to your *arr suite of apps individually, but Prowlarr is much easier as it will sync
-automatically.
+automatically based on indexer status and type.
 
 1. Navigate to the `Indexers` section of the settings in Prowlarr.
 2. Click `+ Add Indexer` to add new indexer.
@@ -113,13 +120,13 @@ automatically.
 4. Change the name to something you can identify it with like `PrivateIndexer`.
 5. Set the `URL` to `https://indexer.humehouse.com`
 6. Enter your assigned API key in the `API Key` section. This is the same as `API_KEY` in your environment variables.
-7. Click the gear at the bottom to show advanced settings and set the `Indexer Priority` to something `lower` than your
-   other indexers so your apps will generally prefer torrents from PrivateIndexer **before** using torrents from other
-   indexers.
+7. Click the gear at the bottom to show advanced settings and set the `Indexer Priority` to something `lower`
+   (such as 1) than your other indexers so your apps will generally prefer torrents from PrivateIndexer **before** using
+   torrents from other indexers.
 8. Click `Test` to make sure the connection is working
 9. Click `Save` to add the client
 
-### 6. Connect the download client to Radarr/Sonarr/*arr
+### 6. Connect the download client to Radarr/Sonarr/Lidarr
 
 The API was derived from the qBittorrent API and mocks all of the endpoints used by the *arr suite of apps.
 
@@ -165,22 +172,25 @@ Navigate to `https://your-hostname:8080/dashboard` to view the dashboard
 - Your client stats are displayed at the top center
     - Uploading: number of torrents you are actively uploading (seeding) from **this local client**
     - Downloading: number of torrents you are actively downloading (leeching) to  **this local client**
-    - Total: number of torrents added to **this local client**
+  - Torrents: number of torrents added to **this local client**
+  - Ratio: your total downloaded data vs. your total uploaded data (most trackers want this to be at least 1)
     - Peers: number of external clients connected to **this local client** (can be seeds or leeches)
 
 - Your server stats are displayed in the top right corner
-    - Uploaded: number of torrents you've sent to the server
+    - Uploads: number of torrents you've sent to the server
+    - DL: amount of data you've downloaded from peers in the swarm in total
+    - L: number of torrents you are actively downloading (leeching) from the swarm (all locations)
+    - UL: amount of data you've uploaded to peers in the swarm in total
     - S: number of torrents you are actively seeding to the swarm (all locations)
-    - L: number of torrents you are actively downloading (leeching) from the swarm  (all locations)
-    - Swarm: number of active users who are seeding torrents that you have uploaded
-    - Grabs: number of times other users have downloaded files that you have uploaded
+    - Ratio: same as the client ratio above, except this value is tracked by the server, not the client
+    - Grabs: number of times **other users** have downloaded files that you have uploaded
 
 ---
 
 ## Tips
 
 - Ask David for your API key before starting.
-- Logs will show when the scanner finds and registers torrents with the PrivateIndexer server.
+- Console logs are your friend. If you suspect an issue, check out the logs for errors and warnings.
 
 ---
 
@@ -203,12 +213,11 @@ services:
     image: ghcr.io/humehouse/privateindexer-client:latest
     container_name: privateindexer-client
     restart: unless-stopped
-    stop_grace_period: 5m # careful not to let Docker kill the container, it could prevent fastresume data from being saved during shutdown
+    # careful not to let Docker kill the container, it could prevent fastresume data from being saved during shutdown
+    # stop_grace_period: 5m
     environment:
       DOWNLOADS_DIR: /data/privateindexer/downloads
       MAX_THREADS: 16 # 16 threads
-      FASTRESUME_INTERVAL: 60 # save fastresume data every hour
-      SCAN_INTERVAL: 30 # 30 minutes
       API_KEY: keyhere
       TORRENTING_PORT: 6881
       RADARR_URL: https://radarr.humehouse.com
@@ -224,10 +233,12 @@ services:
       - privateindexer-net
     ports:
       - "6881:6881"
-      - "6881:6881/udp"
       - "8080:80"
     logging:
       options:
         max-size: 10m
         max-file: 5
+    build:
+      context: .
+      network: host
 ```
