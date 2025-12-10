@@ -1,5 +1,6 @@
 import asyncio
 import os
+from collections import defaultdict
 
 from privateindexer_client.core import httpx_request
 from privateindexer_client.core.config import SONARR_URL, SONARR_API_KEY
@@ -222,10 +223,10 @@ async def fetch_tv_library(tracked_root_folders: list[str]) -> list[dict]:
             season_stats = {season["seasonNumber"]: season["statistics"] for season in series["seasons"]}
 
             # group episodes by season number
-            seasons = {}
+            seasons = defaultdict(list)
             for episode in series_episodes:
                 season_number = episode["seasonNumber"]
-                seasons.setdefault(season_number, []).append(episode)
+                seasons[season_number].append(episode)
 
             # work through each season
             for season_number, season_episodes in seasons.items():
