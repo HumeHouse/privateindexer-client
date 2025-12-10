@@ -8,14 +8,15 @@ import time
 
 import libtorrent as lt
 
-from privateindexer_client.core import config, httpx_request, database, radarr, sonarr
+from privateindexer_client.core import config, httpx_request, database, radarr, sonarr, lidarr
 from privateindexer_client.core.cache import Cache
-from privateindexer_client.core.config import API_KEY, INDEXER_API_URL, TORRENTS_DIR, FASTRESUME_DIR, APP_VERSION, STATS_FILE, SONARR_URL, RADARR_URL
+from privateindexer_client.core.config import API_KEY, INDEXER_API_URL, TORRENTS_DIR, FASTRESUME_DIR, APP_VERSION, STATS_FILE, SONARR_URL, RADARR_URL, LIDARR_URL
 from privateindexer_client.core.logger import log
 
 _torznab_category_paths: list[dict[str, str]] = []
 
 RADARR_ROOT_CATEGORY = 2000
+LIDARR_ROOT_CATEGORY = 3000
 SONARR_ROOT_CATEGORY = 5000
 
 
@@ -23,6 +24,8 @@ class MediaType(enum.Enum):
     RADARR_MOVIE = 1
     SONARR_EPISODE = 2
     SONARR_SEASON = 3
+    LIDARR_TRACK = 4
+    LIDARR_ALBUM = 5
 
 
 class MediaDataEntry:
@@ -110,6 +113,8 @@ async def send_torrent_to_indexer(torrent_path: str, category: int, torrent_name
         imdbid = None
         tmdbid = None
         tvdbid = None
+        artist = None
+        album = None
 
         if app_id is None:
             result = await database.fetch_one("SELECT app_id FROM torrents WHERE torrent_path = ?", (torrent_path,))
@@ -126,6 +131,10 @@ async def send_torrent_to_indexer(torrent_path: str, category: int, torrent_name
                 imdbid = series_metadata.get("imdbId")
                 tmdbid = series_metadata.get("tmdbId")
                 tvdbid = series_metadata.get("tvdbId")
+            elif category == LIDARR_ROOT_CATEGORY:
+                album_metadata = await lidarr.fetch_album_metadata(album_id=app_id)
+                artist = album_metadata.get("artist", {}).get("artistName")
+                album = album_metadata.get("title")
 
         with open(torrent_path, "rb") as file:
             torrent_basename = os.path.basename(torrent_path)
@@ -141,6 +150,12 @@ async def send_torrent_to_indexer(torrent_path: str, category: int, torrent_name
 
             if tvdbid:
                 data["tvdbid"] = tvdbid
+
+            if artist:
+                data["artist"] = artist
+
+            if album:
+                data["album"] = album
 
             async with httpx_request.get_client() as client:
                 response = await client.post(f"{INDEXER_API_URL}/upload", headers={"X-API-Key": API_KEY}, data=data, files=files)
@@ -180,6 +195,13 @@ async def update_torznab_category_paths() -> set[dict[str, str]]:
         # add the root paths to tracking
         for sonarr_root_folder in sonarr_root_folders:
             _torznab_category_paths.append({"id": SONARR_ROOT_CATEGORY, "path": sonarr_root_folder})
+
+    if LIDARR_URL:
+        lidarr_root_folders = await lidarr.fetch_root_folders()
+
+        # add the root paths to tracking
+        for lidarr_root_folder in lidarr_root_folders:
+            _torznab_category_paths.append({"id": LIDARR_ROOT_CATEGORY, "path": lidarr_root_folder})
 
     return _torznab_category_paths
 
@@ -234,32 +256,67 @@ async def get_managed_media_data() -> list[MediaDataEntry]:
     except Exception as e:
         log.error(f"[SONARR] Exception while gathering media data: {e}")
 
+    try:
+        # fetch all music track files from Lidarr if configured
+        if LIDARR_URL:
+            lidarr_tracks = await lidarr.fetch_music_library(tracked_root_folders)
+            for music_entry in lidarr_tracks:
+
+                # build an album entry for full albums
+                if music_entry["album"]:
+                    album_entry = MediaDataEntry(MediaType.LIDARR_ALBUM)
+                    album_entry.app_id = music_entry["id"]
+                    album_entry.path = music_entry["path"]
+                    album_entry.title = music_entry["title"]
+
+                    media_data.append(album_entry)
+
+                # build single track entries for individual tracks
+                else:
+                    track_entry = MediaDataEntry(MediaType.LIDARR_TRACK)
+                    track_entry.app_id = music_entry["id"]
+                    track_entry.path = music_entry["path"]
+
+                    media_data.append(track_entry)
+    except Exception as e:
+        log.error(f"[LIDARR] Exception while gathering media data: {e}")
+
     return media_data
 
 
-def hash_file_by_pieces(file_path: str, piece_length: int) -> list[str]:
+def generate_media_hash(media_path: str) -> list[bytes]:
     """
-    Return list of SHA1 hashes (hex) of file split into piece_length chunks
+    Return list of SHA1 hashes (hex) of media using libtorrent
     """
-    hashes = []
     before = datetime.datetime.now()
+    log.debug(f"[TORRENT] Generating hashes for '{media_path}'")
 
     try:
-        with open(file_path, "rb") as f:
-            while chunk := f.read(piece_length):
-                h = hashlib.sha1(chunk).digest()
-                hashes.append(h)
+        # initialize a file storage and add the media to it
+        fs = lt.file_storage()
+        lt.add_files(fs, media_path)
+
+        # use libtorrent helpers to generate the hashes
+        torrent = lt.create_torrent(fs)
+        lt.set_piece_hashes(torrent, os.path.dirname(media_path))
+        torrent_info = lt.torrent_info(torrent.generate())
+
+        piece_length = torrent_info.piece_length()
+
+        # pull the hashes from the torrent info
+        hashes = [torrent_info.hash_for_piece(i) for i in range(torrent_info.num_pieces())]
+
     except Exception as e:
-        log.error(f"[TORRENT] Error generating hashes for '{file_path}': {e}")
+        log.error(f"[TORRENT] Error generating hashes for '{media_path}': {e}")
         return []
 
     delta = datetime.datetime.now() - before
-    log.debug(f"[TORRENT] Hashed {len(hashes)}x {piece_length} Byte chunks from '{file_path}' in {delta}")
+    log.debug(f"[TORRENT] Hashed {len(hashes)}x {piece_length} Byte chunks from '{media_path}' in {delta}")
 
     return hashes
 
 
-def torrent_matches_file(torrent_path: str, media_path: str) -> bool:
+def torrent_matches_media(torrent_path: str, media_path: str) -> bool:
     """
     Checks if a torrent file and media hashes match
     Calculates hash of the media and compares to the hashes found in the torrent file
@@ -285,7 +342,7 @@ def torrent_matches_file(torrent_path: str, media_path: str) -> bool:
         torrent_object = {"piece_length": piece_length, "total_size": total_size, "torrent_hashes": torrent_hashes, }
         cache.put_torrent_object(torrent_path, torrent_object)
 
-    if os.path.getsize(media_path) != total_size:
+    if os.path.isfile(media_path) and os.path.getsize(media_path) != total_size:
         return False
 
     # check if file hashes are cached
@@ -293,7 +350,8 @@ def torrent_matches_file(torrent_path: str, media_path: str) -> bool:
 
     # if no cache exists, generate new hashes
     if file_hashes is None:
-        file_hashes = hash_file_by_pieces(media_path, piece_length)
+        # hash the media using libtorrent
+        file_hashes = generate_media_hash(media_path)
 
         # store in cache
         cache.put_file_piece(media_path, piece_length, file_hashes)
@@ -313,7 +371,7 @@ def create_torrent(media_path: str, app_id: int, output_torrent_file: str = None
     if output_torrent_file and os.path.exists(output_torrent_file):
         is_new_file = False
         # skip generation if torrent exists
-        log.debug(f"[TORRENT] Torrent file '{output_torrent_file}' already exists, generation will be skipped")
+        log.info(f"[TORRENT] Torrent file '{output_torrent_file}' already exists, generation will be skipped")
 
     else:
         is_new_file = True
@@ -332,19 +390,8 @@ def create_torrent(media_path: str, app_id: int, output_torrent_file: str = None
         # create the file storage object
         fs = lt.file_storage()
 
-        # add file to fs for single-file torrents
-        if is_file:
-            size = os.path.getsize(media_path)
-            filename = os.path.basename(media_path)
-            fs.add_file(filename, size)
-
-        else:
-            # walk over the input path for multi-file torrents
-            for root, _, files in os.walk(media_path):
-                for file in files:
-                    size = os.path.getsize(os.path.join(root, file))
-                    filename = os.path.relpath(os.path.join(root, file), parent_directory)
-                    fs.add_file(filename, size)
+        # add the media to the file storage
+        lt.add_files(fs, media_path)
 
         # create the torrent from the file storage object
         t = lt.create_torrent(fs)
@@ -452,13 +499,13 @@ def find_existing_torrent(media_path: str, ignored_torrents: list[str]) -> str |
         if torrent_path in ignored_torrents:
             continue
         try:
-            if torrent_matches_file(torrent_path, media_path):
+            if torrent_matches_media(torrent_path, media_path):
                 log.debug(f"[TORRENT] Matched '{media_path}' to '{torrent_path}' by hash")
                 return torrent_path
         except Exception as e:
             log.error(f"[TORRENT] Error comparing hash for '{media_path}' to '{torrent_file}': {e}")
 
-    log.debug(f"[TORRENT] Couldn't find torrent file for: '{media_path}")
+    log.debug(f"[TORRENT] Couldn't find torrent file for: {media_path}")
     return None
 
 
@@ -474,13 +521,13 @@ def find_media_for_torrent(torrent_path: str, media_dir: str) -> str | None:
             file_path = os.path.join(root, file)
             try:
                 # return the media path if it matches the torrent
-                if torrent_matches_file(torrent_path, file_path):
+                if torrent_matches_media(torrent_path, file_path):
                     log.debug(f"[TORRENT] Matched '{file_path}' to '{torrent_path}' by hash")
                     return file_path
             except Exception as e:
                 log.error(f"[TORRENT] Error comparing hash for '{file_path}' to '{torrent_path}': {e}")
 
-    log.debug(f"[TORRENT] Couldn't find media for: '{torrent_path}")
+    log.debug(f"[TORRENT] Couldn't find media for: {torrent_path}")
     return None
 
 
@@ -496,10 +543,20 @@ async def add_torrent_to_database(name: str, size: int, torrent_path: str, uploa
         (name, size, torrent_path, uploaded, files, category, media_path, download_path, hash_v1, hash_v2, app_id))
 
 
-async def remove_torrent_from_database(hash_v1: str) -> bool:
+async def remove_torrent_from_database(hash_v1: str, remove_torrent_file: bool = True, torrent_file: str = None) -> bool:
     """
     Delete torrent metadata from the database
+    Optionally deletes torrent file
     """
+    if remove_torrent_file:
+        if not torrent_file:
+            result = await database.fetch_one("SELECT torrent_path FROM torrents WHERE hash_v1 = ?", (hash_v1,))
+            if result and result.get("torrent_path"):
+                torrent_file = result["torrent_path"]
+
+        if torrent_file:
+            if os.path.exists(torrent_file):
+                os.unlink(torrent_file)
     await database.execute("DELETE FROM torrents WHERE hash_v1 = ?", (hash_v1,))
 
 
@@ -518,18 +575,14 @@ def process_fastresume_file(fastresume_path: str, hash_v1: str, torrent_path: st
         return None, hash_v1, torrent_path
 
 
-def fastresume_ignore_exists(torrent_hash: str) -> bool:
+def fastresume_ignore_exists(torrent_hash: str) -> str | bool:
     """
     Checks if a fastresume ignore file exists in the FASTRESUME_DIR for the given torrent hash
+    Returns fastresume ignore file path if true
     """
     ignore_file = os.path.join(FASTRESUME_DIR, f"{torrent_hash}.fastresume.ignore")
 
-    # skip saving data if a fastresume-ignore file exists for this hash
-    exists = os.path.exists(ignore_file)
-    if exists:
-        log.debug(f"[FASTRESUME] Found fastresume-ignore file for hash: {torrent_hash}")
-        return True
-    return False
+    return ignore_file if os.path.exists(ignore_file) else False
 
 
 def save_fastresume_to_disk(alert: lt.save_resume_data_alert) -> str | None:
@@ -562,6 +615,26 @@ def save_fastresume_to_disk(alert: lt.save_resume_data_alert) -> str | None:
 
     log.debug(f"[FASTRESUME] Saved fastresume data for hash: {torrent_hash}")
     return torrent_hash
+
+
+def delete_empty_directories(root: str) -> int:
+    """
+    Helper function to recursively delete empty directories
+    """
+    deleted = set()
+
+    for current_dir, subdirs, files in os.walk(root, topdown=False):
+
+        still_has_subdirs = False
+        for subdir in subdirs:
+            if os.path.join(current_dir, subdir) not in deleted:
+                still_has_subdirs = True
+                break
+
+        if not any(files) and not still_has_subdirs:
+            os.rmdir(current_dir)
+            deleted.add(current_dir)
+    return len(deleted)
 
 
 def generate_sid(api_key: str) -> str:

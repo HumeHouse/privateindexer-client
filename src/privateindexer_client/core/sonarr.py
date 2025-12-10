@@ -1,5 +1,6 @@
 import asyncio
 import os
+from collections import defaultdict
 
 from privateindexer_client.core import httpx_request
 from privateindexer_client.core.config import SONARR_URL, SONARR_API_KEY
@@ -210,7 +211,7 @@ async def fetch_tv_library(tracked_root_folders: list[str]) -> list[dict]:
         final_entries = []
 
         # loop through each series to build a list of entries
-        for series in series_list:
+        for series in series_in_scope:
             series_id = series["id"]
             series_episodes = series_episodes_map.get(series_id, [])
 
@@ -222,16 +223,17 @@ async def fetch_tv_library(tracked_root_folders: list[str]) -> list[dict]:
             season_stats = {season["seasonNumber"]: season["statistics"] for season in series["seasons"]}
 
             # group episodes by season number
-            seasons = {}
+            seasons = defaultdict(list)
             for episode in series_episodes:
                 season_number = episode["seasonNumber"]
-                seasons.setdefault(season_number, []).append(episode)
+                seasons[season_number].append(episode)
 
             # work through each season
             for season_number, season_episodes in seasons.items():
+                current_season_stats = season_stats[season_number]
                 # get the percent of episodes for season that are currently tracked on disk
-                percent_of_episodes = season_stats[season_number]["percentOfEpisodes"]
-                missing_episode_count = season_stats[season_number]["totalEpisodeCount"] - season_stats[season_number]["episodeFileCount"]
+                percent_of_episodes = current_season_stats["percentOfEpisodes"]
+                missing_episode_count = current_season_stats["totalEpisodeCount"] - current_season_stats["episodeFileCount"]
 
                 # add all the episode paths to a set to ensure non are unique
                 episode_paths = {os.path.dirname(episode["path"]) for episode in season_episodes}
@@ -255,7 +257,15 @@ async def fetch_tv_library(tracked_root_folders: list[str]) -> list[dict]:
                     for season_episode in season_episodes:
                         final_entries.append({"id": series_id, "path": season_episode["path"], "season_pack": False, })
 
-        log.debug(f"[SONARR] Fetched TV library ({len(final_entries)} series, {len(episodes_results)} episodes)")
+        season_packs = 0
+        individual_episodes = 0
+        for final_entry in final_entries:
+            if final_entry["season_pack"]:
+                season_packs += 1
+            else:
+                individual_episodes += 1
+
+        log.info(f"[SONARR] Fetched TV library ({season_packs} season packs, {individual_episodes} individual episodes)")
 
         return final_entries
     except Exception as e:

@@ -4,7 +4,7 @@ import threading
 
 from privateindexer_client.core.logger import log
 
-APP_VERSION = "1.5.2"
+APP_VERSION = "1.6.0"
 
 # gather/set environment variables for usage later
 DATABASE_FILE = "/app/data/torrents.db"
@@ -31,6 +31,8 @@ SCAN_BATCH_SIZE = int(os.getenv("SCAN_BATCH_SIZE", 128))
 
 FASTRESUME_INTERVAL = 60 * int(os.getenv("FASTRESUME_INTERVAL", 60))
 
+MEMORY_LOG_INTERVAL = int(os.getenv("MEMORY_LOG_INTERVAL", 0))
+
 STALE_TORRENT_THRESHOLD = 24 * 60 * 60 * int(os.getenv("STALE_TORRENT_THRESHOLD", 30))
 
 RADARR_URL = (os.getenv("RADARR_URL", "")).strip("/")
@@ -38,6 +40,9 @@ RADARR_API_KEY = os.getenv("RADARR_API_KEY")
 
 SONARR_URL = (os.getenv("SONARR_URL", "")).strip("/")
 SONARR_API_KEY = os.getenv("SONARR_API_KEY")
+
+LIDARR_URL = (os.getenv("LIDARR_URL", "")).strip("/")
+LIDARR_API_KEY = os.getenv("LIDARR_API_KEY")
 
 API_KEY = os.getenv("API_KEY")
 ANNOUNCE_TRACKER_URL = f"https://tracker.humehouse.com/announce?apikey={API_KEY}"
@@ -47,9 +52,13 @@ TORRENTING_PORT = int(os.getenv("TORRENTING_PORT", 6881))
 
 PURGE_UNTRACKED_TORRENTS = os.getenv("PURGE_UNTRACKED_TORRENTS", "false").lower() == "true"
 
-PURGE_SEASON_PACK_EPISODES = os.getenv("PURGE_SEASON_PACK_EPISODES", "true").lower() == "true"
+PURGE_UNTRACKED_DOWNLOADS = os.getenv("PURGE_UNTRACKED_DOWNLOADS", "false").lower() == "true"
+
+PURGE_DUPLICATE_SEEDS = os.getenv("PURGE_DUPLICATE_SEEDS", "true").lower() == "true"
 
 LEW_MEMORY_MODE = os.getenv("LEW_MEMORY_MODE", "false").lower() == "true"
+
+ALLOW_UTP_CONNECTIONS = os.getenv("ALLOW_UTP_CONNECTIONS", "false").lower() == "true"
 
 config_lock = threading.Lock()
 _config_cache = None

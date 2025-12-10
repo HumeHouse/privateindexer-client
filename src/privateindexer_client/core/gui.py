@@ -1,5 +1,3 @@
-import os
-
 from fastapi import Request, APIRouter, HTTPException, Query
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
@@ -81,18 +79,15 @@ async def delete_torrent(torrent_hash: str = Query(), remove_downloads: bool = Q
     torrent_path = result["torrent_path"]
     hash_v1 = result["hash_v1"]
 
-    try:
-        # remove torrent file
-        if os.path.exists(torrent_path):
-            os.unlink(torrent_path)
+    # remove from torrent client
+    if await torrent_client.remove_torrent_by_hash(hash_v1, remove_downloads):
+        return PlainTextResponse("Successfully removed torrent")
 
-        # remove from database
-        await utils.remove_torrent_from_database(hash_v1)
+    try:
+        # remove from database and delete torrent file
+        await utils.remove_torrent_from_database(hash_v1, torrent_file=torrent_path)
     except Exception as e:
         log.error(f"[GUI] Failed to delete torrent file: {e}")
         raise HTTPException(status_code=HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to delete torrent file from disk")
 
-    # remove from torrent client
-    if await torrent_client.remove_torrent_by_hash(hash_v1, remove_downloads):
-        return PlainTextResponse("Successfully removed torrent")
     raise HTTPException(status_code=HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to remove torrent from client")

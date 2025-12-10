@@ -2,12 +2,13 @@ import asyncio
 import datetime
 import itertools
 import os
+from concurrent.futures.thread import ThreadPoolExecutor
 from enum import Enum
 
-from privateindexer_client.core import torrent_client, database, utils
-from privateindexer_client.core.config import SCAN_INTERVAL, DOWNLOADS_DIR, TORRENTS_DIR, PURGE_UNTRACKED_TORRENTS, SCAN_BATCH_SIZE, PURGE_SEASON_PACK_EPISODES
+from privateindexer_client.core import torrent_client, database, utils, thread_executor
+from privateindexer_client.core.config import SCAN_INTERVAL, DOWNLOADS_DIR, TORRENTS_DIR, PURGE_UNTRACKED_TORRENTS, SCAN_BATCH_SIZE, PURGE_DUPLICATE_SEEDS, \
+    PURGE_UNTRACKED_DOWNLOADS
 from privateindexer_client.core.logger import log
-from privateindexer_client.core.thread_executor import CREATE_EXECUTOR, HASH_EXECUTOR
 from privateindexer_client.core.utils import TorrentCreationMetadata
 
 SCAN_PROCESS_STATE: int = 0
@@ -31,7 +32,7 @@ class ScanTorrentJob:
         self.title: str = None
 
 
-async def scan_media_library() -> tuple[int, int, int, int]:
+async def scan_media_library(hash_executor: ThreadPoolExecutor) -> tuple[int, int, int, int]:
     """
     Main loop for scanning media libraries defined by user
     Will walk over all defined category paths, each single file gets turned into a single torrent file
@@ -100,11 +101,14 @@ async def scan_media_library() -> tuple[int, int, int, int]:
                 SCAN_DONE_ITEMS += 1
                 continue
 
-        log.debug(f"[SCAN] Trying to locate torrent file for: '{file_path}'")
+        log.debug(f"[SCAN] Trying to locate torrent file for: {file_path}")
         # ignore the media file if we can find a matching torrent file for it
-        find_future = loop.run_in_executor(HASH_EXECUTOR, utils.find_existing_torrent, file_path, list(existing_media.values()))
+        find_future = loop.run_in_executor(hash_executor, utils.find_existing_torrent, file_path, list(existing_media.values()))
         torrent_file = await find_future
         if torrent_file:
+            # ignore this torrent file on subsequent loops
+            existing_media[file_path] = torrent_file
+
             # try to update the media path in the database to match the current path
             result = await database.fetch_one("SELECT id, name, media_path FROM torrents WHERE torrent_path = ?", (torrent_file,))
             if result and result.get("id") is not None:
@@ -121,7 +125,7 @@ async def scan_media_library() -> tuple[int, int, int, int]:
                     SCAN_DONE_ITEMS += 1
                     continue
                 else:
-                    log.info(f"[SCAN] File was renamed, media path not updated: '{result["name"]}'")
+                    log.info(f"[SCAN] File was renamed, media path not updated: {result["name"]}")
 
         # construct the scan job
         scan_job = ScanTorrentJob(file_path)
@@ -152,6 +156,9 @@ async def scan_media_library() -> tuple[int, int, int, int]:
 
     log.info(f"[SCAN] {num_batches} batches created for processing {SCAN_TOTAL_ITEMS} items")
 
+    # spawn a new creation executor
+    creation_executor = thread_executor.get_creation_executor()
+
     batch_index = 0
     # process each batch of files, one at a time, synchronously
     for batched_jobs in batches:
@@ -162,10 +169,10 @@ async def scan_media_library() -> tuple[int, int, int, int]:
 
         # add each scan job to the execution queue
         for batch_job in batched_jobs:
-            log.debug(f"[SCAN] Queueing file for processing: '{batch_job.file_path}'")
+            log.debug(f"[SCAN] Queueing file for processing: {batch_job.file_path}")
 
             # dispatch the torrent creation to the pool of worker threads
-            future = loop.run_in_executor(CREATE_EXECUTOR, utils.create_torrent_threadsafe,
+            future = loop.run_in_executor(creation_executor, utils.create_torrent_threadsafe,
                                           batch_job.file_path, batch_job.app_id, batch_job.torrent_file, batch_job.title)
             futures.append(future)
 
@@ -201,6 +208,10 @@ async def scan_media_library() -> tuple[int, int, int, int]:
 
         log.info(f"[SCAN] Completed batch {batch_index} of {num_batches} ({SCAN_DONE_ITEMS} of {SCAN_TOTAL_ITEMS} total items processed)")
 
+    # shut down the creation executor
+    creation_executor.shutdown()
+    log.debug(f"[SCAN] Creation executor workers closed")
+
     return total_files, ignored_files, updated_files, created_files
 
 
@@ -216,7 +227,10 @@ async def periodic_scan_task():
             log.info("[SCAN] Scanning media library for new or updated files")
             before = datetime.datetime.now()
 
-            total_files, ignored_files, updated_files, created_files = await scan_media_library()
+            # spawn a new hash executor
+            hash_executor = thread_executor.get_hash_executor()
+
+            total_files, ignored_files, updated_files, created_files = await scan_media_library(hash_executor)
 
             log.debug("[SCAN] Scan complete, running post-scan checks")
 
@@ -225,6 +239,8 @@ async def periodic_scan_task():
 
             removed_entries = 0
             duplicate_entries: dict[str, dict] = {}
+
+            loop = asyncio.get_running_loop()
 
             # here we perform various database integrity and value correction checks
             torrents = await database.fetch_all("SELECT * FROM torrents")
@@ -255,17 +271,26 @@ async def periodic_scan_task():
                     await database.execute("UPDATE torrents SET media_path = NULL WHERE id = ?", (torrent["id"],))
                     log.info(f"[SCAN] Media files missing for '{torrent["name"]}', purged media path from database")
 
-                # case if this is an external torrent (should have a download path), try to locate the download media if it's missing
-                if download_path and not download_exists:
-                    log.debug(f"[SCAN] Trying to locate download media for: '{torrent_path}'")
-                    download_path = utils.find_media_for_torrent(torrent_path, DOWNLOADS_DIR)
-                    download_exists = os.path.exists(download_path) if download_path else False
+                # case if this is an external torrent (should have a download path), try to locate the download media if it's missing or invalid
+                if download_path and (not download_exists or download_path == DOWNLOADS_DIR or
+                                      download_path == os.path.join(DOWNLOADS_DIR, (utils.detect_torrent_category(download_path)))):
+                    log.info(f"[SCAN] Trying to locate download media for: {torrent_path}")
 
-                    # update the database if the download path exists
-                    if download_exists:
+                    # locate the download in the hash thread pool
+                    find_future = loop.run_in_executor(hash_executor, utils.find_media_for_torrent, torrent_path, DOWNLOADS_DIR)
+                    download_path = await find_future
+
+                    if download_path:
+                        download_exists = os.path.exists(download_path) if download_path else False
+
                         updated_files += 1
-                        await database.execute("UPDATE torrents SET download_path = ? WHERE id = ?", (download_path, torrent["id"],))
-                        log.info(f"[SCAN] Updated the download path for '{torrent["name"]}'")
+                        # update the database if the download path exists
+                        if download_exists:
+                            await database.execute("UPDATE torrents SET download_path = ? WHERE id = ?", (download_path, torrent["id"],))
+                            log.info(f"[SCAN] Updated the download path for '{torrent["name"]}'")
+                        else:
+                            await database.execute("UPDATE torrents SET download_path = NULL WHERE id = ?", (torrent["id"],))
+                            log.info(f"[SCAN] Removed the download path for '{torrent["name"]}', no file could be matched")
 
                 # case where media exists but the torznab category is unknown (0), try to fix it
                 if media_exists and torrent["category"] == 0:
@@ -284,7 +309,7 @@ async def periodic_scan_task():
                     log.info(f"[SCAN] Invalid media path for '{torrent["name"]}', purged media path from database")
                     continue
 
-                # case where we have a season pack tracked, but its individual episodes are still being seeded
+                # case where we have a multi-file torrent tracked, but files inside are still being seeded individually
                 if media_path and os.path.isdir(media_path) and torrent["files"] > 1:
                     for searching_torrent in torrents:
                         searched_media_path = searching_torrent.get("media_path")
@@ -298,11 +323,11 @@ async def periodic_scan_task():
                             continue
 
                         duplicate_entries[searching_torrent["id"]] = searching_torrent
-                        log.warning(f"[SCAN] Potential duplicate episode found for season pack '{torrent["name"]}': {searching_torrent['name']}")
+                        log.warning(f"[SCAN] Potential duplicate seed found for '{torrent["name"]}': {searching_torrent['name']}")
                         continue
 
-            # purge duplicate episodes if the user has this option enabled
-            if PURGE_SEASON_PACK_EPISODES:
+            # purge duplicate seeds if the user has this option enabled
+            if PURGE_DUPLICATE_SEEDS:
                 for duplicate_entry in duplicate_entries.values():
                     duplicate_torrent_path = duplicate_entry["torrent_path"]
                     removed_entries += 1
@@ -313,7 +338,7 @@ async def periodic_scan_task():
                         os.unlink(duplicate_torrent_path)
                     # remove from database
                     await database.execute("DELETE FROM torrents WHERE id = ?", (duplicate_entry["id"],))
-                    log.info(f"[SCAN] Purged duplicate episode: {duplicate_entry['name']}")
+                    log.info(f"[SCAN] Purged duplicate: {duplicate_entry['name']}")
 
             # only purge dangling torrents if the user has this option enabled
             if PURGE_UNTRACKED_TORRENTS:
@@ -327,7 +352,42 @@ async def periodic_scan_task():
                         os.unlink(torrent_path)
                         log.info(f"[SCAN] Removed danlging torrent file '{torrent_path}'")
 
+            # purge downloads if the user has this option enabled
+            if PURGE_UNTRACKED_DOWNLOADS:
+                download_paths = set()
+
+                # build a set of download paths we have tracked
+                for torrent in torrents:
+                    download_path = torrent.get("download_path")
+                    if not download_path:
+                        continue
+                    download_path = os.path.abspath(download_path)
+                    download_paths.add(download_path)
+
+                    # add all files from directory to the set
+                    if os.path.isdir(download_path):
+                        for root, _, files in os.walk(download_path):
+                            for file in files:
+                                download_paths.add(os.path.join(root, file))
+
+                # walk over the downloads directory and delete every file which is not being tracked
+                for root, _, files in os.walk(DOWNLOADS_DIR):
+                    for file in files:
+                        file_path = os.path.abspath(os.path.join(root, file))
+
+                        if file_path not in download_paths:
+                            os.unlink(file_path)
+                            log.info(f"[SCAN] Removed untracked download: {file_path}")
+
+                deleted_dirs = utils.delete_empty_directories(DOWNLOADS_DIR)
+                if deleted_dirs:
+                    log.info(f"[SCAN] Removed empty {deleted_dirs} download directories")
+
             duplicate_entries = len(duplicate_entries.keys())
+
+            # close the hash executor
+            hash_executor.shutdown()
+            log.debug(f"[SCAN] Hash executor workers closed")
 
             delta = datetime.datetime.now() - before
             log.info(f"[SCAN] Media library scan completed ({delta}): "
