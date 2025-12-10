@@ -334,6 +334,11 @@ async def delete_torrent(
         torrent_path = result["torrent_path"]
         hash_v1 = result["hash_v1"]
 
+        # remove from torrent client
+        if not await torrent_client.remove_torrent_by_hash(hash_v1, deleteFiles):
+            log.error(f"[API] Failed to remove torrent with hash '{torrent_hash}' from torrent client")
+            failures += 1
+
         try:
             # remove torrent file
             if os.path.exists(torrent_path):
@@ -345,10 +350,5 @@ async def delete_torrent(
             log.error(f"[API] Failed to delete torrent file with hash '{torrent_hash}': {e}")
             failures += 1
             continue
-
-        # remove from torrent client
-        if not await torrent_client.remove_torrent_by_hash(hash_v1, deleteFiles):
-            log.error(f"[API] Failed to remove torrent with hash '{torrent_hash}' from torrent client")
-            failures += 1
 
     return "Ok." if failures == 0 else "Fails."
