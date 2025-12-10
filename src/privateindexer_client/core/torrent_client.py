@@ -6,11 +6,10 @@ import time
 
 import libtorrent as lt
 
-from privateindexer_client.core import database, utils
+from privateindexer_client.core import database, utils, thread_executor
 from privateindexer_client.core.config import TORRENTING_PORT, TORRENTS_DIR, ANNOUNCE_TRACKER_URL, FASTRESUME_DIR, FASTRESUME_INTERVAL, ANNOUNCE_IP, \
     STALE_TORRENT_THRESHOLD, LEW_MEMORY_MODE, ALLOW_UTP_CONNECTIONS
 from privateindexer_client.core.logger import log
-from privateindexer_client.core.thread_executor import FASTRESUME_EXECUTOR
 from privateindexer_client.core.utils import process_fastresume_file
 
 libtorrent_session: lt.session
@@ -295,6 +294,9 @@ async def load_fastresume_data():
     loop = asyncio.get_running_loop()
     futures = []
 
+    # spawn a new executor
+    executor = thread_executor.get_fastresume_executor()
+
     # loop through the files in the fastresume directory
     for fname in os.listdir(FASTRESUME_DIR):
         # ignore files we don't care about
@@ -315,7 +317,7 @@ async def load_fastresume_data():
 
         log.debug(f"[FASTRESUME] Queueing fastresume data processing for hash: {hash_v1}")
         # dispatch the fastresume file to the pool of worker threads
-        futures.append(loop.run_in_executor(FASTRESUME_EXECUTOR, process_fastresume_file, fastresume_path, hash_v1, torrent_path))
+        futures.append(loop.run_in_executor(executor, process_fastresume_file, fastresume_path, hash_v1, torrent_path))
 
     log.info(f"[FASTRESUME] Queued {len(futures)} fastresume data files for processing")
 
@@ -343,6 +345,9 @@ async def load_fastresume_data():
                 libtorrent_session.async_add_torrent(atp)
         except Exception as e:
             log.error(f"[FASTRESUME] Error in fastresume data post-processing: {e}")
+
+    executor.shutdown()
+    log.debug(f"[FASTRESUME] Executor workers closed")
 
     log.info(f"[FASTRESUME] Checking for torrents without fastresume data")
 

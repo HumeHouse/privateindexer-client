@@ -2,13 +2,13 @@ import asyncio
 import datetime
 import itertools
 import os
+from concurrent.futures.thread import ThreadPoolExecutor
 from enum import Enum
 
-from privateindexer_client.core import torrent_client, database, utils
+from privateindexer_client.core import torrent_client, database, utils, thread_executor
 from privateindexer_client.core.config import SCAN_INTERVAL, DOWNLOADS_DIR, TORRENTS_DIR, PURGE_UNTRACKED_TORRENTS, SCAN_BATCH_SIZE, PURGE_DUPLICATE_SEEDS, \
     PURGE_UNTRACKED_DOWNLOADS
 from privateindexer_client.core.logger import log
-from privateindexer_client.core.thread_executor import CREATE_EXECUTOR, HASH_EXECUTOR
 from privateindexer_client.core.utils import TorrentCreationMetadata
 
 SCAN_PROCESS_STATE: int = 0
@@ -32,7 +32,7 @@ class ScanTorrentJob:
         self.title: str = None
 
 
-async def scan_media_library() -> tuple[int, int, int, int]:
+async def scan_media_library(hash_executor: ThreadPoolExecutor) -> tuple[int, int, int, int]:
     """
     Main loop for scanning media libraries defined by user
     Will walk over all defined category paths, each single file gets turned into a single torrent file
@@ -103,7 +103,7 @@ async def scan_media_library() -> tuple[int, int, int, int]:
 
         log.debug(f"[SCAN] Trying to locate torrent file for: {file_path}")
         # ignore the media file if we can find a matching torrent file for it
-        find_future = loop.run_in_executor(HASH_EXECUTOR, utils.find_existing_torrent, file_path, list(existing_media.values()))
+        find_future = loop.run_in_executor(hash_executor, utils.find_existing_torrent, file_path, list(existing_media.values()))
         torrent_file = await find_future
         if torrent_file:
             # ignore this torrent file on subsequent loops
@@ -156,6 +156,9 @@ async def scan_media_library() -> tuple[int, int, int, int]:
 
     log.info(f"[SCAN] {num_batches} batches created for processing {SCAN_TOTAL_ITEMS} items")
 
+    # spawn a new creation executor
+    creation_executor = thread_executor.get_creation_executor()
+
     batch_index = 0
     # process each batch of files, one at a time, synchronously
     for batched_jobs in batches:
@@ -169,7 +172,7 @@ async def scan_media_library() -> tuple[int, int, int, int]:
             log.debug(f"[SCAN] Queueing file for processing: {batch_job.file_path}")
 
             # dispatch the torrent creation to the pool of worker threads
-            future = loop.run_in_executor(CREATE_EXECUTOR, utils.create_torrent_threadsafe,
+            future = loop.run_in_executor(creation_executor, utils.create_torrent_threadsafe,
                                           batch_job.file_path, batch_job.app_id, batch_job.torrent_file, batch_job.title)
             futures.append(future)
 
@@ -205,6 +208,10 @@ async def scan_media_library() -> tuple[int, int, int, int]:
 
         log.info(f"[SCAN] Completed batch {batch_index} of {num_batches} ({SCAN_DONE_ITEMS} of {SCAN_TOTAL_ITEMS} total items processed)")
 
+    # shut down the creation executor
+    creation_executor.shutdown()
+    log.debug(f"[SCAN] Creation executor workers closed")
+
     return total_files, ignored_files, updated_files, created_files
 
 
@@ -220,7 +227,10 @@ async def periodic_scan_task():
             log.info("[SCAN] Scanning media library for new or updated files")
             before = datetime.datetime.now()
 
-            total_files, ignored_files, updated_files, created_files = await scan_media_library()
+            # spawn a new hash executor
+            hash_executor = thread_executor.get_hash_executor()
+
+            total_files, ignored_files, updated_files, created_files = await scan_media_library(hash_executor)
 
             log.debug("[SCAN] Scan complete, running post-scan checks")
 
@@ -267,7 +277,7 @@ async def periodic_scan_task():
                     log.info(f"[SCAN] Trying to locate download media for: {torrent_path}")
 
                     # locate the download in the hash thread pool
-                    find_future = loop.run_in_executor(HASH_EXECUTOR, utils.find_media_for_torrent, torrent_path, DOWNLOADS_DIR)
+                    find_future = loop.run_in_executor(hash_executor, utils.find_media_for_torrent, torrent_path, DOWNLOADS_DIR)
                     download_path = await find_future
 
                     if download_path:
@@ -374,6 +384,10 @@ async def periodic_scan_task():
                     log.info(f"[SCAN] Removed empty {deleted_dirs} download directories")
 
             duplicate_entries = len(duplicate_entries.keys())
+
+            # close the hash executor
+            hash_executor.shutdown()
+            log.debug(f"[SCAN] Hash executor workers closed")
 
             delta = datetime.datetime.now() - before
             log.info(f"[SCAN] Media library scan completed ({delta}): "
