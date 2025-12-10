@@ -342,19 +342,8 @@ def create_torrent(media_path: str, app_id: int, output_torrent_file: str = None
         # create the file storage object
         fs = lt.file_storage()
 
-        # add file to fs for single-file torrents
-        if is_file:
-            size = os.path.getsize(media_path)
-            filename = os.path.basename(media_path)
-            fs.add_file(filename, size)
-
-        else:
-            # walk over the input path for multi-file torrents
-            for root, _, files in os.walk(media_path):
-                for file in files:
-                    size = os.path.getsize(os.path.join(root, file))
-                    filename = os.path.relpath(os.path.join(root, file), parent_directory)
-                    fs.add_file(filename, size)
+        # add the media to the file storage
+        lt.add_files(fs, media_path)
 
         # create the torrent from the file storage object
         t = lt.create_torrent(fs)
