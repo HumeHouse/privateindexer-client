@@ -301,7 +301,7 @@ async def load_fastresume_data():
         if not fname.endswith(".fastresume"):
             continue
         fastresume_path = os.path.join(FASTRESUME_DIR, fname)
-        hash_v1 = fname.replace(".fastresume", "")
+        hash_v1 = os.path.splitext(fname)[0]
         torrent_path = torrent_hash_path_map.get(hash_v1)
 
         # remove fastresume files which do not have a matching torrent file
@@ -441,10 +441,9 @@ async def periodic_torrent_status_task():
                 # check if torrent is not currently seeding but has a fastresume ignore file - remove if true
                 if not is_seeding:
                     hash_v1 = status.info_hashes.v1.to_bytes().hex() if status.info_hashes.has_v1() else None
-                    if utils.fastresume_ignore_exists(hash_v1):
-                        ignore_file = os.path.join(FASTRESUME_DIR, f"{hash_v1}.fastresume.ignore")
-                        if os.path.exists(ignore_file):
-                            os.unlink(ignore_file)
+                    ignore_file = utils.fastresume_ignore_exists(hash_v1)
+                    if ignore_file:
+                        os.unlink(ignore_file)
 
                 # check if torrent is downloading and has been downloading for more than the threshold with no progress OR 2x the threshold with >0 progress
                 if is_downloading and ((added_delta.total_seconds() > STALE_TORRENT_THRESHOLD and status.progress == 0) or (
