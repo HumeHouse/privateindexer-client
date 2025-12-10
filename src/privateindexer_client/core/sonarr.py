@@ -210,7 +210,7 @@ async def fetch_tv_library(tracked_root_folders: list[str]) -> list[dict]:
         final_entries = []
 
         # loop through each series to build a list of entries
-        for series in series_list:
+        for series in series_in_scope:
             series_id = series["id"]
             series_episodes = series_episodes_map.get(series_id, [])
 
