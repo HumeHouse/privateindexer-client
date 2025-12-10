@@ -5,7 +5,8 @@ import os
 from enum import Enum
 
 from privateindexer_client.core import torrent_client, database, utils
-from privateindexer_client.core.config import SCAN_INTERVAL, DOWNLOADS_DIR, TORRENTS_DIR, PURGE_UNTRACKED_TORRENTS, SCAN_BATCH_SIZE, PURGE_DUPLICATE_SEEDS
+from privateindexer_client.core.config import SCAN_INTERVAL, DOWNLOADS_DIR, TORRENTS_DIR, PURGE_UNTRACKED_TORRENTS, SCAN_BATCH_SIZE, PURGE_DUPLICATE_SEEDS, \
+    PURGE_UNTRACKED_DOWNLOADS
 from privateindexer_client.core.logger import log
 from privateindexer_client.core.thread_executor import CREATE_EXECUTOR, HASH_EXECUTOR
 from privateindexer_client.core.utils import TorrentCreationMetadata
@@ -340,6 +341,37 @@ async def periodic_scan_task():
                     if torrent_path not in torrent_paths:
                         os.unlink(torrent_path)
                         log.info(f"[SCAN] Removed danlging torrent file '{torrent_path}'")
+
+            # purge downloads if the user has this option enabled
+            if PURGE_UNTRACKED_DOWNLOADS:
+                download_paths = set()
+
+                # build a set of download paths we have tracked
+                for torrent in torrents:
+                    download_path = torrent.get("download_path")
+                    if not download_path:
+                        continue
+                    download_path = os.path.abspath(download_path)
+                    download_paths.add(download_path)
+
+                    # add all files from directory to the set
+                    if os.path.isdir(download_path):
+                        for root, _, files in os.walk(download_path):
+                            for file in files:
+                                download_paths.add(os.path.join(root, file))
+
+                # walk over the downloads directory and delete every file which is not being tracked
+                for root, _, files in os.walk(DOWNLOADS_DIR):
+                    for file in files:
+                        file_path = os.path.abspath(os.path.join(root, file))
+
+                        if file_path not in download_paths:
+                            os.unlink(file_path)
+                            log.info(f"[SCAN] Removed untracked download: {file_path}")
+
+                deleted_dirs = utils.delete_empty_directories(DOWNLOADS_DIR)
+                if deleted_dirs:
+                    log.info(f"[SCAN] Removed empty {deleted_dirs} download directories")
 
             duplicate_entries = len(duplicate_entries.keys())
 

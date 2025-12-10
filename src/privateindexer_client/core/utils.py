@@ -621,6 +621,26 @@ def save_fastresume_to_disk(alert: lt.save_resume_data_alert) -> str | None:
     return torrent_hash
 
 
+def delete_empty_directories(root: str) -> int:
+    """
+    Helper function to recursively delete empty directories
+    """
+    deleted = set()
+
+    for current_dir, subdirs, files in os.walk(root, topdown=False):
+
+        still_has_subdirs = False
+        for subdir in subdirs:
+            if os.path.join(current_dir, subdir) not in deleted:
+                still_has_subdirs = True
+                break
+
+        if not any(files) and not still_has_subdirs:
+            os.rmdir(current_dir)
+            deleted.add(current_dir)
+    return len(deleted)
+
+
 def generate_sid(api_key: str) -> str:
     """
     Generate a simple session ID based on the user's API key
