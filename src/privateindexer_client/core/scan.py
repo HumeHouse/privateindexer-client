@@ -105,6 +105,9 @@ async def scan_media_library() -> tuple[int, int, int, int]:
         find_future = loop.run_in_executor(HASH_EXECUTOR, utils.find_existing_torrent, file_path, list(existing_media.values()))
         torrent_file = await find_future
         if torrent_file:
+            # ignore this torrent file on subsequent loops
+            existing_media[file_path] = torrent_file
+
             # try to update the media path in the database to match the current path
             result = await database.fetch_one("SELECT id, name, media_path FROM torrents WHERE torrent_path = ?", (torrent_file,))
             if result and result.get("id") is not None:
