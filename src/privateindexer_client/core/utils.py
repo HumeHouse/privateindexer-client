@@ -371,7 +371,7 @@ def create_torrent(media_path: str, app_id: int, output_torrent_file: str = None
     if output_torrent_file and os.path.exists(output_torrent_file):
         is_new_file = False
         # skip generation if torrent exists
-        log.debug(f"[TORRENT] Torrent file '{output_torrent_file}' already exists, generation will be skipped")
+        log.info(f"[TORRENT] Torrent file '{output_torrent_file}' already exists, generation will be skipped")
 
     else:
         is_new_file = True
