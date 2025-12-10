@@ -543,10 +543,20 @@ async def add_torrent_to_database(name: str, size: int, torrent_path: str, uploa
         (name, size, torrent_path, uploaded, files, category, media_path, download_path, hash_v1, hash_v2, app_id))
 
 
-async def remove_torrent_from_database(hash_v1: str) -> bool:
+async def remove_torrent_from_database(hash_v1: str, remove_torrent_file: bool = True, torrent_file: str = None) -> bool:
     """
     Delete torrent metadata from the database
+    Optionally deletes torrent file
     """
+    if remove_torrent_file:
+        if not torrent_file:
+            result = await database.fetch_one("SELECT torrent_path FROM torrents WHERE hash_v1 = ?", (hash_v1,))
+            if result and result.get("torrent_path"):
+                torrent_file = result["torrent_path"]
+
+        if torrent_file:
+            if os.path.exists(torrent_file):
+                os.unlink(torrent_file)
     await database.execute("DELETE FROM torrents WHERE hash_v1 = ?", (hash_v1,))
 
 
