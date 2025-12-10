@@ -50,14 +50,14 @@ class Cache:
             cls._instance = Cache()
         return cls._instance
 
-    def load(self):
+    def load(self) -> int:
         """
         Imports persistent pickle data to memory for use during a scan
         """
         # skip if cache file doesn't exist
         if not os.path.exists(CACHE_FILE):
             log.debug(f"[CACHE] No cache file found at {CACHE_FILE}")
-            return
+            return 0
 
         # attempt to load values from file into cache
         try:
@@ -67,7 +67,10 @@ class Cache:
 
             self.file_piece_hash_cache = data
 
-            log.debug(f"[CACHE] Loaded {len(self.file_piece_hash_cache)} file hash lists")
+            list_count = len(self.file_piece_hash_cache)
+
+            log.debug(f"[CACHE] Loaded {list_count} file hash lists")
+            return list_count
 
         except Exception as e:
             # on fail, reset the dict and delete the file since it may just be corrupt
