@@ -285,7 +285,7 @@ def torrent_matches_file(torrent_path: str, media_path: str) -> bool:
         torrent_object = {"piece_length": piece_length, "total_size": total_size, "torrent_hashes": torrent_hashes, }
         cache.put_torrent_object(torrent_path, torrent_object)
 
-    if os.path.getsize(media_path) != total_size:
+    if os.path.isfile(media_path) and os.path.getsize(media_path) != total_size:
         return False
 
     # check if file hashes are cached
