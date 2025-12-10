@@ -154,8 +154,7 @@ function deleteTorrent() {
         return;
     }
     fetch("/dashboard/delete_torrent?" + new URLSearchParams({
-        "torrent_hash": selectedTorrentId,
-        "remove_downloads": $("#delete-file-checkbox").is(":checked")
+        "torrent_hash": selectedTorrentId, "remove_downloads": $("#delete-file-checkbox").is(":checked")
     }).toString(), {
         method: "POST"
     })
@@ -384,12 +383,17 @@ function renderTable(torrents) {
 
         row.toggleClass("d-none", !torrent["name"].toLowerCase().includes(filter));
 
+        let barClass = "bg-success";
+        if (progress < 100) {
+            barClass = "bg-notice";
+        }
+
         row.html(`
                 <td>${torrent["name"]}</td>
                 <td>${formatBytes(torrent["size"])}</td>
                 <td>
                     <div class="progress" style="height:1.5rem;">
-                        <div class="progress-bar bg-success" role="progressbar" style="width: ${progress}%">${progress}%</div>
+                        <div class="progress-bar ${barClass} overflow-visible" role="progressbar" style="width: ${progress}%">${progress}%</div>
                     </div>
                 </td>
                 <td class="${rowClass}">${formatState(torrent["state"])}</td>
@@ -545,6 +549,12 @@ function populateInfoPanel(torrent) {
                 flagsList += `<span style="cursor:help;" class="badge me-1 ${className}" title="${flag[1]}">${flag[0]}</span>`;
             });
         }
+
+        let barClass = "bg-success";
+        if (progress < 100) {
+            barClass = "bg-notice";
+        }
+
         peersHtml += `<tr>
                 <td>${peer["ip"]}</td>
                 <td>${peer["port"]}</td>
@@ -554,7 +564,7 @@ function populateInfoPanel(torrent) {
                 <td>${formatSpeed(peer["up_speed"])}</td>
                 <td>
                     <div class="progress" style="height:1.5rem;">
-                    <div class="progress-bar bg-success" role="progressbar" style="width: ${progress}%">${progress}%</div>
+                    <div class="progress-bar ${barClass} overflow-visible" role="progressbar" style="width: ${progress}%">${progress}%</div>
                     </div>
                 </td>
             </tr>`;
