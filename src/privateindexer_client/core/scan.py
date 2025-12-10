@@ -5,7 +5,7 @@ import os
 from enum import Enum
 
 from privateindexer_client.core import torrent_client, database, utils
-from privateindexer_client.core.config import SCAN_INTERVAL, DOWNLOADS_DIR, TORRENTS_DIR, PURGE_UNTRACKED_TORRENTS, SCAN_BATCH_SIZE, PURGE_SEASON_PACK_EPISODES
+from privateindexer_client.core.config import SCAN_INTERVAL, DOWNLOADS_DIR, TORRENTS_DIR, PURGE_UNTRACKED_TORRENTS, SCAN_BATCH_SIZE, PURGE_DUPLICATE_SEEDS
 from privateindexer_client.core.logger import log
 from privateindexer_client.core.thread_executor import CREATE_EXECUTOR, HASH_EXECUTOR
 from privateindexer_client.core.utils import TorrentCreationMetadata
@@ -287,7 +287,7 @@ async def periodic_scan_task():
                     log.info(f"[SCAN] Invalid media path for '{torrent["name"]}', purged media path from database")
                     continue
 
-                # case where we have a season pack tracked, but its individual episodes are still being seeded
+                # case where we have a multi-file torrent tracked, but files inside are still being seeded individually
                 if media_path and os.path.isdir(media_path) and torrent["files"] > 1:
                     for searching_torrent in torrents:
                         searched_media_path = searching_torrent.get("media_path")
@@ -301,11 +301,11 @@ async def periodic_scan_task():
                             continue
 
                         duplicate_entries[searching_torrent["id"]] = searching_torrent
-                        log.warning(f"[SCAN] Potential duplicate episode found for season pack '{torrent["name"]}': {searching_torrent['name']}")
+                        log.warning(f"[SCAN] Potential duplicate seed found for '{torrent["name"]}': {searching_torrent['name']}")
                         continue
 
-            # purge duplicate episodes if the user has this option enabled
-            if PURGE_SEASON_PACK_EPISODES:
+            # purge duplicate seeds if the user has this option enabled
+            if PURGE_DUPLICATE_SEEDS:
                 for duplicate_entry in duplicate_entries.values():
                     duplicate_torrent_path = duplicate_entry["torrent_path"]
                     removed_entries += 1
@@ -316,7 +316,7 @@ async def periodic_scan_task():
                         os.unlink(duplicate_torrent_path)
                     # remove from database
                     await database.execute("DELETE FROM torrents WHERE id = ?", (duplicate_entry["id"],))
-                    log.info(f"[SCAN] Purged duplicate episode: {duplicate_entry['name']}")
+                    log.info(f"[SCAN] Purged duplicate: {duplicate_entry['name']}")
 
             # only purge dangling torrents if the user has this option enabled
             if PURGE_UNTRACKED_TORRENTS:
