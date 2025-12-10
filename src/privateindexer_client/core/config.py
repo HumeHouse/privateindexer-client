@@ -50,6 +50,8 @@ TORRENTING_PORT = int(os.getenv("TORRENTING_PORT", 6881))
 
 PURGE_UNTRACKED_TORRENTS = os.getenv("PURGE_UNTRACKED_TORRENTS", "false").lower() == "true"
 
+PURGE_UNTRACKED_DOWNLOADS = os.getenv("PURGE_UNTRACKED_DOWNLOADS", "false").lower() == "true"
+
 PURGE_DUPLICATE_SEEDS = os.getenv("PURGE_DUPLICATE_SEEDS", "true").lower() == "true"
 
 LEW_MEMORY_MODE = os.getenv("LEW_MEMORY_MODE", "false").lower() == "true"
