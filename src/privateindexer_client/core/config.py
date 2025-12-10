@@ -39,6 +39,9 @@ RADARR_API_KEY = os.getenv("RADARR_API_KEY")
 SONARR_URL = (os.getenv("SONARR_URL", "")).strip("/")
 SONARR_API_KEY = os.getenv("SONARR_API_KEY")
 
+LIDARR_URL = (os.getenv("LIDARR_URL", "")).strip("/")
+LIDARR_API_KEY = os.getenv("LIDARR_API_KEY")
+
 API_KEY = os.getenv("API_KEY")
 ANNOUNCE_TRACKER_URL = f"https://tracker.humehouse.com/announce?apikey={API_KEY}"
 
