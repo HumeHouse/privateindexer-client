@@ -237,29 +237,38 @@ async def get_managed_media_data() -> list[MediaDataEntry]:
     return media_data
 
 
-def hash_file_by_pieces(file_path: str, piece_length: int) -> list[str]:
+def generate_media_hash(media_path: str) -> list[bytes]:
     """
-    Return list of SHA1 hashes (hex) of file split into piece_length chunks
+    Return list of SHA1 hashes (hex) of media using libtorrent
     """
-    hashes = []
     before = datetime.datetime.now()
 
     try:
-        with open(file_path, "rb") as f:
-            while chunk := f.read(piece_length):
-                h = hashlib.sha1(chunk).digest()
-                hashes.append(h)
+        # initialize a file storage and add the media to it
+        fs = lt.file_storage()
+        lt.add_files(fs, media_path)
+
+        # use libtorrent helpers to generate the hashes
+        torrent = lt.create_torrent(fs)
+        lt.set_piece_hashes(torrent, os.path.dirname(media_path))
+        torrent_info = lt.torrent_info(torrent.generate())
+
+        piece_length = torrent_info.piece_length()
+
+        # pull the hashes from the torrent info
+        hashes = [torrent_info.hash_for_piece(i) for i in range(torrent_info.num_pieces())]
+
     except Exception as e:
-        log.error(f"[TORRENT] Error generating hashes for '{file_path}': {e}")
+        log.error(f"[TORRENT] Error generating hashes for '{media_path}': {e}")
         return []
 
     delta = datetime.datetime.now() - before
-    log.debug(f"[TORRENT] Hashed {len(hashes)}x {piece_length} Byte chunks from '{file_path}' in {delta}")
+    log.debug(f"[TORRENT] Hashed {len(hashes)}x {piece_length} Byte chunks from '{media_path}' in {delta}")
 
     return hashes
 
 
-def torrent_matches_file(torrent_path: str, media_path: str) -> bool:
+def torrent_matches_media(torrent_path: str, media_path: str) -> bool:
     """
     Checks if a torrent file and media hashes match
     Calculates hash of the media and compares to the hashes found in the torrent file
@@ -293,7 +302,8 @@ def torrent_matches_file(torrent_path: str, media_path: str) -> bool:
 
     # if no cache exists, generate new hashes
     if file_hashes is None:
-        file_hashes = hash_file_by_pieces(media_path, piece_length)
+        # hash the media using libtorrent
+        file_hashes = generate_media_hash(media_path)
 
         # store in cache
         cache.put_file_piece(media_path, piece_length, file_hashes)
@@ -452,7 +462,7 @@ def find_existing_torrent(media_path: str, ignored_torrents: list[str]) -> str |
         if torrent_path in ignored_torrents:
             continue
         try:
-            if torrent_matches_file(torrent_path, media_path):
+            if torrent_matches_media(torrent_path, media_path):
                 log.debug(f"[TORRENT] Matched '{media_path}' to '{torrent_path}' by hash")
                 return torrent_path
         except Exception as e:
@@ -474,7 +484,7 @@ def find_media_for_torrent(torrent_path: str, media_dir: str) -> str | None:
             file_path = os.path.join(root, file)
             try:
                 # return the media path if it matches the torrent
-                if torrent_matches_file(torrent_path, file_path):
+                if torrent_matches_media(torrent_path, file_path):
                     log.debug(f"[TORRENT] Matched '{file_path}' to '{torrent_path}' by hash")
                     return file_path
             except Exception as e:
