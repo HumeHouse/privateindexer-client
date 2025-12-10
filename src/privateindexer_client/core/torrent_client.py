@@ -58,6 +58,10 @@ def create_libtorrent_session(app_version: str):
     if ANNOUNCE_IP:
         settings["announce_ip"] = ANNOUNCE_IP
 
+    log.debug("[TORCLIENT] Settings active:")
+    for key, value in settings.items():
+        log.debug(f"[TORCLIENT] {key}: {value}")
+
     libtorrent_session = lt.session(settings)
     _all_time_download, _all_time_upload = utils.load_persistent_stats()
 
