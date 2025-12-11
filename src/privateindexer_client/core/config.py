@@ -17,7 +17,7 @@ STATS_FILE = "/app/data/stats.json"
 
 CONFIG_FILE = "/app/data/config.json"
 
-CACHE_FILE = "/app/data/cache.pkl"
+CACHE_DIR = "/app/data/cache"
 
 INDEXER_API_URL = "https://indexer.humehouse.com"
 
