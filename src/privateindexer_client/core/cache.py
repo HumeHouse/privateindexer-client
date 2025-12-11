@@ -1,9 +1,10 @@
 import asyncio
 import datetime
 import os
-import pickle
 
-from privateindexer_client.core.config import CACHE_FILE, CACHE_CLEAN_INTERVAL
+from diskcache import Cache as DiskCache
+
+from privateindexer_client.core.config import CACHE_CLEAN_INTERVAL, CACHE_DIR
 from privateindexer_client.core.logger import log
 
 
@@ -19,17 +20,19 @@ async def periodic_cache_clean_task():
             before = datetime.datetime.now()
 
             cache = Cache().get_instance()
-            file_hashes = cache.file_piece_hash_cache.copy()
 
-            cleaned = 0
-
-            for file_path in file_hashes:
+            # clean up dead file hashes
+            for file_path in cache.iter_file_hash_paths():
                 if not os.path.exists(file_path):
-                    cache.delete_all_file_piece(file_path)
-                    cleaned += 1
+                    cache.delete_file_hashes(file_path)
+
+            # clean up dead torrent objects
+            for torrent_path in cache.iter_torrent_object_paths():
+                if not os.path.exists(torrent_path):
+                    cache.delete_torrent_object(torrent_path)
 
             delta = datetime.datetime.now() - before
-            log.info(f"[CACHE] Cache clean completed ({delta}): {len(cache.file_piece_hash_cache)} total, {cleaned} cleaned")
+            log.info(f"[CACHE] Cache clean completed ({delta}): {cache.total_file_hash_entries()} file hashes, {cache.total_torrent_object_entries()} torrent objects")
         except Exception as e:
             log.error(f"[CACHE] Error during cache clean task: {e}")
 
@@ -38,8 +41,8 @@ class Cache:
     _instance = None
 
     def __init__(self):
-        self.file_piece_hash_cache: dict[str, dict[int, list[bytes]]] = {}
-        self.torrent_info_cache: dict[str, dict[str, int | str]] = {}
+        self.file_hash_cache = DiskCache(os.path.join(CACHE_DIR, "file_piece"))
+        self.torrent_info_cache = DiskCache(os.path.join(CACHE_DIR, "torrent_info"))
 
     @classmethod
     def get_instance(cls) -> "Cache":
@@ -50,84 +53,80 @@ class Cache:
             cls._instance = Cache()
         return cls._instance
 
-    def load(self) -> int:
+    def get_file_hashes(self, file_path: str, piece_length: int) -> list[bytes] | None:
         """
-        Imports persistent pickle data to memory for use during a scan
+        Get hashes for a file path in cache
         """
-        # skip if cache file doesn't exist
-        if not os.path.exists(CACHE_FILE):
-            log.debug(f"[CACHE] No cache file found at {CACHE_FILE}")
-            return 0
+        key = (file_path, piece_length)
+        hashes = self.file_hash_cache.get(key)
 
-        # attempt to load values from file into cache
-        try:
-            # pickle load the data
-            with open(CACHE_FILE, "rb") as f:
-                data = pickle.load(f)
+        if hashes is None:
+            log.debug(f"[CACHE] Hash cache miss for file: {file_path}")
+        return hashes
 
-            self.file_piece_hash_cache = data
-
-            list_count = len(self.file_piece_hash_cache)
-
-            log.debug(f"[CACHE] Loaded {list_count} file hash lists")
-            return list_count
-
-        except Exception as e:
-            # on fail, reset the dict and delete the file since it may just be corrupt
-            self.file_piece_hash_cache = {}
-            os.unlink(CACHE_FILE)
-
-            log.error(f"[CACHE] Error loading cache, file purged: {e}")
-
-    def save(self):
+    def put_file_hashes(self, file_path: str, piece_length: int, hashes: list[bytes]):
         """
-        Exports file hash cache to disk for persistent storage
+        Store hashes for a file path in cache
         """
-        try:
-            with open(CACHE_FILE, "wb") as f:
-                pickle.dump(self.file_piece_hash_cache, f, protocol=pickle.HIGHEST_PROTOCOL)
+        key = (file_path, piece_length)
+        self.file_hash_cache[key] = hashes
 
-            log.debug(f"[CACHE] Saved {len(self.file_piece_hash_cache)} file hash lists")
+    def delete_file_hashes(self, file_path: str) -> int:
+        """
+        Removes hashes for a file path from cache
+        """
+        for key in list(self.file_hash_cache.iterkeys()):
+            if key[0] == file_path:
+                del self.file_hash_cache[key]
 
-        except Exception as e:
-            log.error(f"[CACHE] Error saving cache: {e}")
+    def iter_file_hash_paths(self):
+        """
+        Yield unique file paths stored in file hash cache
+        """
+        seen = set()
+        for key in self.file_hash_cache.iterkeys():
+            file_path = key[0]
+            if file_path not in seen:
+                seen.add(file_path)
+                yield file_path
 
-    def get_file_piece(self, file_path: str, piece_length: int) -> list[bytes] | None:
+    def total_file_hash_entries(self):
         """
-        Get file hash from cache
+        Total file hash cache entries
         """
-        if file_path in self.file_piece_hash_cache:
-            if piece_length in self.file_piece_hash_cache[file_path]:
-                return self.file_piece_hash_cache[file_path][piece_length]
-
-        log.debug(f"[CACHE] Hash cache miss for file: {file_path}")
-        return None
-
-    def put_file_piece(self, file_path: str, piece_length: int, hashes: list[bytes]):
-        """
-        Stores a file hash in cache
-        """
-        self.file_piece_hash_cache.setdefault(file_path, {})
-        self.file_piece_hash_cache[file_path][piece_length] = hashes
-
-    def delete_all_file_piece(self, file_path: str):
-        """
-        Removes a file hash in cache
-        """
-        self.file_piece_hash_cache.pop(file_path, None)
+        return self.file_hash_cache.__len__()
 
     def get_torrent_object(self, torrent_path: str) -> dict | None:
         """
         Get torrent object from cache
         """
-        if torrent_path in self.torrent_info_cache:
-            return self.torrent_info_cache[torrent_path]
+        torrent_object = self.torrent_info_cache.get(torrent_path)
 
-        log.debug(f"[CACHE] Info cache miss for torrent file: {torrent_path}")
-        return None
+        if torrent_object is None:
+            log.debug(f"[CACHE] Info cache miss for torrent file: {torrent_path}")
+        return torrent_object
 
     def put_torrent_object(self, torrent_path: str, obj: dict):
         """
         Stores a torrent object in cache
         """
         self.torrent_info_cache[torrent_path] = obj
+
+    def delete_torrent_object(self, torrent_path: str):
+        """
+        Removes torrent object from cache
+        """
+        del self.torrent_info_cache[torrent_path]
+
+    def iter_torrent_object_paths(self):
+        """
+        Yield unique torrent paths stored in torrent object cache
+        """
+        for torrent_path in self.torrent_info_cache.iterkeys():
+            yield torrent_path
+
+    def total_torrent_object_entries(self):
+        """
+        Total file hash cache entries
+        """
+        return self.torrent_info_cache.__len__()

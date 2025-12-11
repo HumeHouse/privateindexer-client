@@ -346,7 +346,7 @@ def torrent_matches_media(torrent_path: str, media_path: str) -> bool:
         return False
 
     # check if file hashes are cached
-    file_hashes = cache.get_file_piece(media_path, piece_length)
+    file_hashes = cache.get_file_hashes(media_path, piece_length)
 
     # if no cache exists, generate new hashes
     if file_hashes is None:
@@ -354,7 +354,7 @@ def torrent_matches_media(torrent_path: str, media_path: str) -> bool:
         file_hashes = generate_media_hash(media_path)
 
         # store in cache
-        cache.put_file_piece(media_path, piece_length, file_hashes)
+        cache.put_file_hashes(media_path, piece_length, file_hashes)
 
     return file_hashes == torrent_hashes
 
