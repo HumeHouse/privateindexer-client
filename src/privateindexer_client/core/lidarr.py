@@ -1,6 +1,5 @@
 import asyncio
 import os
-import traceback
 from collections import defaultdict
 
 from privateindexer_client.core import httpx_request
@@ -238,7 +237,6 @@ async def fetch_music_library(tracked_root_folders: list[str]) -> list[dict]:
 
         return final_entries
     except Exception as e:
-        traceback.print_exc()
         log.error(f"[LIDARR] Exception while fetching music library: {e}")
         return []
 
