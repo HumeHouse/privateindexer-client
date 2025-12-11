@@ -1,5 +1,4 @@
 from concurrent.futures.process import ProcessPoolExecutor
-from concurrent.futures.thread import ThreadPoolExecutor
 
 from privateindexer_client.core.config import MAX_THREADS
 from privateindexer_client.core.logger import log
@@ -31,12 +30,12 @@ def get_creation_executor() -> ProcessPoolExecutor:
     return _creation_executor
 
 
-def get_hash_executor() -> ThreadPoolExecutor:
+def get_hash_executor() -> ProcessPoolExecutor:
     """
-    Create or return an existing thread pool executor for hashing files
+    Create or return an existing process pool executor for hashing files
     """
     global _hash_executor
     if _hash_executor is None or getattr(_hash_executor, "_shutdown", False):
-        _hash_executor = ThreadPoolExecutor(max_workers=MAX_THREADS)
+        _hash_executor = ProcessPoolExecutor(max_workers=MAX_THREADS)
         log.debug("[EXECUTOR] Spawned new hash executor")
     return _hash_executor
