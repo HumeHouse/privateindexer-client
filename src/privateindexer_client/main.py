@@ -10,7 +10,7 @@ from privateindexer_client.core import torrent_client, scan, api, gui, httpx_req
 from privateindexer_client.core.cache import Cache
 from privateindexer_client.core.config import TORRENTS_DIR, SCAN_INTERVAL, INDEXER_API_URL, API_KEY, TORRENTING_PORT, DOWNLOADS_DIR, FASTRESUME_DIR, APP_VERSION, \
     MAX_THREADS, FASTRESUME_INTERVAL, ANNOUNCE_IP, RADARR_URL, RADARR_API_KEY, SONARR_URL, SONARR_API_KEY, SYNC_INTERVAL, CACHE_CLEAN_INTERVAL, LEW_MEMORY_MODE, \
-    LIDARR_URL, LIDARR_API_KEY, MEMORY_LOG_INTERVAL
+    LIDARR_URL, LIDARR_API_KEY, MEMORY_LOG_INTERVAL, CACHE_DIR
 from privateindexer_client.core.logger import log
 
 APP_TASKS: list[Task] = []
@@ -53,6 +53,9 @@ async def lifespan(_: FastAPI):
     log.info(f"[APP] Torrent data directory: {TORRENTS_DIR}")
     os.makedirs(TORRENTS_DIR, exist_ok=True)
     os.makedirs(FASTRESUME_DIR, exist_ok=True)
+
+    log.info(f"[APP] Cache directory: {CACHE_DIR}")
+    os.makedirs(CACHE_DIR, exist_ok=True)
 
     # check if the downloads directory exists, otherwise fail
     if os.path.exists(DOWNLOADS_DIR):
@@ -130,8 +133,7 @@ async def lifespan(_: FastAPI):
 
     log.debug("[APP] Loading cache")
     cache = Cache.get_instance()
-    cache_size = cache.load()
-    log.info(f"[APP] Cache loaded, {cache_size} entries")
+    log.info(f"[APP] Cache loaded: {cache.total_file_hash_entries()} file hashes, {cache.total_torrent_object_entries()} torrent objects")
 
     log.info("[APP] Running startup tasks")
 
@@ -154,11 +156,6 @@ async def lifespan(_: FastAPI):
             task.cancel()
         except Exception:
             pass
-
-    log.info("[APP] Saving cache")
-
-    cache = Cache.get_instance()
-    cache.save()
 
     log.info("[APP] Saving fastresume data")
 

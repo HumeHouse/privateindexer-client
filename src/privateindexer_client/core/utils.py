@@ -346,7 +346,7 @@ def torrent_matches_media(torrent_path: str, media_path: str) -> bool:
         return False
 
     # check if file hashes are cached
-    file_hashes = cache.get_file_piece(media_path, piece_length)
+    file_hashes = cache.get_file_hashes(media_path, piece_length)
 
     # if no cache exists, generate new hashes
     if file_hashes is None:
@@ -354,7 +354,7 @@ def torrent_matches_media(torrent_path: str, media_path: str) -> bool:
         file_hashes = generate_media_hash(media_path)
 
         # store in cache
-        cache.put_file_piece(media_path, piece_length, file_hashes)
+        cache.put_file_hashes(media_path, piece_length, file_hashes)
 
     return file_hashes == torrent_hashes
 
@@ -536,11 +536,10 @@ async def add_torrent_to_database(name: str, size: int, torrent_path: str, uploa
     """
     Add torrent metadata into the database or update upon duplicate torrent_path
     """
-    await database.execute(
-        "INSERT INTO torrents (name, size, torrent_path, uploaded, files, category, media_path, download_path, hash_v1, hash_v2, app_id)"
-        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
-        "ON CONFLICT(torrent_path) DO UPDATE SET name=excluded.name, size=excluded.size, uploaded=excluded.uploaded, files=excluded.files, category=excluded.category, media_path=excluded.media_path, download_path=excluded.download_path, hash_v1=excluded.hash_v1, hash_v2=excluded.hash_v2, app_id=excluded.app_id",
-        (name, size, torrent_path, uploaded, files, category, media_path, download_path, hash_v1, hash_v2, app_id))
+    await database.execute("INSERT INTO torrents (name, size, torrent_path, uploaded, files, category, media_path, download_path, hash_v1, hash_v2, app_id)"
+                           "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+                           "ON CONFLICT(torrent_path) DO UPDATE SET name=excluded.name, size=excluded.size, uploaded=excluded.uploaded, files=excluded.files, category=excluded.category, media_path=COALESCE(excluded.media_path, media_path), download_path=COALESCE(excluded.download_path, download_path), hash_v1=excluded.hash_v1, hash_v2=excluded.hash_v2, app_id=excluded.app_id",
+                           (name, size, torrent_path, uploaded, files, category, media_path, download_path, hash_v1, hash_v2, app_id))
 
 
 async def remove_torrent_from_database(hash_v1: str, remove_torrent_file: bool = True, torrent_file: str = None) -> bool:

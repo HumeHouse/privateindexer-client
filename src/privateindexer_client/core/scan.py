@@ -2,7 +2,7 @@ import asyncio
 import datetime
 import itertools
 import os
-from concurrent.futures.thread import ThreadPoolExecutor
+from concurrent.futures.process import ProcessPoolExecutor
 from enum import Enum
 
 from privateindexer_client.core import torrent_client, database, utils, thread_executor
@@ -32,7 +32,7 @@ class ScanTorrentJob:
         self.title: str = None
 
 
-async def scan_media_library(hash_executor: ThreadPoolExecutor) -> tuple[int, int, int, int]:
+async def scan_media_library(hash_executor: ProcessPoolExecutor) -> tuple[int, int, int, int]:
     """
     Main loop for scanning media libraries defined by user
     Will walk over all defined category paths, each single file gets turned into a single torrent file
