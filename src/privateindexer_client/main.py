@@ -57,6 +57,11 @@ async def lifespan(_: FastAPI):
     log.info(f"[APP] Cache directory: {CACHE_DIR}")
     os.makedirs(CACHE_DIR, exist_ok=True)
 
+    # TODO: remove old cache file check in future release
+    if os.path.exists("/app/data/cache.pkl"):
+        os.unlink("/app/data/cache.pkl")
+        log.info(f"[APP] Removed deprecated cache file")
+
     # check if the downloads directory exists, otherwise fail
     if os.path.exists(DOWNLOADS_DIR):
         log.info(f"[APP] Downloads directory: {DOWNLOADS_DIR}")
