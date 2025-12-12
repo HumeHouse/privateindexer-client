@@ -140,11 +140,17 @@ async def lifespan(_: FastAPI):
     cache = Cache.get_instance()
 
     # TODO: remove this patch code in next version
-    _, expire_time = cache.file_hash_cache.peek(expire_time=True)
-    if expire_time is None:
-        log.info("[APP] Cache expiration time updated")
-        for key in cache.file_hash_cache.iterkeys():
-            cache.file_hash_cache.touch(key, expire=CACHE_EXPIRATION)
+    for cache_check in [cache.file_hash_cache, cache.torrent_info_cache]:
+        if cache_check.__len__() == 0:
+            continue
+        _, expiration = cache_check.peekitem(expire_time=True)
+        if expiration is None:
+            updated = 0
+            for key in cache_check.iterkeys():
+                if cache_check.touch(key, expire=CACHE_EXPIRATION):
+                    updated += 1
+            if updated > 0:
+                log.info(f"[APP] Updated {updated} cache keys with expiration")
 
     total_hashes = cache.total_file_hash_entries()
     total_objects = cache.total_torrent_object_entries()
