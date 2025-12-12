@@ -4,22 +4,10 @@ import psutil
 
 from privateindexer_client.core.config import MEMORY_LOG_INTERVAL
 from privateindexer_client.core.logger import log
+from privateindexer_client.core.utils import format_bytes
 
 _max_memory = 0
 process = psutil.Process()
-
-
-def format_bytes(num_bytes: int) -> str:
-    """
-    Helper to format bytes into a human-readable string
-    """
-    if num_bytes < 1024:
-        return f"{num_bytes} B"
-    if num_bytes < 1024 ** 2:
-        return f"{num_bytes / 1024:.2f} KiB"
-    if num_bytes < 1024 ** 3:
-        return f"{num_bytes / (1024 ** 2):.2f} MiB"
-    return f"{num_bytes / (1024 ** 3):.2f} GiB"
 
 
 async def periodic_memory_task():
