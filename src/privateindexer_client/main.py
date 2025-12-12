@@ -138,7 +138,12 @@ async def lifespan(_: FastAPI):
 
     log.debug("[APP] Loading cache")
     cache = Cache.get_instance()
-    log.info(f"[APP] Cache loaded: {cache.total_file_hash_entries()} file hashes, {cache.total_torrent_object_entries()} torrent objects")
+    total_hashes = cache.total_file_hash_entries()
+    total_objects = cache.total_torrent_object_entries()
+    file_hash_size = cache.file_hash_size()
+    torrent_object_size = cache.torrent_object_size()
+    cache_size = utils.format_bytes(file_hash_size + torrent_object_size)
+    log.info(f"[APP] Cache loaded ({cache_size}): {total_hashes} file hashes, {total_objects} torrent objects")
 
     log.info("[APP] Running startup tasks")
 

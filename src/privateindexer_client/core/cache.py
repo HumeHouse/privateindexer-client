@@ -96,6 +96,12 @@ class Cache:
         """
         return self.file_hash_cache.__len__()
 
+    def file_hash_size(self) -> int:
+        """
+        Get the total size of file hash cache on disk
+        """
+        return self.file_hash_cache.volume()
+
     def get_torrent_object(self, torrent_path: str) -> dict | None:
         """
         Get torrent object from cache
@@ -130,3 +136,9 @@ class Cache:
         Total file hash cache entries
         """
         return self.torrent_info_cache.__len__()
+
+    def torrent_object_size(self) -> int:
+        """
+        Get the total size of torrent_object cache on disk
+        """
+        return self.torrent_info_cache.volume()
