@@ -139,7 +139,7 @@ async def lifespan(_: FastAPI):
     log.debug("[APP] Loading cache")
     cache = Cache.get_instance()
 
-    # TODO: remove this patch code in next version
+    # TODO: remove this patch code in  future release
     for cache_check in [cache.file_hash_cache, cache.torrent_info_cache]:
         if cache_check.__len__() == 0:
             continue
