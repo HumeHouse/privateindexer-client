@@ -10,7 +10,7 @@ from privateindexer_client.core import torrent_client, scan, api, gui, httpx_req
 from privateindexer_client.core.cache import Cache
 from privateindexer_client.core.config import TORRENTS_DIR, SCAN_INTERVAL, INDEXER_API_URL, API_KEY, TORRENTING_PORT, DOWNLOADS_DIR, FASTRESUME_DIR, APP_VERSION, \
     MAX_THREADS, FASTRESUME_INTERVAL, ANNOUNCE_IP, RADARR_URL, RADARR_API_KEY, SONARR_URL, SONARR_API_KEY, SYNC_INTERVAL, CACHE_CLEAN_INTERVAL, LEW_MEMORY_MODE, \
-    LIDARR_URL, LIDARR_API_KEY, MEMORY_LOG_INTERVAL, CACHE_DIR
+    LIDARR_URL, LIDARR_API_KEY, MEMORY_LOG_INTERVAL, CACHE_DIR, CACHE_EXPIRATION
 from privateindexer_client.core.logger import log
 
 APP_TASKS: list[Task] = []
@@ -138,6 +138,14 @@ async def lifespan(_: FastAPI):
 
     log.debug("[APP] Loading cache")
     cache = Cache.get_instance()
+
+    # TODO: remove this patch code in next version
+    _, expire_time = cache.file_hash_cache.peek(expire_time=True)
+    if expire_time is None:
+        log.info("[APP] Cache expiration time updated")
+        for key in cache.file_hash_cache.iterkeys():
+            cache.file_hash_cache.touch(key, expire=CACHE_EXPIRATION)
+
     total_hashes = cache.total_file_hash_entries()
     total_objects = cache.total_torrent_object_entries()
     file_hash_size = cache.file_hash_size()
