@@ -91,6 +91,19 @@ def detect_torrent_category(file_path: str) -> str:
     return ""
 
 
+def format_bytes(num_bytes: int) -> str:
+    """
+    Helper to format bytes into a human-readable string
+    """
+    if num_bytes < 1024:
+        return f"{num_bytes} B"
+    if num_bytes < 1024 ** 2:
+        return f"{num_bytes / 1024:.2f} KiB"
+    if num_bytes < 1024 ** 3:
+        return f"{num_bytes / (1024 ** 2):.2f} MiB"
+    return f"{num_bytes / (1024 ** 3):.2f} GiB"
+
+
 async def fetch_indexer_user_data():
     """
     Request the current user's indexer statistics for use in the GUI
