@@ -38,6 +38,9 @@ def create_libtorrent_session(app_version: str):
                      "always_send_user_agent": True,  # always send the user agent with every tracker request
                      "seed_time_limit": -1,  # no seed limit for torrents
                      "active_tracker_limit": -1,  # unlimited trackers
+                     "active_limit": -1,  # unlimited number of torrents
+                     "active_downloads": -1,  # allow unlimited downloads
+                     "active_seeds": -1,  # allow unlimited seeds
                      "seed_choking_algorithm": lt.seed_choking_algorithm_t.fastest_upload,  # choke based on upload speed
                      "mixed_mode_algorithm": 0,  # disable TCP/uTP load balancer algorithm
                      })
@@ -53,17 +56,14 @@ def create_libtorrent_session(app_version: str):
         settings.update({
             "max_queued_disk_bytes": 1024 * 512,  # limit disk queue (1/2 default)
             "connections_limit": 200,  # set a lower connection limit (default)
-            "max_peerlist_size": 10000,  # limit the number of peers we keep (1/3 default)
             "unchoke_slots_limit": 4,  # limit unchoked peers (1/2 default)
+            "max_peerlist_size": 10000,  # limit the number of peers we keep (1/3 default)
         })
     else:
         settings.update({
             "max_queued_disk_bytes": -1,  # unlimited queued disk bytes
             "connections_limit": -1,  # unlimited connections
             "unchoke_slots_limit": -1,  # unlimited number of unchoked peers
-            "active_limit": -1,  # unlimited number of torrents
-            "active_downloads": -1,  # allow unlimited downloads
-            "active_seeds": -1,  # allow unlimited seeds
             "max_out_request_queue": 1500,  # increase number of outstanding requests to send to a peer 3x (default 500)
             "file_pool_size": 250,  # increase file pool size (default 40)
             "connection_speed": 500,  # bump connection rate to 500/s (default 30)
@@ -404,14 +404,32 @@ def save_all_fastresume_data() -> tuple[int, int]:
             except Exception as e:
                 log.error(f"[FASTRESUME] Error saving fastresume data for torrent: {e}")
 
+        idle_loops = 0
+
         while hashes_to_await:
             alerts = libtorrent_session.pop_alerts()
+
+            # track empty loops
+            if alerts:
+                idle_loops = 0
+            else:
+                idle_loops += 1
+
             for alert in alerts:
                 if isinstance(alert, lt.save_resume_data_alert):
-                    torrent_hash = utils.save_fastresume_to_disk(alert)
-                    if torrent_hash and torrent_hash in hashes_to_await:
-                        hashes_to_await.remove(torrent_hash)
+                    # save the data to disk
+                    hash_saved = utils.save_fastresume_to_disk(alert)
+
+                    # if the write was successful, remove the hash from pending
+                    if hash_saved:
+                        hashes_to_await.discard(hash_saved)
                         completed += 1
+
+            # break the loop if the alert doesn't show for 300 loop cycles or about 30 seconds
+            if idle_loops > 300:
+                log.warning(f"[FASTRESUME] No resume alerts for 30s, {len(hashes_to_await)} torrents did not complete")
+                break
+
             # let the thread sleep so libtorrent has time to generate alerts
             time.sleep(0.1)
     except Exception as e:
