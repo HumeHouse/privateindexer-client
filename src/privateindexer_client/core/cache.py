@@ -4,7 +4,7 @@ import os
 
 from diskcache import Cache as DiskCache
 
-from privateindexer_client.core.config import CACHE_CLEAN_INTERVAL, CACHE_DIR
+from privateindexer_client.core.config import CACHE_CLEAN_INTERVAL, CACHE_DIR, CACHE_EXPIRATION
 from privateindexer_client.core.logger import log
 
 
@@ -21,6 +21,10 @@ async def periodic_cache_clean_task():
 
             cache = Cache().get_instance()
 
+            # manually expire cache keys
+            amount_expired = cache.file_hash_cache.expire()
+            amount_expired += cache.torrent_info_cache.expire()
+
             # clean up dead file hashes
             for file_path in cache.iter_file_hash_paths():
                 if not os.path.exists(file_path):
@@ -32,7 +36,7 @@ async def periodic_cache_clean_task():
                     cache.delete_torrent_object(torrent_path)
 
             delta = datetime.datetime.now() - before
-            log.info(f"[CACHE] Cache clean completed ({delta}): {cache.total_file_hash_entries()} file hashes, {cache.total_torrent_object_entries()} torrent objects")
+            log.info(f"[CACHE] Cache clean completed ({delta}): {amount_expired} expired")
         except Exception as e:
             log.error(f"[CACHE] Error during cache clean task: {e}")
 
@@ -41,8 +45,8 @@ class Cache:
     _instance = None
 
     def __init__(self):
-        self.file_hash_cache = DiskCache(os.path.join(CACHE_DIR, "file_piece"))
-        self.torrent_info_cache = DiskCache(os.path.join(CACHE_DIR, "torrent_info"))
+        self.file_hash_cache: DiskCache = DiskCache(os.path.join(CACHE_DIR, "file_piece"))
+        self.torrent_info_cache: DiskCache = DiskCache(os.path.join(CACHE_DIR, "torrent_info"))
 
     @classmethod
     def get_instance(cls) -> "Cache":
@@ -69,9 +73,9 @@ class Cache:
         Store hashes for a file path in cache
         """
         key = (file_path, piece_length)
-        self.file_hash_cache[key] = hashes
+        self.file_hash_cache.set(key, hashes, expire=CACHE_EXPIRATION)
 
-    def delete_file_hashes(self, file_path: str) -> int:
+    def delete_file_hashes(self, file_path: str):
         """
         Removes hashes for a file path from cache
         """
@@ -116,7 +120,7 @@ class Cache:
         """
         Stores a torrent object in cache
         """
-        self.torrent_info_cache[torrent_path] = obj
+        self.torrent_info_cache.set(torrent_path, obj, expire=CACHE_EXPIRATION)
 
     def delete_torrent_object(self, torrent_path: str):
         """
