@@ -404,14 +404,32 @@ def save_all_fastresume_data() -> tuple[int, int]:
             except Exception as e:
                 log.error(f"[FASTRESUME] Error saving fastresume data for torrent: {e}")
 
+        idle_loops = 0
+
         while hashes_to_await:
             alerts = libtorrent_session.pop_alerts()
+
+            # track empty loops
+            if alerts:
+                idle_loops = 0
+            else:
+                idle_loops += 1
+
             for alert in alerts:
                 if isinstance(alert, lt.save_resume_data_alert):
-                    torrent_hash = utils.save_fastresume_to_disk(alert)
-                    if torrent_hash and torrent_hash in hashes_to_await:
-                        hashes_to_await.remove(torrent_hash)
+                    # save the data to disk
+                    hash_saved = utils.save_fastresume_to_disk(alert)
+
+                    # if the write was successful, remove the hash from pending
+                    if hash_saved:
+                        hashes_to_await.discard(hash_saved)
                         completed += 1
+
+            # break the loop if the alert doesn't show for 300 loop cycles or about 30 seconds
+            if idle_loops > 300:
+                log.warning(f"[FASTRESUME] No resume alerts for 30s, {len(hashes_to_await)} torrents did not complete")
+                break
+
             # let the thread sleep so libtorrent has time to generate alerts
             time.sleep(0.1)
     except Exception as e:
