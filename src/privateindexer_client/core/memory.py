@@ -25,13 +25,14 @@ async def periodic_memory_task():
             # collect the process workers memory utilization
             children = process.children(recursive=True)
             mem_children = 0
+            active_child_count = 0
             for c in children:
                 if c.is_running():
                     child_mem = c.memory_full_info().uss
                     if child_mem == 0:
                         continue
                     mem_children += child_mem
-                    log.info(f"[MEMORY] Worker PID {c.pid}: {format_bytes(child_mem)}")
+                    active_child_count += 1
 
             # total used by main thread and workers
             mem_total = mem_main + mem_children
@@ -40,7 +41,7 @@ async def periodic_memory_task():
             _max_memory = max(_max_memory, mem_total)
 
             log.info(f"[MEMORY] Main: {format_bytes(mem_main)} | "
-                     f"Workers: {format_bytes(mem_children)} | "
+                     f"Children: {format_bytes(mem_children)} ({active_child_count} active processes) | "
                      f"Total: {format_bytes(mem_total)} | "
                      f"Peak: {format_bytes(_max_memory)}")
 
