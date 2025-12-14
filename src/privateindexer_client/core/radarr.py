@@ -72,7 +72,7 @@ async def fetch_movie_library(tracked_root_folders: list[str]) -> list[dict]:
         # build list of movie data for movies which are located in our tracked root folders
         all_movies = [movie for movie in movie_response if movie.get("rootFolderPath") in tracked_root_folders]
 
-        log.info(f"[RADARR] Fetched movie library ({len(all_movies)} movies)")
+        log.debug(f"[RADARR] Fetched movie library ({len(all_movies)} movies)")
 
         return all_movies
     except Exception as e:

@@ -233,7 +233,7 @@ async def fetch_music_library(tracked_root_folders: list[str]) -> list[dict]:
             else:
                 individual_tracks += 1
 
-        log.info(f"[LIDARR] Fetched music library ({album_count} albums, {individual_tracks} individual tracks)")
+        log.debug(f"[LIDARR] Fetched music library ({album_count} albums, {individual_tracks} individual tracks)")
 
         return final_entries
     except Exception as e:
