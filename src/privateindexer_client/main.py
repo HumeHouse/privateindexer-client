@@ -10,7 +10,7 @@ from privateindexer_client.core import torrent_client, scan, api, gui, httpx_req
 from privateindexer_client.core.cache import Cache
 from privateindexer_client.core.config import TORRENTS_DIR, SCAN_INTERVAL, INDEXER_API_URL, API_KEY, TORRENTING_PORT, DOWNLOADS_DIR, FASTRESUME_DIR, APP_VERSION, \
     MAX_THREADS, FASTRESUME_INTERVAL, ANNOUNCE_IP, RADARR_URL, RADARR_API_KEY, SONARR_URL, SONARR_API_KEY, SYNC_INTERVAL, CACHE_CLEAN_INTERVAL, LEW_MEMORY_MODE, \
-    LIDARR_URL, LIDARR_API_KEY, MEMORY_LOG_INTERVAL, CACHE_DIR, CACHE_EXPIRATION
+    LIDARR_URL, LIDARR_API_KEY, MEMORY_LOG_INTERVAL, CACHE_DIR
 from privateindexer_client.core.logger import log
 
 APP_TASKS: list[Task] = []
@@ -56,11 +56,6 @@ async def lifespan(_: FastAPI):
 
     log.info(f"[APP] Cache directory: {CACHE_DIR}")
     os.makedirs(CACHE_DIR, exist_ok=True)
-
-    # TODO: remove old cache file check in future release
-    if os.path.exists("/app/data/cache.pkl"):
-        os.unlink("/app/data/cache.pkl")
-        log.info(f"[APP] Removed deprecated cache file")
 
     # check if the downloads directory exists, otherwise fail
     if os.path.exists(DOWNLOADS_DIR):
@@ -138,19 +133,6 @@ async def lifespan(_: FastAPI):
 
     log.debug("[APP] Loading cache")
     cache = Cache.get_instance()
-
-    # TODO: remove this patch code in  future release
-    for cache_check in [cache.file_hash_cache, cache.torrent_info_cache]:
-        if cache_check.__len__() == 0:
-            continue
-        _, expiration = cache_check.peekitem(expire_time=True)
-        if expiration is None:
-            updated = 0
-            for key in cache_check.iterkeys():
-                if cache_check.touch(key, expire=CACHE_EXPIRATION):
-                    updated += 1
-            if updated > 0:
-                log.info(f"[APP] Updated {updated} cache keys with expiration")
 
     total_hashes = cache.total_file_hash_entries()
     total_objects = cache.total_torrent_object_entries()
