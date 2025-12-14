@@ -37,7 +37,7 @@ below
 | `DOWNLOADS_DIR` | Path **inside the container** that downloads are saved to. (Make sure to mount it to the host somewhere - step 2.) | `/data/downloads` |
 | `API_KEY`       | Your assigned API key (contact David if you don’t have one).                                                       | `abcdef123456`    |
 
-#### RADARR/SONARR VARIABLES (OPTIONAL, AT LEAST 1 REQUIRED)
+#### *ARR APP VARIABLES (OPTIONAL, AT LEAST 1 REQUIRED)
 
 | Variable         | Description                                                                                             | Example                        |
 |------------------|---------------------------------------------------------------------------------------------------------|--------------------------------|
