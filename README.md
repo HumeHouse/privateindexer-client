@@ -37,7 +37,7 @@ below
 | `DOWNLOADS_DIR` | Path **inside the container** that downloads are saved to. (Make sure to mount it to the host somewhere - step 2.) | `/data/downloads` |
 | `API_KEY`       | Your assigned API key (contact David if you don’t have one).                                                       | `abcdef123456`    |
 
-#### RADARR/SONARR VARIABLES (OPTIONAL, AT LEAST 1 REQUIRED)
+#### *ARR APP VARIABLES (OPTIONAL, AT LEAST 1 REQUIRED)
 
 | Variable         | Description                                                                                             | Example                        |
 |------------------|---------------------------------------------------------------------------------------------------------|--------------------------------|
@@ -50,24 +50,25 @@ below
 
 #### OPTIONAL VARIABLES
 
-| Variable                    | Default Value | Type                | Description                                                                                                                                             |
-|-----------------------------|---------------|---------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `MAX_THREADS `              | `8`           | `INTEGER`           | Number of threads to use for CPU & I/O bound tasks. Recommend matching CPU cores.                                                                       |
-| `SCAN_INTERVAL`             | `30`          | `INTEGER` (minutes) | Minutes between media library scans. We rebuild the media library from Radarr and Sonarr every scan, so be cautious setting too low.                    |
-| `SYNC_INTERVAL`             | `60`          | `INTEGER` (minutes) | Minutes between server sync task cycles. Sync cucles keep local database up-to-date with server database to ensure no torrents are missing.             |
-| `SCAN_BATCH_SIZE`           | `128`         | `INTEGER`           | Number of items in the scan task to process at any given time. This should ideally be set to a multiple of your `MAX_THREADS` variable.                 |
-| `FASTRESUME_INTERVAL`       | `60`          | `INTEGER` (minutes) | How often (in minutes) to save fastresume data. *Setting this too low can negatively impact your disk performance.*                                     |
-| `ANNOUNCE_IP`               | **NONE**      | `TEXT` (IPv4)       | Rarely needed, advanced only. If for some reason your client is making requests from different IP than you appear to peers.                             |
-| `TORRENTING_PORT`           | `6881`        | `INTEGER`           | Port accepting connections from other torrent clients. (Make sure to bind this to host and forward in router.)                                          |
-| `LOG_LEVEL`                 | `INFO`        | `TEXT`              | Lowest log level to show in console. Can be `DEBUG`, `INFO`, `WARNING`, `ERROR`, or `CRITICAL` where `DEBUG` shows most amount of logs                  |
-| `PURGE_UNTRACKED_TORRENTS`  | `False`       | `BOOLEAN`           | Enable this to have the client purge any dangling torent files that aren't currently tracked in the database - this can be destructive.                 |
-| `PURGE_UNTRACKED_DOWNLOADS` | `False`       | `BOOLEAN`           | Enable this to let the scanner remove downloads which are not tracked in the database. This can cause lots of re-processing but can reclaim disk space. |
-| `STALE_TORRENT_THRESHOLD`   | `30`          | `INTEGER` (days)    | Number of days a torrent is allowed to sit in downloading state before it is automatically purged from the torrent client.                              |
-| `PURGE_DUPLICATE_SEEDS`     | `True`        | `BOOLEAN`           | Disable this to prevent purging individual torrents that are part of a tracked multi-file torrent. Enabling is useful for de-duplication.               |
-| `CACHE_CLEAN_INTERVAL`      | `12`          | `INTEGER` (hours)   | Hours between cache clean task cycles. Cache clean is important to keep cache file size trimmed and up-to-date with what is actually on disk.           |
-| `LEW_MEMORY_MODE`           | `False`       | `BOOLEAN`           | Enable this to set libtorrent into a low memory profile to help reduce the amount of RAM used by the torrent client. Lew caused this.                   |
-| `ALLOW_UTP_CONNECTIONS`     | `False`       | `BOOLEAN`           | Enable this to allow the client to connect to peers using uTP instead of TCP. This may result in lower transfer speeds.                                 |
-| `MEMORY_LOG_INTERVAL`       | `0`           | `INTEGER` (seconds) | Set this to something >0 to display thread memory utilization in the console at a desired interval. Most commonly used for debugging at ~5 seconds.     |
+| Variable                    | Default Value | Type                | Description                                                                                                                                                                  |
+|-----------------------------|---------------|---------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `MAX_THREADS `              | `8`           | `INTEGER`           | Number of threads to use for CPU & I/O bound tasks. Recommend matching CPU cores.                                                                                            |
+| `SCAN_INTERVAL`             | `30`          | `INTEGER` (minutes) | Minutes between media library scans. We rebuild the media library from Radarr and Sonarr every scan, so be cautious setting too low.                                         |
+| `SYNC_INTERVAL`             | `60`          | `INTEGER` (minutes) | Minutes between server sync task cycles. Sync cucles keep local database up-to-date with server database to ensure no torrents are missing.                                  |
+| `SCAN_BATCH_SIZE`           | `128`         | `INTEGER`           | Number of items in the scan task to process at any given time. This should ideally be set to a multiple of your `MAX_THREADS` variable.                                      |
+| `FASTRESUME_INTERVAL`       | `60`          | `INTEGER` (minutes) | How often (in minutes) to save fastresume data. *Setting this too low can negatively impact your disk performance.*                                                          |
+| `ANNOUNCE_IP`               | **NONE**      | `TEXT` (IPv4)       | Rarely needed, advanced only. If for some reason your client is making requests from different IP than you appear to peers.                                                  |
+| `TORRENTING_PORT`           | `6881`        | `INTEGER`           | Port accepting connections from other torrent clients. (Make sure to bind this to host and forward in router.)                                                               |
+| `LOG_LEVEL`                 | `INFO`        | `KEYWORD` (level)   | Lowest log level to show in console. Can be `DEBUG`, `INFO`, `WARNING`, `ERROR`, or `CRITICAL` where `DEBUG` shows most amount of logs                                       |
+| `PURGE_UNTRACKED_TORRENTS`  | `False`       | `BOOLEAN`           | Enable this to have the client purge any dangling torent files that aren't currently tracked in the database - this can be destructive.                                      |
+| `PURGE_UNTRACKED_DOWNLOADS` | `False`       | `BOOLEAN`           | Enable this to let the scanner remove downloads which are not tracked in the database. This can cause lots of re-processing but can reclaim disk space.                      |
+| `STALE_TORRENT_THRESHOLD`   | `30`          | `INTEGER` (days)    | Number of days a torrent is allowed to sit in downloading state before it is automatically purged from the torrent client.                                                   |
+| `PURGE_DUPLICATE_SEEDS`     | `True`        | `BOOLEAN`           | Disable this to prevent purging individual torrents that are part of a tracked multi-file torrent. Enabling is useful for de-duplication.                                    |
+| `CACHE_CLEAN_INTERVAL`      | `12`          | `INTEGER` (hours)   | Hours between cache clean task cycles. Cache clean is important to keep cache file size trimmed and up-to-date with what is actually on disk.                                |
+| `LEW_MEMORY_MODE`           | `False`       | `BOOLEAN`           | Enable this to set libtorrent into a low memory profile to help reduce the amount of RAM used by the torrent client. Lew caused this.                                        |
+| `ALLOW_UTP_CONNECTIONS`     | `False`       | `BOOLEAN`           | Enable this to allow the client to connect to peers using uTP instead of TCP. This may result in lower transfer speeds.                                                      |
+| `MEMORY_LOG_INTERVAL`       | `0`           | `INTEGER` (seconds) | Set this to something >0 to display thread memory utilization in the console at a desired interval. Most commonly used for debugging at ~5 seconds.                          |
+| `TAG_SEARCH_RESULTS`        | `True`        | `BOOLEAN`           | Disable this to prevent server from tagging search results which contain your uploads with your user label. This is a privacy option to anonymize your uploads if preferred. |
 
 ### 2. Configure Volumes
 

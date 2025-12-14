@@ -241,10 +241,14 @@ async def periodic_scan_task():
             duplicate_entries: dict[str, dict] = {}
 
             loop = asyncio.get_running_loop()
+            media_data_entries = await utils.get_managed_media_data()
 
             # here we perform various database integrity and value correction checks
             torrents = await database.fetch_all("SELECT * FROM torrents")
             for torrent in torrents:
+                torrent_id = torrent["id"]
+                torrent_name = torrent["name"]
+                torrent_hash_v1 = torrent["hash_v1"]
                 torrent_path: str = torrent["torrent_path"]
                 torrent_exists = os.path.exists(torrent_path)
                 media_path: str | None = torrent.get("media_path")
@@ -257,19 +261,16 @@ async def periodic_scan_task():
                     removed_entries += 1
                     # remove from torrent client
                     await torrent_client.remove_torrent_by_hash(torrent.get("hash_v1"))
-                    # remove torrent file
-                    if os.path.exists(torrent_path):
-                        os.unlink(torrent_path)
-                    # remove from database
-                    await database.execute("DELETE FROM torrents WHERE id = ?", (torrent["id"],))
-                    log.info(f"[SCAN] All files missing for '{torrent["name"]}', removed torrent from database and torrent client")
+                    # remove torrent file and from database
+                    await utils.remove_torrent_from_database(torrent_hash_v1, torrent_file=torrent_path)
+                    log.info(f"[SCAN] All files missing for '{torrent_name}', removed torrent from database and torrent client")
                     continue
 
                 # case where only the media data is missing, nullify the media_path in the database
                 if media_path and not media_exists:
                     updated_files += 1
-                    await database.execute("UPDATE torrents SET media_path = NULL WHERE id = ?", (torrent["id"],))
-                    log.info(f"[SCAN] Media files missing for '{torrent["name"]}', purged media path from database")
+                    await database.execute("UPDATE torrents SET media_path = NULL WHERE id = ?", (torrent_id,))
+                    log.info(f"[SCAN] Media files missing for '{torrent_name}', purged media path from database")
 
                 # case if this is an external torrent (should have a download path), try to locate the download media if it's missing or invalid
                 if download_path and (not download_exists or download_path == DOWNLOADS_DIR or
@@ -286,11 +287,11 @@ async def periodic_scan_task():
                         updated_files += 1
                         # update the database if the download path exists
                         if download_exists:
-                            await database.execute("UPDATE torrents SET download_path = ? WHERE id = ?", (download_path, torrent["id"],))
-                            log.info(f"[SCAN] Updated the download path for '{torrent["name"]}'")
+                            await database.execute("UPDATE torrents SET download_path = ? WHERE id = ?", (download_path, torrent_id,))
+                            log.info(f"[SCAN] Updated the download path for '{torrent_name}'")
                         else:
-                            await database.execute("UPDATE torrents SET download_path = NULL WHERE id = ?", (torrent["id"],))
-                            log.info(f"[SCAN] Removed the download path for '{torrent["name"]}', no file could be matched")
+                            await database.execute("UPDATE torrents SET download_path = NULL WHERE id = ?", (torrent_id,))
+                            log.info(f"[SCAN] Removed the download path for '{torrent_name}', no file could be matched")
 
                 # case where media exists but the torznab category is unknown (0), try to fix it
                 if media_exists and torrent["category"] == 0:
@@ -299,32 +300,42 @@ async def periodic_scan_task():
                     # update the category if a match was found
                     if category_id != 0:
                         updated_files += 1
-                        await database.execute("UPDATE torrents SET category = ? WHERE id = ?", (category_id, torrent["id"],))
-                        log.info(f"[SCAN] Updated the category to '{category_id}' for '{torrent["name"]}'")
+                        await database.execute("UPDATE torrents SET category = ? WHERE id = ?", (category_id, torrent_id,))
+                        log.info(f"[SCAN] Updated the category to '{category_id}' for '{torrent_name}'")
 
                 # case where we have tracked media but it's somehow set inside the downloads directory, nullify its value so it can be rescanned next time
                 if media_path and media_path.startswith(DOWNLOADS_DIR):
                     updated_files += 1
-                    await database.execute("UPDATE torrents SET media_path = NULL WHERE id = ?", (torrent["id"],))
-                    log.info(f"[SCAN] Invalid media path for '{torrent["name"]}', purged media path from database")
+                    await database.execute("UPDATE torrents SET media_path = NULL WHERE id = ?", (torrent_id,))
+                    log.info(f"[SCAN] Invalid media path for '{torrent_name}', purged media path from database")
                     continue
 
-                # case where we have a multi-file torrent tracked, but files inside are still being seeded individually
+                # case where we have a multi-file torrent tracked, but either files inside are still being seeded individually or it is no longer discovered
                 if media_path and os.path.isdir(media_path) and torrent["files"] > 1:
                     for searching_torrent in torrents:
                         searched_media_path = searching_torrent.get("media_path")
 
                         # skip empty and identical ID matches
-                        if not searched_media_path or searching_torrent["id"] == torrent["id"]:
+                        if not searched_media_path or searching_torrent["id"] == torrent_id:
                             continue
 
                         # skip non-matching media paths
                         if os.path.commonpath([searched_media_path, media_path]) != media_path:
                             continue
 
+                        # loop through the media data to check for a path match
+                        if not any(media_data_entry.path == media_path for media_data_entry in media_data_entries):
+                            # if no match was found, purge the multi-file torrent because it lost discovery - individual episodes exist instead
+                            removed_entries += 1
+                            # remove from torrent client
+                            await torrent_client.remove_torrent_by_hash(torrent.get("hash_v1"))
+                            # remove torrent file and from database
+                            await utils.remove_torrent_from_database(torrent_hash_v1, torrent_file=torrent_path)
+                            log.warning(f"[SCAN] Purged undiscovered multi-file torrent: '{torrent_name}'")
+                            break
+
                         duplicate_entries[searching_torrent["id"]] = searching_torrent
-                        log.warning(f"[SCAN] Potential duplicate seed found for '{torrent["name"]}': {searching_torrent['name']}")
-                        continue
+                        log.warning(f"[SCAN] Potential duplicate seed found for '{torrent_name}': {searching_torrent['name']}")
 
             # purge duplicate seeds if the user has this option enabled
             if PURGE_DUPLICATE_SEEDS:
