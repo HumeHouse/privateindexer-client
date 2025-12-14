@@ -28,6 +28,8 @@ async def periodic_memory_task():
             for c in children:
                 if c.is_running():
                     child_mem = c.memory_full_info().uss
+                    if child_mem == 0:
+                        continue
                     mem_children += child_mem
                     log.info(f"[MEMORY] Worker PID {c.pid}: {format_bytes(child_mem)}")
 
