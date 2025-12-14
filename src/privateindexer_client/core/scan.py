@@ -241,6 +241,7 @@ async def periodic_scan_task():
             duplicate_entries: dict[str, dict] = {}
 
             loop = asyncio.get_running_loop()
+            media_data_entries = await utils.get_managed_media_data()
 
             # here we perform various database integrity and value correction checks
             torrents = await database.fetch_all("SELECT * FROM torrents")
@@ -309,7 +310,7 @@ async def periodic_scan_task():
                     log.info(f"[SCAN] Invalid media path for '{torrent_name}', purged media path from database")
                     continue
 
-                # case where we have a multi-file torrent tracked, but files inside are still being seeded individually
+                # case where we have a multi-file torrent tracked, but either files inside are still being seeded individually or it is no longer discovered
                 if media_path and os.path.isdir(media_path) and torrent["files"] > 1:
                     for searching_torrent in torrents:
                         searched_media_path = searching_torrent.get("media_path")
@@ -321,6 +322,17 @@ async def periodic_scan_task():
                         # skip non-matching media paths
                         if os.path.commonpath([searched_media_path, media_path]) != media_path:
                             continue
+
+                        # loop through the media data to check for a path match
+                        if not any(media_data_entry.path == media_path for media_data_entry in media_data_entries):
+                            # if no match was found, purge the multi-file torrent because it lost discovery - individual episodes exist instead
+                            removed_entries += 1
+                            # remove from torrent client
+                            await torrent_client.remove_torrent_by_hash(torrent.get("hash_v1"))
+                            # remove torrent file and from database
+                            await utils.remove_torrent_from_database(torrent_hash_v1, torrent_file=torrent_path)
+                            log.warning(f"[SCAN] Purged undiscovered multi-file torrent: '{torrent_name}'")
+                            break
 
                         duplicate_entries[searching_torrent["id"]] = searching_torrent
                         log.warning(f"[SCAN] Potential duplicate seed found for '{torrent_name}': {searching_torrent['name']}")
