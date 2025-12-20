@@ -39,8 +39,8 @@ body {
 }
 
 #info-panel {
-    min-height: 32%;
-    max-height: 32%;
+    min-height: 28%;
+    max-height: 28%;
     resize: vertical;
 }
 
