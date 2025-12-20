@@ -19,7 +19,7 @@ async def periodic_sync_task():
             before = datetime.datetime.now()
 
             # gather minimal data from database for each torrent from database for sync
-            local_torrents = await database.fetch_all("SELECT id, hash_v1, hash_v2 FROM torrents")
+            local_torrents = await database.fetch_all("SELECT id, infohash FROM torrents")
             total = len(local_torrents)
             log.info(f"[SYNC] Syncing {total} torrents with indexer")
 
