@@ -92,7 +92,7 @@ function fetchMainData() {
 
             // update selected torrent info panel
             if (selectedTorrentId) {
-                const updatedTorrent = data["torrents"].find(t => t["infohash_v1"] === selectedTorrentId);
+                const updatedTorrent = data["torrents"].find(t => t["hash"] === selectedTorrentId);
                 if (updatedTorrent) populateInfoPanel(updatedTorrent);
             }
 
@@ -385,9 +385,9 @@ function renderTable(torrents) {
         const rowClass = "state-" + torrent["state"];
         const progress = (torrent["progress"] * 100).toFixed(1);
 
-        const selectedClass = torrent["infohash_v1"] === selectedTorrentId ? "selected-row" : "";
+        const selectedClass = torrent["hash"] === selectedTorrentId ? "selected-row" : "";
 
-        const row = $(`<tr class="${selectedClass}" data-infohash="${torrent["infohash_v1"]}"></tr>`);
+        const row = $(`<tr class="${selectedClass}" data-infohash="${torrent["hash"]}"></tr>`);
 
         row.toggleClass("d-none", !torrent["name"].toLowerCase().includes(filter));
 
@@ -417,7 +417,7 @@ function renderTable(torrents) {
 
         // click handler
         $tbody.find("tr").last().click(() => {
-            selectedTorrentId = torrent["infohash_v1"];
+            selectedTorrentId = torrent["hash"];
             $tbody.find("tr").removeClass("selected-row");
             $tbody.find(`tr[data-infohash='${selectedTorrentId}']`).addClass("selected-row");
             populateInfoPanel(torrent);
@@ -475,9 +475,7 @@ function populateInfoPanel(torrent) {
                     <dt class="col-4 text-end">Downloaded:</dt><dd class="ms-2 col-7">${formatBytes(torrent["downloaded"])} (${formatBytes(torrent["downloaded_session"])} this session)</dd>
                     <dt class="col-4 text-end">Download Speed:</dt><dd class="ms-2 col-7">${formatSpeed(torrent["dlspeed"])}</dd>
                     <dt class="col-4 text-end">Progress:</dt><dd class="ms-2 col-7">${(torrent["progress"] * 100).toFixed(1)}%</dd>
-                    
-                    <dt class="col-4 text-end">Info Hash v1:</dt><dd class="ms-2 col-7">${torrent["infohash_v1"]}</dd>
-                    <dt class="col-4 text-end">Info Hash v2:</dt><dd class="ms-2 col-7">${torrent["infohash_v2"] || "N/A"}</dd>
+                    <dt class="col-4 text-end">Info Hash:</dt><dd class="ms-2 col-7">${torrent["hash"] || "N/A"}</dd>
                 </dl>
             </div>
             <div class="col-md-4">
