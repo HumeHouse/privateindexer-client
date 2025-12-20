@@ -192,7 +192,7 @@ async def scan_media_library(hash_executor: ProcessPoolExecutor) -> tuple[int, i
 
                     # add the data for the torrent to the database
                     await utils.add_torrent_to_database(metadata.name, metadata.size, metadata.torrent_path, uploaded, metadata.files, metadata.category,
-                                                        media_path=metadata.media_path, hash_v1=metadata.hash_v1, hash_v2=metadata.hash_v2, app_id=metadata.app_id)
+                                                        media_path=metadata.media_path, torrent_hash=metadata.infohash, app_id=metadata.app_id)
 
                     if is_new_file:
                         created_files += 1
@@ -248,7 +248,7 @@ async def periodic_scan_task():
             for torrent in torrents:
                 torrent_id = torrent["id"]
                 torrent_name = torrent["name"]
-                torrent_hash_v1 = torrent["hash_v1"]
+                torrent_hash = torrent["infohash"]
                 torrent_path: str = torrent["torrent_path"]
                 torrent_exists = os.path.exists(torrent_path)
                 media_path: str | None = torrent.get("media_path")
@@ -260,9 +260,9 @@ async def periodic_scan_task():
                 if not torrent_exists or (not media_exists and not download_exists):
                     removed_entries += 1
                     # remove from torrent client
-                    await torrent_client.remove_torrent_by_hash(torrent.get("hash_v1"))
+                    await torrent_client.remove_torrent_by_hash(torrent.get("infohash"))
                     # remove torrent file and from database
-                    await utils.remove_torrent_from_database(torrent_hash_v1, torrent_file=torrent_path)
+                    await utils.remove_torrent_from_database(torrent_hash, torrent_file=torrent_path)
                     log.info(f"[SCAN] All files missing for '{torrent_name}', removed torrent from database and torrent client")
                     continue
 
@@ -328,9 +328,9 @@ async def periodic_scan_task():
                             # if no match was found, purge the multi-file torrent because it lost discovery - individual episodes exist instead
                             removed_entries += 1
                             # remove from torrent client
-                            await torrent_client.remove_torrent_by_hash(torrent.get("hash_v1"))
+                            await torrent_client.remove_torrent_by_hash(torrent.get("infohash"))
                             # remove torrent file and from database
-                            await utils.remove_torrent_from_database(torrent_hash_v1, torrent_file=torrent_path)
+                            await utils.remove_torrent_from_database(torrent_hash, torrent_file=torrent_path)
                             log.warning(f"[SCAN] Purged undiscovered multi-file torrent: '{torrent_name}'")
                             break
 
@@ -343,7 +343,7 @@ async def periodic_scan_task():
                     duplicate_torrent_path = duplicate_entry["torrent_path"]
                     removed_entries += 1
                     # remove from torrent client
-                    await torrent_client.remove_torrent_by_hash(duplicate_entry.get("hash_v1"))
+                    await torrent_client.remove_torrent_by_hash(duplicate_entry.get("infohash"))
                     # remove torrent file
                     if os.path.exists(duplicate_torrent_path):
                         os.unlink(duplicate_torrent_path)
