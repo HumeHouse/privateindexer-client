@@ -4,7 +4,7 @@ import threading
 
 from privateindexer_client.core.logger import log
 
-APP_VERSION = "1.6.3"
+APP_VERSION = "1.7.0"
 
 # gather/set environment variables for usage later
 DATABASE_FILE = "/app/data/torrents.db"
@@ -24,7 +24,7 @@ INDEXER_API_URL = "https://indexer.humehouse.com"
 MAX_THREADS = int(os.getenv("MAX_THREADS", 8))
 
 CACHE_CLEAN_INTERVAL = 60 * 60 * int(os.getenv("CACHE_CLEAN_INTERVAL", 12))
-CACHE_EXPIRATION = 60 * 60 * int(os.getenv("CACHE_EXPIRATION", 24))
+CACHE_EXPIRATION = 24 * 60 * 60 * int(os.getenv("CACHE_EXPIRATION", 7))
 
 SYNC_INTERVAL = 60 * int(os.getenv("SYNC_INTERVAL", 60))
 SCAN_INTERVAL = 60 * int(os.getenv("SCAN_INTERVAL", 30))

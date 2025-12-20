@@ -245,21 +245,17 @@ async def add_torrent(
         info = lt.torrent_info(torrent_file)
         torrent_name = info.name()
 
-        # make sure the torrent we're trying to download has a v1 and a v2 hash
+        # make sure the torrent we're trying to download has v2 infohash
         hashes = info.info_hashes()
-        if not hashes.has_v1():
-            log.warning(f"[API] Refusing to keep torrent, no v1 hash (not from PrivateIndexer?): {torrent_name}")
-            os.unlink(torrent_file)
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST)
         if not hashes.has_v2():
             log.warning(f"[API] Refusing to keep torrent, no v2 hash (not from PrivateIndexer?): {torrent_name}")
             os.unlink(torrent_file)
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST)
-        torrent_hash_v2 = str(hashes.v2)
+        torrent_hash = str(hashes.v2)
 
         # check with the server to validate that this is a torrent from PrivateIndexer
         async with httpx_request.get_client() as client:
-            response = await client.get(f"{INDEXER_API_URL}/grab?hash_v2={torrent_hash_v2}&nograb=true", headers={"X-API-Key": API_KEY})
+            response = await client.get(f"{INDEXER_API_URL}/grab?infohash={torrent_hash}&nograb=true", headers={"X-API-Key": API_KEY})
             # based on the response from API, we will know if torrent exists on server
             if response.status_code == 200:
                 # this means the torrent exists in the server database
@@ -319,7 +315,7 @@ async def delete_torrent(
 
     for torrent_hash in split_hashes:
         # query database for torrent info
-        result = await database.fetch_one("SELECT hash_v1, torrent_path FROM torrents WHERE hash_v1 = ? or hash_v2 = ?", (torrent_hash, torrent_hash,))
+        result = await database.fetch_one("SELECT infohash, torrent_path FROM torrents WHERE infohash = ?", (torrent_hash,))
 
         if not result:
             log.warning(f"[API] Torrent hash not found during delete request: {torrent_hash}")
@@ -327,16 +323,16 @@ async def delete_torrent(
             continue
 
         torrent_path = result["torrent_path"]
-        hash_v1 = result["hash_v1"]
+        infohash = result["infohash"]
 
         # remove from torrent client
-        if not await torrent_client.remove_torrent_by_hash(hash_v1, deleteFiles):
+        if not await torrent_client.remove_torrent_by_hash(infohash, deleteFiles):
             log.error(f"[API] Failed to remove torrent with hash '{torrent_hash}' from torrent client")
             failures += 1
 
         try:
             # remove from database and delete torrent file
-            await utils.remove_torrent_from_database(hash_v1, torrent_file=torrent_path)
+            await utils.remove_torrent_from_database(infohash, torrent_file=torrent_path)
         except Exception as e:
             log.error(f"[API] Failed to delete torrent file with hash '{torrent_hash}': {e}")
             failures += 1

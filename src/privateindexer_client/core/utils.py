@@ -46,8 +46,7 @@ class TorrentCreationMetadata:
         self.uploaded: bool = None
         self.files: int = None
         self.category: int = None
-        self.hash_v1: str = None
-        self.hash_v2: str = None
+        self.infohash: str = None
 
 
 def detect_torznab_category(file_path: str) -> int:
@@ -135,16 +134,16 @@ async def send_torrent_to_indexer(torrent_path: str, category: int, torrent_name
                 app_id = result["app_id"]
 
         if app_id:
-            if category == RADARR_ROOT_CATEGORY:
+            if category == RADARR_ROOT_CATEGORY and RADARR_URL:
                 movie_metadata = await radarr.fetch_movie_metadata(movie_id=app_id)
                 imdbid = movie_metadata.get("imdbId")
                 tmdbid = movie_metadata.get("tmdbId")
-            elif category == SONARR_ROOT_CATEGORY:
+            elif category == SONARR_ROOT_CATEGORY and SONARR_URL:
                 series_metadata = await sonarr.fetch_series_metadata(series_id=app_id)
                 imdbid = series_metadata.get("imdbId")
                 tmdbid = series_metadata.get("tmdbId")
                 tvdbid = series_metadata.get("tvdbId")
-            elif category == LIDARR_ROOT_CATEGORY:
+            elif category == LIDARR_ROOT_CATEGORY and LIDARR_URL:
                 album_metadata = await lidarr.fetch_album_metadata(album_id=app_id)
                 artist = album_metadata.get("artist", {}).get("artistName")
                 album = album_metadata.get("title")
@@ -376,7 +375,7 @@ def create_torrent(media_path: str, app_id: int, output_torrent_file: str = None
     """
     Synchronous routine to build and generate a complete torrent file from the media passed in as media_path
     Checks if output torrent file already exists and skips the torrent generation process
-    Will fail if v1/v2 hash checks do not succeeed
+    Will fail if hash checks do not succeeed
     Removes the torrent file if any failures occur so a new one can be generated
     """
 
@@ -417,13 +416,12 @@ def create_torrent(media_path: str, app_id: int, output_torrent_file: str = None
         with open(output_torrent_file, "wb") as f:
             f.write(lt.bencode(t.generate()))
 
-    # attempt to pull the v1 and v2 hash information from the torrent file, otherwise fail and remove torrent file from disk
+    # attempt to pull the hash information from the torrent file, otherwise fail and remove torrent file from disk
     try:
         info = lt.torrent_info(output_torrent_file)
         torrent_name = info.name()
         hashes = info.info_hashes()
-        torrent_hash_v1 = str(hashes.v1)
-        torrent_hash_v2 = str(hashes.v2)
+        torrent_infohash = str(hashes.v2)
 
         # get the number of files in the torrent
         file_count = info.num_files()
@@ -446,8 +444,7 @@ def create_torrent(media_path: str, app_id: int, output_torrent_file: str = None
     torrent_metadata.uploaded = False
     torrent_metadata.files = file_count
     torrent_metadata.category = category_id
-    torrent_metadata.hash_v1 = torrent_hash_v1
-    torrent_metadata.hash_v2 = torrent_hash_v2
+    torrent_metadata.infohash = torrent_infohash
 
     return torrent_metadata, is_new_file
 
@@ -545,34 +542,34 @@ def find_media_for_torrent(torrent_path: str, media_dir: str) -> str | None:
 
 
 async def add_torrent_to_database(name: str, size: int, torrent_path: str, uploaded: bool, files: int, category: int, media_path: str = None, download_path: str = None,
-                                  hash_v1: str = None, hash_v2: str = None, app_id: str = None):
+                                  torrent_hash: str = None, app_id: str = None):
     """
     Add torrent metadata into the database or update upon duplicate torrent_path
     """
-    await database.execute("INSERT INTO torrents (name, size, torrent_path, uploaded, files, category, media_path, download_path, hash_v1, hash_v2, app_id)"
-                           "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
-                           "ON CONFLICT(torrent_path) DO UPDATE SET name=excluded.name, size=excluded.size, uploaded=excluded.uploaded, files=excluded.files, category=excluded.category, media_path=COALESCE(excluded.media_path, media_path), download_path=COALESCE(excluded.download_path, download_path), hash_v1=excluded.hash_v1, hash_v2=excluded.hash_v2, app_id=excluded.app_id",
-                           (name, size, torrent_path, uploaded, files, category, media_path, download_path, hash_v1, hash_v2, app_id))
+    await database.execute("INSERT INTO torrents (name, size, torrent_path, uploaded, files, category, media_path, download_path, infohash, app_id)"
+                           "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+                           "ON CONFLICT(torrent_path) DO UPDATE SET name=excluded.name, size=excluded.size, uploaded=excluded.uploaded, files=excluded.files, category=excluded.category, media_path=COALESCE(excluded.media_path, media_path), download_path=COALESCE(excluded.download_path, download_path), infohash=excluded.infohash, app_id=excluded.app_id",
+                           (name, size, torrent_path, uploaded, files, category, media_path, download_path, torrent_hash, app_id))
 
 
-async def remove_torrent_from_database(hash_v1: str, remove_torrent_file: bool = True, torrent_file: str = None) -> bool:
+async def remove_torrent_from_database(torrent_hash: str, remove_torrent_file: bool = True, torrent_file: str = None) -> bool:
     """
     Delete torrent metadata from the database
     Optionally deletes torrent file
     """
     if remove_torrent_file:
         if not torrent_file:
-            result = await database.fetch_one("SELECT torrent_path FROM torrents WHERE hash_v1 = ?", (hash_v1,))
+            result = await database.fetch_one("SELECT torrent_path FROM torrents WHERE infohash = ?", (torrent_hash,))
             if result and result.get("torrent_path"):
                 torrent_file = result["torrent_path"]
 
         if torrent_file:
             if os.path.exists(torrent_file):
                 os.unlink(torrent_file)
-    await database.execute("DELETE FROM torrents WHERE hash_v1 = ?", (hash_v1,))
+    await database.execute("DELETE FROM torrents WHERE infohash = ?", (torrent_hash,))
 
 
-def process_fastresume_file(fastresume_path: str, hash_v1: str, torrent_path: str | None):
+def process_fastresume_file(fastresume_path: str, torrent_hash: str, torrent_path: str | None):
     """
     Thread-safe way to read fastresume file bytes, returns raw data to main thread
     """
@@ -580,11 +577,11 @@ def process_fastresume_file(fastresume_path: str, hash_v1: str, torrent_path: st
         # read bytes from fastresume file
         with open(fastresume_path, "rb") as f:
             data = f.read()
-        log.debug(f"[FASTRESUME] Loaded fastresume file for hash: {hash_v1}")
-        return data, hash_v1, torrent_path
+        log.debug(f"[FASTRESUME] Loaded fastresume file for hash: {torrent_hash}")
+        return data, torrent_hash, torrent_path
     except Exception as e:
-        log.error(f"[FASTRESUME] Failed to read fastresume file for hash: {hash_v1}: {e}")
-        return None, hash_v1, torrent_path
+        log.error(f"[FASTRESUME] Failed to read fastresume file for hash: {torrent_hash}: {e}")
+        return None, torrent_hash, torrent_path
 
 
 def fastresume_ignore_exists(torrent_hash: str) -> str | bool:
@@ -606,8 +603,7 @@ def save_fastresume_to_disk(alert: lt.save_resume_data_alert) -> str | None:
         torrent_handle = alert.handle
 
         status = torrent_handle.status()
-        # we only use v1_hash for storing fastresume data
-        torrent_hash = status.info_hashes.v1.to_bytes().hex()
+        torrent_hash = status.info_hashes.v2.to_bytes().hex()
 
         log.debug(f"[FASTRESUME] Writing fastresume file for hash: {torrent_hash}")
         # save the fastresume data
@@ -763,9 +759,7 @@ def map_torrent_to_qbit(torrent: lt.torrent_handle) -> dict:
 
     # here we have to normalize the infohashes because they are raw bytes out of the status
     infohash_v1 = status.info_hashes.v1.to_bytes().hex() if status.info_hashes.has_v1() else None
-    infohash_v2 = status.info_hashes.v2.to_bytes().hex() if status.info_hashes.has_v2() else None
-    # qBittorrent "hash" field is always the v1 hash if available, otherwise fall back to v2
-    torrent_hash = infohash_v1 or infohash_v2
+    torrent_hash = status.info_hashes.v2.to_bytes().hex()
 
     # try to match the save_path with the configured category paths
     category = detect_torrent_category(status.save_path)
@@ -774,7 +768,7 @@ def map_torrent_to_qbit(torrent: lt.torrent_handle) -> dict:
               "completed": int(status.total_done), "completion_on": int(status.completed_time or -1), "content_path": os.path.join(status.save_path, status.name),
               "dlspeed": status.download_rate, "download_path": status.save_path, "downloaded": status.all_time_download,
               "downloaded_session": status.total_payload_download, "eta": calc_eta(status), "has_metadata": status.has_metadata, "hash": torrent_hash,
-              "infohash_v1": infohash_v1 or "", "infohash_v2": infohash_v2 or "", "name": status.name, "num_complete": status.num_complete,
+              "infohash_v1": infohash_v1 or "", "infohash_v2": torrent_hash or "", "name": status.name, "num_complete": status.num_complete,
               "num_incomplete": status.num_incomplete, "num_leechs": max(0, status.num_peers - status.num_seeds), "num_seeds": status.num_seeds,
               "progress": round(status.progress, 3), "ratio": safe_ratio(status), "ratio_limit": -1, "reannounce": int(status.next_announce.total_seconds()),
               "save_path": status.save_path, "seeding_time": int(status.seeding_duration.total_seconds()), "seeding_time_limit": -1,
