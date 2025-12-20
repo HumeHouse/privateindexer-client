@@ -4,7 +4,7 @@ from privateindexer_client.core import database_migrations
 from privateindexer_client.core.config import DATABASE_FILE
 from privateindexer_client.core.logger import log
 
-LATEST_SCHEMA_VERSION = 2
+LATEST_SCHEMA_VERSION = 3
 
 TORRENTS_TABLE_SQL = """
                      CREATE TABLE IF NOT EXISTS "torrents"
@@ -18,13 +18,12 @@ TORRENTS_TABLE_SQL = """
                          uploaded      BOOLEAN not null,
                          files         INTEGER not null,
                          category      INTEGER not null,
-                         hash_v1       TEXT,
-                         hash_v2      TEXT,
+                         infohash     TEXT not null,
                          app_id       INTEGER
                      )
                      """
 
-MIGRATIONS = {0: database_migrations.v0_to_v1, 1: database_migrations.v1_to_v2, }
+MIGRATIONS = {0: database_migrations.v0_to_v1, 1: database_migrations.v1_to_v2, 2: database_migrations.v2_to_v3, }
 
 
 async def initialize():
@@ -33,6 +32,7 @@ async def initialize():
     Also performs any necessary migrations
     """
     async with aiosqlite.connect(DATABASE_FILE) as db:
+        db.row_factory = aiosqlite.Row
         # ensure tables exist
         await db.execute(TORRENTS_TABLE_SQL)
 
