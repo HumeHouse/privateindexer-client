@@ -392,7 +392,7 @@ async def periodic_scan_task():
 
                 deleted_dirs = utils.delete_empty_directories(DOWNLOADS_DIR)
                 if deleted_dirs:
-                    log.info(f"[SCAN] Removed empty {deleted_dirs} download directories")
+                    log.info(f"[SCAN] Removed {deleted_dirs} empty download directories")
 
             duplicate_entries = len(duplicate_entries.keys())
 
