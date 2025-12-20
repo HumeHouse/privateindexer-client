@@ -1,6 +1,6 @@
 fastapi~=0.126.0
 uvicorn[standard]~=0.38.0
-python-multipart~=0.0.20
+python-multipart~=0.0.21
 libtorrent~=2.0.11
 httpx~=0.28.1
 jinja2~=3.1.6
