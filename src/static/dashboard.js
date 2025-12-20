@@ -499,7 +499,7 @@ function populateInfoPanel(torrent) {
                 <dl class="row mb-2 g-0">
                     <dt class="col-4 text-end">Tracker Status:</dt><dd class="ms-2 col-7"><span class="fw-bold ${trackerWorking ? "text-success" : "text-danger"}">${trackerWorking ? 'Working' : 'Not Working'}</span> (Next announce ${nextAnnounce})</dd>
                     <dt class="col-4 text-end">Added On:</dt><dd class="ms-2 col-7">${new Date(torrent["added_on"] * 1000).toLocaleString()}</dd>
-                    <dt class="col-4 text-end">Save Path:</dt><dd class="ms-2 col-7">${torrent["save_path"]}</dd>
+                    <dt class="col-4 text-end">Save Path:</dt><dd class="ms-2 col-7 text-wrap text-break">${torrent["save_path"]}</dd>
                 </dl>
             </div>
         </div>`;
