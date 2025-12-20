@@ -135,16 +135,16 @@ async def send_torrent_to_indexer(torrent_path: str, category: int, torrent_name
                 app_id = result["app_id"]
 
         if app_id:
-            if category == RADARR_ROOT_CATEGORY:
+            if category == RADARR_ROOT_CATEGORY and RADARR_URL:
                 movie_metadata = await radarr.fetch_movie_metadata(movie_id=app_id)
                 imdbid = movie_metadata.get("imdbId")
                 tmdbid = movie_metadata.get("tmdbId")
-            elif category == SONARR_ROOT_CATEGORY:
+            elif category == SONARR_ROOT_CATEGORY and SONARR_URL:
                 series_metadata = await sonarr.fetch_series_metadata(series_id=app_id)
                 imdbid = series_metadata.get("imdbId")
                 tmdbid = series_metadata.get("tmdbId")
                 tvdbid = series_metadata.get("tvdbId")
-            elif category == LIDARR_ROOT_CATEGORY:
+            elif category == LIDARR_ROOT_CATEGORY and LIDARR_URL:
                 album_metadata = await lidarr.fetch_album_metadata(album_id=app_id)
                 artist = album_metadata.get("artist", {}).get("artistName")
                 album = album_metadata.get("title")
