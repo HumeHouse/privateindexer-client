@@ -25,18 +25,22 @@ async def periodic_cache_clean_task():
             amount_expired = cache.file_hash_cache.expire()
             amount_expired += cache.torrent_info_cache.expire()
 
+            amount_dead = 0
+
             # clean up dead file hashes
             for file_path in cache.iter_file_hash_paths():
                 if not os.path.exists(file_path):
+                    amount_dead += 1
                     cache.delete_file_hashes(file_path)
 
             # clean up dead torrent objects
             for torrent_path in cache.iter_torrent_object_paths():
                 if not os.path.exists(torrent_path):
+                    amount_dead += 1
                     cache.delete_torrent_object(torrent_path)
 
             delta = datetime.datetime.now() - before
-            log.info(f"[CACHE] Cache clean completed ({delta}): {amount_expired} expired")
+            log.info(f"[CACHE] Cache clean completed ({delta}): {amount_expired} expired, {amount_dead} deads purged")
         except Exception as e:
             log.error(f"[CACHE] Error during cache clean task: {e}")
 

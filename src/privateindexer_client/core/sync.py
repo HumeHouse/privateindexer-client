@@ -19,7 +19,7 @@ async def periodic_sync_task():
             before = datetime.datetime.now()
 
             # gather minimal data from database for each torrent from database for sync
-            local_torrents = await database.fetch_all("SELECT id, hash_v1, hash_v2 FROM torrents")
+            local_torrents = await database.fetch_all("SELECT id, infohash FROM torrents")
             total = len(local_torrents)
             log.info(f"[SYNC] Syncing {total} torrents with indexer")
 
@@ -59,7 +59,7 @@ async def periodic_sync_task():
                 download_path = torrent_data["download_path"]
 
                 # make sure the torrent and either the media or the download files exist before uploading to the server
-                if os.path.exists(torrent_path) and (os.path.exists(media_path) or os.path.exists(download_path)):
+                if os.path.exists(torrent_path) and ((media_path and os.path.exists(media_path)) or (download_path and os.path.exists(download_path))):
                     log.debug(f"[SYNC] Attempting to resend torrent to indexer: {torrent_name}")
                     if await utils.send_torrent_to_indexer(torrent_path, torrent_data["category"], torrent_name, torrent_data["app_id"]):
                         await database.execute("UPDATE torrents SET uploaded = TRUE WHERE id = ?", (torrent_data["id"],))

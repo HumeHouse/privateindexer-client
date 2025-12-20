@@ -92,7 +92,7 @@ function fetchMainData() {
 
             // update selected torrent info panel
             if (selectedTorrentId) {
-                const updatedTorrent = data["torrents"].find(t => t["infohash_v1"] === selectedTorrentId);
+                const updatedTorrent = data["torrents"].find(t => t["hash"] === selectedTorrentId);
                 if (updatedTorrent) populateInfoPanel(updatedTorrent);
             }
 
@@ -385,9 +385,9 @@ function renderTable(torrents) {
         const rowClass = "state-" + torrent["state"];
         const progress = (torrent["progress"] * 100).toFixed(1);
 
-        const selectedClass = torrent["infohash_v1"] === selectedTorrentId ? "selected-row" : "";
+        const selectedClass = torrent["hash"] === selectedTorrentId ? "selected-row" : "";
 
-        const row = $(`<tr class="${selectedClass}" data-infohash="${torrent["infohash_v1"]}"></tr>`);
+        const row = $(`<tr class="${selectedClass}" data-infohash="${torrent["hash"]}"></tr>`);
 
         row.toggleClass("d-none", !torrent["name"].toLowerCase().includes(filter));
 
@@ -417,7 +417,7 @@ function renderTable(torrents) {
 
         // click handler
         $tbody.find("tr").last().click(() => {
-            selectedTorrentId = torrent["infohash_v1"];
+            selectedTorrentId = torrent["hash"];
             $tbody.find("tr").removeClass("selected-row");
             $tbody.find(`tr[data-infohash='${selectedTorrentId}']`).addClass("selected-row");
             populateInfoPanel(torrent);
@@ -467,6 +467,15 @@ function populateInfoPanel(torrent) {
     // show delete button if torrent is not seeding
     $("#delete-button").toggleClass("d-none", ["uploading", "stalledUP"].includes(torrent["state"]));
 
+    let trackerData = torrent["trackers"][0];
+    let trackerWorking = !!trackerData["verified"];
+    let nextAnnounce = "N/A";
+    if (trackerData["next_announce"]) {
+        const now = Math.floor(Date.now() / 1000);
+        const delta = trackerData["next_announce"] - now;
+        nextAnnounce = formatTime(delta);
+    }
+
     // general info
     const generalHtml = `
         <div class="row g-0">
@@ -475,9 +484,7 @@ function populateInfoPanel(torrent) {
                     <dt class="col-4 text-end">Downloaded:</dt><dd class="ms-2 col-7">${formatBytes(torrent["downloaded"])} (${formatBytes(torrent["downloaded_session"])} this session)</dd>
                     <dt class="col-4 text-end">Download Speed:</dt><dd class="ms-2 col-7">${formatSpeed(torrent["dlspeed"])}</dd>
                     <dt class="col-4 text-end">Progress:</dt><dd class="ms-2 col-7">${(torrent["progress"] * 100).toFixed(1)}%</dd>
-                    
-                    <dt class="col-4 text-end">Info Hash v1:</dt><dd class="ms-2 col-7">${torrent["infohash_v1"]}</dd>
-                    <dt class="col-4 text-end">Info Hash v2:</dt><dd class="ms-2 col-7">${torrent["infohash_v2"] || "N/A"}</dd>
+                    <dt class="col-4 text-end">Info Hash:</dt><dd class="ms-2 col-7">${torrent["hash"] || "N/A"}</dd>
                 </dl>
             </div>
             <div class="col-md-4">
@@ -490,29 +497,14 @@ function populateInfoPanel(torrent) {
             </div>
             <div class="col-md-4">
                 <dl class="row mb-2 g-0">
-                    <dt class="col-4 text-end">ETA:</dt><dd class="ms-2 col-7">${formatTime(torrent["eta"])}</dd>
+                    <dt class="col-4 text-end">Tracker Status:</dt><dd class="ms-2 col-7"><span class="fw-bold ${trackerWorking ? "text-success" : "text-danger"}">${trackerWorking ? 'Working' : 'Not Working'}</span> (Next announce ${nextAnnounce})</dd>
                     <dt class="col-4 text-end">Added On:</dt><dd class="ms-2 col-7">${new Date(torrent["added_on"] * 1000).toLocaleString()}</dd>
-                    <dt class="col-4 text-end">Save Path:</dt><dd class="ms-2 col-7">${torrent["save_path"]}</dd>
+                    <dt class="col-4 text-end">Save Path:</dt><dd class="ms-2 col-7 text-wrap text-break">${torrent["save_path"]}</dd>
                 </dl>
             </div>
         </div>`;
 
     $("#general-content").html(generalHtml);
-
-    // trackers table
-    let trackerHtml = `<table class="table table-sm table-striped">
-        <thead><tr><th>URL</th><th>Working</th><th>Next Announce</th></tr></thead>
-        <tbody>`;
-    torrent["trackers"].forEach(tracker => {
-        let working = !!tracker["verified"];
-        trackerHtml += `<tr>
-                <td>${tracker["url"]}</td>
-                <td class="${working ? "bg-success" : "bg-danger"}">${working ? 'Yes' : 'No'}</td>
-                <td>${tracker["next_announce"] ? new Date(tracker["next_announce"] * 1000).toLocaleString() : 'N/A'}</td>
-            </tr>`;
-    });
-    trackerHtml += `</tbody></table>`;
-    $("#tracker-content").html(trackerHtml);
 
     // peers table
     let peersHtml = `<table class="table table-sm table-striped">
