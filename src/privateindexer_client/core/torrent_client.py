@@ -278,9 +278,27 @@ async def load_fastresume_data():
     log.info("[FASTRESUME] Loading fastresume data into torrent client, this may take a while")
     before = datetime.datetime.now()
 
-    # build a map of all the hashes and their respective torrent files
+    # fetch all torrents from database
     torrents = await database.fetch_all("SELECT * FROM torrents")
-    torrent_hash_path_map = {t["infohash"]: t["torrent_path"] for t in torrents}
+
+    # build a map of all the hashes and their respective torrent data
+    torrent_map = {t["infohash"]: t for t in torrents}
+
+    # cleanup dangling fastresume files
+    for fname in os.listdir(FASTRESUME_DIR):
+        # ignore files we don't care about
+        if not fname.endswith(".fastresume"):
+            continue
+        torrent_hash = os.path.splitext(fname)[0]
+        torrent = torrent_map.get(torrent_hash)
+        fastresume_path = os.path.join(FASTRESUME_DIR, fname)
+
+        # remove fastresume files which do not have a matching torrent file
+        if not torrent or not os.path.exists(torrent["torrent_path"]):
+            for path in [fastresume_path, f"{fastresume_path}.ignore"]:
+                if os.path.exists(path):
+                    os.unlink(path)
+            log.info(f"[FASTRESUME] Removed dangling fastresume data with hash: {torrent_hash}")
 
     loop = asyncio.get_running_loop()
     futures = []
@@ -288,67 +306,24 @@ async def load_fastresume_data():
     # spawn a new executor
     executor = thread_executor.get_fastresume_executor()
 
-    # loop through the files in the fastresume directory
-    for fname in os.listdir(FASTRESUME_DIR):
-        # ignore files we don't care about
-        if not fname.endswith(".fastresume"):
-            continue
-        fastresume_path = os.path.join(FASTRESUME_DIR, fname)
-        torrent_hash = os.path.splitext(fname)[0]
-        torrent_path = torrent_hash_path_map.get(torrent_hash)
-
-        # remove fastresume files which do not have a matching torrent file
-        if not torrent_path or not os.path.exists(torrent_path):
-            ignore_file = f"{fastresume_path}.ignore"
-            for file in [fastresume_path, ignore_file]:
-                if os.path.exists(file):
-                    os.unlink(file)
-            log.info(f"[FASTRESUME] Removed dangling fastresume data with hash: {torrent_hash}")
-            continue
-
-        log.debug(f"[FASTRESUME] Queueing fastresume data processing for hash: {torrent_hash}")
-        # dispatch the fastresume file to the pool of worker threads
-        futures.append(loop.run_in_executor(executor, process_fastresume_file, fastresume_path, torrent_hash, torrent_path))
-
-    log.info(f"[FASTRESUME] Queued {len(futures)} fastresume data files for processing")
-
-    # collect results as they finish
-    async for future in asyncio.as_completed(futures):
-        try:
-            raw_data, torrent_hash, torrent_path = await future
-            if raw_data and os.path.exists(torrent_path):
-                # assemble the raw data into fastresume add_torrent_params
-                atp = lt.read_resume_data(raw_data)
-
-                # remove the fastresume data if it points to a save path that no longer exists
-                if not os.path.exists(atp.save_path):
-                    fastresume_file = os.path.join(FASTRESUME_DIR, f"{torrent_hash}.fastresume")
-                    ignore_file = f"{fastresume_file}.ignore"
-                    for file in [fastresume_file, ignore_file]:
-                        if os.path.exists(file):
-                            os.unlink(file)
-                    log.warning(f"[FASTRESUME] Removed invalid fastresume data with hash: {torrent_hash}")
-                    continue
-
-                # attach the torrent info to the params
-                atp.ti = lt.torrent_info(torrent_path)
-                # add the torrent to the session
-                libtorrent_session.async_add_torrent(atp)
-        except Exception as e:
-            log.error(f"[FASTRESUME] Error in fastresume data post-processing: {e}")
-
-    executor.shutdown()
-    log.debug(f"[FASTRESUME] Executor workers closed")
-
-    log.info(f"[FASTRESUME] Checking for torrents without fastresume data")
-
     # loop through the torrents in the database
     for torrent in torrents:
-        # skip the torrent if it's already in the torrent client
-        if await torrent_exists_in_session(torrent.get("infohash")):
+        torrent_hash = torrent["infohash"]
+        torrent_path = torrent["torrent_path"]
+        fastresume_file = os.path.join(FASTRESUME_DIR, f"{torrent_hash}.fastresume")
+
+        # load the torrent if fastresume data exists
+        if os.path.exists(fastresume_file):
+            log.debug(f"[FASTRESUME] Queueing fastresume data processing for hash: {torrent_hash}")
+            # dispatch the fastresume file to the pool of worker threads
+            futures.append(loop.run_in_executor(executor, process_fastresume_file, fastresume_file, torrent_hash, torrent_path))
             continue
 
-        torrent_exists = os.path.exists(torrent["torrent_path"])
+        # skip the torrent if it's already in the torrent client
+        if await torrent_exists_in_session(torrent_hash):
+            continue
+
+        # if no fastresume data exists, add the torrent manually so libtorrent can do a re-check and continue seeding
         download_path = torrent.get("download_path")
         download_exists = os.path.exists(download_path) if download_path else False
         media_path = torrent.get("media_path")
@@ -356,11 +331,42 @@ async def load_fastresume_data():
 
         # try to seed the download media first, then fall back to media path
         seed_path = download_path if download_exists else (media_path if media_exists else None)
-        if torrent_exists and seed_path:
-            if await add_torrent_for_seeding(torrent["torrent_path"], seed_path):
+        if os.path.exists(torrent_path) and seed_path:
+            if await add_torrent_for_seeding(torrent_path, seed_path):
                 log.info(f"[FASTRESUME] Re-added '{torrent["name"]}' for seeding from {"download" if download_exists else "media"} path")
             else:
                 log.warning(f"[FASTRESUME] Unable to re-add '{torrent["name"]}' for seeding from {"download" if download_exists else "media"} path")
+
+    log.info(f"[FASTRESUME] Queued {len(futures)} fastresume data files for processing")
+
+    # collect results as they finish
+    async for future in asyncio.as_completed(futures):
+        try:
+            raw_data, torrent_hash, torrent_path = await future
+            if not raw_data or not os.path.exists(torrent_path):
+                continue
+            # assemble the raw data into fastresume add_torrent_params
+            atp = lt.read_resume_data(raw_data)
+
+            # remove the fastresume data if it points to a save path that no longer exists
+            if not os.path.exists(atp.save_path):
+                fastresume_file = os.path.join(FASTRESUME_DIR, f"{torrent_hash}.fastresume")
+                ignore_file = f"{fastresume_file}.ignore"
+                for file in [fastresume_file, ignore_file]:
+                    if os.path.exists(file):
+                        os.unlink(file)
+                log.warning(f"[FASTRESUME] Removed invalid fastresume data with hash: {torrent_hash}")
+                continue
+
+            # attach the torrent info to the params
+            atp.ti = lt.torrent_info(torrent_path)
+            # add the torrent to the session
+            libtorrent_session.async_add_torrent(atp)
+        except Exception as e:
+            log.error(f"[FASTRESUME] Error in fastresume data post-processing: {e}")
+
+    executor.shutdown()
+    log.debug(f"[FASTRESUME] Executor workers closed")
 
     delta = datetime.datetime.now() - before
     log.info(f"[FASTRESUME] Finished loading fastresume data ({delta})")
