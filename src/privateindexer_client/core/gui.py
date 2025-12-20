@@ -70,7 +70,7 @@ async def delete_torrent(torrent_hash: str = Query(), remove_downloads: bool = Q
     log.debug("[GUI] GUI request to delete torrent")
 
     # gather the info about the torrent
-    result = await database.fetch_one("SELECT infohash, torrent_path FROM torrents WHERE infohash = ?", (torrent_hash, torrent_hash,))
+    result = await database.fetch_one("SELECT infohash, torrent_path FROM torrents WHERE infohash = ?", (torrent_hash,))
 
     if not result:
         log.error(f"[GUI] Torrent hash not found: {torrent_hash}")

@@ -315,7 +315,7 @@ async def delete_torrent(
 
     for torrent_hash in split_hashes:
         # query database for torrent info
-        result = await database.fetch_one("SELECT infohash, torrent_path FROM torrents WHERE infohash = ?", (torrent_hash, torrent_hash,))
+        result = await database.fetch_one("SELECT infohash, torrent_path FROM torrents WHERE infohash = ?", (torrent_hash,))
 
         if not result:
             log.warning(f"[API] Torrent hash not found during delete request: {torrent_hash}")
