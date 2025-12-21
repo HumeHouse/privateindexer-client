@@ -29,8 +29,7 @@ async def dashboard_maindata():
     main_data = {}
 
     try:
-        torrents = torrent_client.get_all_torrents()
-        mapped = [utils.map_torrent_to_qbit(t) for t in torrents]
+        mapped = await utils.map_torrents_to_qbit(torrent_client.get_all_torrents())
 
         main_data["torrents"] = mapped
     except Exception as e:
