@@ -110,8 +110,7 @@ async def get_torrent_info(request: Request, category: str = Query(None)):
     log.debug(f"[API] Torrent list requested{f" (category: {category})" if category else ""} ({request.headers.get("user-agent")})")
 
     try:
-        torrents = torrent_client.get_all_torrents()
-        mapped = [utils.map_torrent_to_qbit(t) for t in torrents]
+        mapped = await utils.map_torrents_to_qbit(torrent_client.get_all_torrents())
 
         if category:
             mapped = [t for t in mapped if t.get("category") == category]
@@ -132,8 +131,7 @@ async def get_main_data(request: Request):
     main_data = {}
 
     try:
-        torrents = torrent_client.get_all_torrents()
-        mapped = [utils.map_torrent_to_qbit(t) for t in torrents]
+        mapped = await utils.map_torrents_to_qbit(torrent_client.get_all_torrents())
 
         main_data["torrents"] = mapped
     except Exception as e:
