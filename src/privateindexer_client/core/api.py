@@ -241,7 +241,6 @@ async def add_torrent(
 
         log.debug(f"[API] Validating torrent: {torrent_name}")
         info = lt.torrent_info(torrent_file)
-        torrent_name = info.name()
 
         # make sure the torrent we're trying to download has v2 infohash
         hashes = info.info_hashes()
