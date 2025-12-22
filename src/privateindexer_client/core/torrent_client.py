@@ -376,7 +376,7 @@ def save_all_fastresume_data() -> tuple[int, int]:
     Immediately schedules a save of fastresume data for all torrents in the session
     This function waits for all alerts to clear before finishing
     """
-    torrents = libtorrent_session.get_torrents()
+    torrents = get_all_torrents()
     total = len(torrents)
     completed = 0
     try:
@@ -442,7 +442,7 @@ async def periodic_torrent_status_task():
             libtorrent_session.post_session_stats()
 
             # loop through torrents and check their status
-            torrents = libtorrent_session.get_torrents()
+            torrents = get_all_torrents()
             for torrent in torrents:
                 status = torrent.status()
                 # get the infohash stored as raw bytes
