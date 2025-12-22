@@ -228,6 +228,10 @@ async def get_managed_media_data() -> list[MediaDataEntry]:
     Returns list of data dicts for all tracked media
     Includes app ID (Sonarr/Radarr) and optionally a title
     """
+    # check if we have category paths available, otherwise update from apps
+    if not _torznab_category_paths:
+        await update_torznab_category_paths()
+
     tracked_root_folders = [cat_info.get("path") for cat_info in _torznab_category_paths]
     media_data = []
 
