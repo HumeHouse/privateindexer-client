@@ -474,7 +474,7 @@ def path_exists_in_torrent(torrent_path: str, target_file_path: str) -> bool:
     return False
 
 
-def find_existing_torrent(media_path: str, ignored_torrents: list[str]) -> str | None:
+def find_existing_torrent(media_path: str, ignored_torrents: set[str]) -> str | None:
     """
     Given a media path, check if a torrent already exists in TORRENTS_DIR with the same name or hash
     Returns the existing torrent path if found, otherwise None
