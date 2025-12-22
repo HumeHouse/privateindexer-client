@@ -326,8 +326,8 @@ async def periodic_scan_task():
                         if os.path.commonpath([searched_media_path, media_path]) != media_path:
                             continue
 
-                        # loop through the media data to check for a path match
-                        if not any(media_data_entry.path == media_path for media_data_entry in media_data_entries):
+                        # check the media data entries for a path match
+                        if media_path not in media_entry_path_map:
                             # if no match was found, purge the multi-file torrent because it lost discovery - individual episodes exist instead
                             removed_entries += 1
                             # remove from torrent client
@@ -354,11 +354,8 @@ async def periodic_scan_task():
                     removed_entries += 1
                     # remove from torrent client
                     await torrent_client.remove_torrent_by_hash(duplicate_entry.get("infohash"))
-                    # remove torrent file
-                    if os.path.exists(duplicate_torrent_path):
-                        os.unlink(duplicate_torrent_path)
-                    # remove from database
-                    await database.execute("DELETE FROM torrents WHERE id = ?", (duplicate_entry["id"],))
+                    # remove torrent file and from database
+                    await utils.remove_torrent_from_database(duplicate_entry.get("infohash"), torrent_file=duplicate_torrent_path)
                     log.info(f"[SCAN] Purged duplicate: {duplicate_entry['name']}")
 
             # only purge dangling torrents if the user has this option enabled
