@@ -96,7 +96,7 @@ async def fetch_music_library(tracked_root_folders: list[str]) -> list[dict]:
             album_list = response.json()
 
         # key albums by their ID
-        album_metadata = {album["id"]: album for album in album_list}
+        all_album_metadata = {album["id"]: album for album in album_list}
 
         final_entries = []
 
@@ -117,7 +117,7 @@ async def fetch_music_library(tracked_root_folders: list[str]) -> list[dict]:
 
             # work through each album
             for album_id, album_tracks in albums.items():
-                album_metadata = album_metadata[album_id]
+                album_metadata = all_album_metadata[album_id]
                 album_stats = album_metadata["statistics"]
 
                 # get the percent of tracks for album that are currently tracked on disk
