@@ -65,7 +65,7 @@ async def scan_media_library(media_data_entries: list[MediaDataEntry], hash_exec
     for media_data_entry in media_data_entries:
         file_path = media_data_entry.path
 
-        # make sure we can see whatever was passed through from Radarr/Sonarr
+        # make sure we can see whatever was passed through from the *arr app
         if not os.path.exists(file_path):
             log.debug(f"[SCAN] File path not found or accessible, skipped: {file_path}")
             # increment global items counter
