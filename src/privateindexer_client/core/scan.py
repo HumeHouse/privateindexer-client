@@ -413,9 +413,9 @@ async def periodic_scan_task():
                             os.unlink(file_path)
                             log.info(f"[SCAN] Removed untracked download: {file_path}")
 
-                deleted_dirs = utils.delete_empty_directories(DOWNLOADS_DIR)
-                if deleted_dirs:
-                    log.info(f"[SCAN] Removed {deleted_dirs} empty download directories")
+            deleted_dirs = utils.delete_empty_downloads_directories()
+            if deleted_dirs:
+                log.info(f"[SCAN] Removed {deleted_dirs} empty download directories")
 
             duplicate_entries = len(duplicate_entries.keys())
 
