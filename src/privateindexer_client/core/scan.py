@@ -405,7 +405,7 @@ async def periodic_scan_task():
                      f"total {total_files} files, {ignored_files} ignored, {updated_files} updated, {created_files} created, {removed_entries} removed, {duplicate_entries} duplicates")
 
         except Exception as e:
-            log.error(f"[SCAN] Error during periodic scan: {e}")
+            log.error(f"[SCAN] Exception during periodic scan: {e}")
 
         # set scan state back to idle
         SCAN_PROCESS_STATE = ScannerStates.IDLE.value
