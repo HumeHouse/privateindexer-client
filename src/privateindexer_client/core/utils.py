@@ -194,7 +194,7 @@ async def send_torrent_to_indexer(torrent_path: str, category: int, torrent_name
 
 async def update_torznab_category_paths() -> set[dict[str, str]]:
     """
-    Fetches root folders from Radarr/Sonarr and updates the tracked paths with valid directories
+    Fetches root folders from *arr apps and updates the tracked paths with valid directories
     """
     global _torznab_category_paths
     _torznab_category_paths = []
@@ -226,7 +226,7 @@ async def update_torznab_category_paths() -> set[dict[str, str]]:
 async def get_managed_media_data() -> list[MediaDataEntry]:
     """
     Returns list of data dicts for all tracked media
-    Includes app ID (Sonarr/Radarr) and optionally a title
+    Includes app ID (*arr apps) and optionally a title
     """
     # check if we have category paths available, otherwise update from apps
     if not _torznab_category_paths:
