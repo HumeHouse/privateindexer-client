@@ -102,6 +102,16 @@ async def scan_media_library(hash_executor: ProcessPoolExecutor) -> tuple[int, i
                 await database.execute("UPDATE torrents SET app_id = ?, uploaded = FALSE WHERE id = ?", (media_data_entry.app_id, torrent_id,))
                 log.info(f"[SCAN] Updated app ID for media at '{file_path}', will re-upload to server during next sync")
 
+            # check if the torrent name is correct in the database
+            if torrent_name != media_data_entry.title:
+                has_updates = True
+                new_name = media_data_entry.title
+                await database.execute("UPDATE torrents SET name = ? WHERE id = ?", (new_name, torrent_id,))
+                log.info(f"[SCAN] Updated local torrent name from '{torrent_name}' to '{new_name}'")
+
+            if has_updates:
+                updated_files += 1
+
             # only ignore the creation process if the torrent file exists
             if os.path.exists(torrent_file):
                 ignored_files += 1
@@ -347,13 +357,6 @@ async def periodic_scan_task():
 
                         duplicate_entries[searching_torrent["id"]] = searching_torrent
                         log.warning(f"[SCAN] Potential duplicate seed found for '{torrent_name}': {searching_torrent['name']}")
-
-                # case where the name in the database doesn't match the torrent naming system
-                if media_path and media_path in media_entry_path_map and media_entry_path_map[media_path].title != torrent_name:
-                    new_name = media_entry_path_map[media_path].title
-                    updated_files += 1
-                    await database.execute("UPDATE torrents SET name = ? WHERE id = ?", (new_name, torrent_id,))
-                    log.info(f"[SCAN] Updated local torrent name from '{torrent_name}' to '{new_name}'")
 
             # purge duplicate seeds if the user has this option enabled
             if PURGE_DUPLICATE_SEEDS:
