@@ -53,9 +53,9 @@ async def scan_media_library(hash_executor: ProcessPoolExecutor) -> tuple[int, i
     # set scan state to pre-scan
     SCAN_PROCESS_STATE = ScannerStates.PRE_SCAN.value
 
-    torrents = await database.fetch_all("SELECT media_path, torrent_path, app_id FROM torrents WHERE media_path IS NOT NULL")
-    existing_media = {t["media_path"]: t["torrent_path"] for t in torrents}
-    existing_app_ids = {t["media_path"]: t["app_id"] for t in torrents}
+    torrents = await database.fetch_all("SELECT id, name, media_path, torrent_path, app_id FROM torrents WHERE media_path IS NOT NULL")
+    torrent_data_map = {torrent["media_path"]: torrent for torrent in torrents}
+    ignored_torrents = set([torrent["torrent_path"] for torrent in torrents])
 
     total_files = 0
     ignored_files = 0
@@ -87,15 +87,23 @@ async def scan_media_library(hash_executor: ProcessPoolExecutor) -> tuple[int, i
         total_files += 1
 
         # ignore the media file if the current path is matches what is in the database
-        if file_path in existing_media:
+        if file_path in torrent_data_map:
+            has_updates = False
+
+            torrent_data = torrent_data_map[file_path]
+            torrent_id = torrent_data["id"]
+            torrent_name = torrent_data["name"]
+            torrent_file = torrent_data["torrent_path"]
+
             # check if the app_id is correct in the database
-            if existing_app_ids[file_path] != media_data_entry.app_id:
+            if torrent_data["app_id"] != media_data_entry.app_id:
+                has_updates = True
                 # trigger a re-upload to make sure the app metadata gets synced to the server again
-                await database.execute("UPDATE torrents SET app_id = ?, uploaded = FALSE WHERE media_path = ?", (media_data_entry.app_id, file_path,))
+                await database.execute("UPDATE torrents SET app_id = ?, uploaded = FALSE WHERE id = ?", (media_data_entry.app_id, torrent_id,))
                 log.info(f"[SCAN] Updated app ID for media at '{file_path}', will re-upload to server during next sync")
 
             # only ignore the creation process if the torrent file exists
-            if os.path.exists(existing_media[file_path]):
+            if os.path.exists(torrent_file):
                 ignored_files += 1
                 # increment global items counter
                 SCAN_DONE_ITEMS += 1
@@ -103,11 +111,11 @@ async def scan_media_library(hash_executor: ProcessPoolExecutor) -> tuple[int, i
 
         log.debug(f"[SCAN] Trying to locate torrent file for: {file_path}")
         # ignore the media file if we can find a matching torrent file for it
-        find_future = loop.run_in_executor(hash_executor, utils.find_existing_torrent, file_path, list(existing_media.values()))
+        find_future = loop.run_in_executor(hash_executor, utils.find_existing_torrent, file_path, ignored_torrents)
         torrent_file = await find_future
         if torrent_file:
             # ignore this torrent file on subsequent loops
-            existing_media[file_path] = torrent_file
+            ignored_torrents.add(torrent_file)
 
             # try to update the media path in the database to match the current path
             result = await database.fetch_one("SELECT id, name, media_path FROM torrents WHERE torrent_path = ?", (torrent_file,))
@@ -125,7 +133,7 @@ async def scan_media_library(hash_executor: ProcessPoolExecutor) -> tuple[int, i
                     SCAN_DONE_ITEMS += 1
                     continue
                 else:
-                    log.info(f"[SCAN] File was renamed, media path not updated: {result["name"]}")
+                    log.debug(f"[SCAN] File was modified, media path not updated: {result["name"]}")
 
         # construct the scan job
         scan_job = ScanTorrentJob(file_path)
