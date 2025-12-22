@@ -250,7 +250,11 @@ async def periodic_scan_task():
                 log.warning(f"[SCAN] No root folders accessible for scanning")
                 total_files, ignored_files, updated_files, created_files = 0, 0, 0, 0
             else:
-                total_files, ignored_files, updated_files, created_files = await scan_media_library(media_data_entries, hash_executor)
+                try:
+                    total_files, ignored_files, updated_files, created_files = await scan_media_library(media_data_entries, hash_executor)
+                except Exception as e:
+                    total_files, ignored_files, updated_files, created_files = 0, 0, 0, 0
+                    log.error(f"[SCAN] Exception during periodic scan task (scan/processing): {e}")
 
             log.debug("[SCAN] Scan complete, running post-scan checks")
 
@@ -424,7 +428,7 @@ async def periodic_scan_task():
                      f"total {total_files} files, {ignored_files} ignored, {updated_files} updated, {created_files} created, {removed_entries} removed, {duplicate_entries} duplicates")
 
         except Exception as e:
-            log.error(f"[SCAN] Exception during periodic scan: {e}")
+            log.error(f"[SCAN] Exception during periodic scan task (pre/post-processing): {e}")
 
         # set scan state back to idle
         SCAN_PROCESS_STATE = ScannerStates.IDLE.value
