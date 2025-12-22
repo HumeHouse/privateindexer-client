@@ -19,7 +19,7 @@ async def test_connection():
             if response.status_code == 200:
                 log.info(f"[SONARR] Connected to Sonarr")
             else:
-                log.warning(f"[SONARR] Failed to connect to Sonarr: {response.status_code}")
+                log.critical(f"[SONARR] Failed to connect to Sonarr: {response.status_code}")
     except Exception as e:
         log.error(f"[SONARR] Exception while testing Sonarr connection: {e}")
 
@@ -34,7 +34,7 @@ async def fetch_root_folders() -> list[str]:
             response = await client.get(f"{SONARR_URL}/api/v3/rootfolder", headers={"X-API-Key": SONARR_API_KEY}, timeout=30)
 
             if response.status_code != 200:
-                log.warning(f"[SONARR] Failed to fetch root folders: {response.status_code}")
+                log.critical(f"[SONARR] Failed to fetch root folders: {response.status_code}")
                 return []
 
             root_folders = response.json()
@@ -54,7 +54,7 @@ async def fetch_root_folders() -> list[str]:
 
             return tracked_root_folders
     except Exception as e:
-        log.error(f"[SONARR] Failed to fetch root folders: {e}")
+        log.error(f"[SONARR] Exception while fetching root folders: {e}")
         return []
 
 
@@ -68,7 +68,7 @@ async def fetch_tv_library(tracked_root_folders: list[str]) -> list[dict]:
             response = await client.get(f"{SONARR_URL}/api/v3/series", headers={"X-API-Key": SONARR_API_KEY}, timeout=30)
 
             if response.status_code != 200:
-                log.warning(f"[SONARR] Failed to fetch TV library: {response.status_code}")
+                log.critical(f"[SONARR] Failed to fetch TV library: {response.status_code}")
                 return []
 
             series_list = response.json()
@@ -209,7 +209,7 @@ async def fetch_series_metadata(series_id: str) -> dict:
             response = await client.get(f"{SONARR_URL}/api/v3/series/{series_id}", headers={"X-API-Key": SONARR_API_KEY}, timeout=30)
 
             if response.status_code != 200:
-                log.warning(f"[SONARR] Failed to fetch series metadata: {response.status_code}")
+                log.critical(f"[SONARR] Failed to fetch series metadata: {response.status_code}")
                 return []
 
             series_response = response.json()

@@ -117,7 +117,7 @@ async def get_torrent_info(request: Request, category: str = Query(None)):
 
         return JSONResponse(mapped)
     except Exception as e:
-        log.error(f"[API] Failed to get torrent status: {e}")
+        log.error(f"[API] Exception while getting torrent status: {e}")
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
@@ -135,7 +135,7 @@ async def get_main_data(request: Request):
 
         main_data["torrents"] = mapped
     except Exception as e:
-        log.error(f"[API] Failed to get torrent list: {e}")
+        log.error(f"[API] Exception while getting torrent list: {e}")
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
     try:
@@ -144,7 +144,7 @@ async def get_main_data(request: Request):
 
         main_data["server_state"] = utils.map_stats_to_qbit(stats_now, time_now, stats_prev, time_prev, all_time_download, all_time_upload)
     except Exception as e:
-        log.error(f"[API] Failed to get session info: {e}")
+        log.error(f"[API] Exception while getting session info: {e}")
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR)
     return JSONResponse(main_data)
 
@@ -181,7 +181,7 @@ async def create_category(request: Request, category: str = Form()):
     try:
         utils.add_torrent_category(category, save_dir)
     except Exception as e:
-        log.error(f"[API] Failed to create category directory {save_dir}: {e}")
+        log.error(f"[API] Exception while creating category directory {save_dir}: {e}")
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
     log.info(f"[API] Created new category '{category}' at {save_dir} ({request.headers.get("user-agent")})")
@@ -236,7 +236,7 @@ async def add_torrent(
             with open(torrent_file, "wb") as f:
                 f.write(contents)
         except Exception as e:
-            log.error(f"[API] Error while saving torrent '{torrent_name}': {e}")
+            log.error(f"[API] Exception while saving torrent '{torrent_name}': {e}")
             raise HTTPException(status_code=status.INTERNAL_SERVER_ERROR)
 
         log.debug(f"[API] Validating torrent: {torrent_name}")
@@ -259,10 +259,10 @@ async def add_torrent(
                 # this means the torrent exists in the server database
                 pass
             elif response.status_code == 404:
-                log.warning(f"[API] Refusing to keep torrent, file does not come from PrivateIndexer: {torrent_name}")
+                log.warning(f"[API] Refusing to keep torrent, file not found on PrivateIndexer server: {torrent_name}")
                 raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST)
             else:
-                log.error(f"[API] Unknown error code occurred when validating '{torrent_name}' with indexer: {response.status_code}")
+                log.critical(f"[API] Unknown error code occurred when validating '{torrent_name}' with indexer: {response.status_code} - {response.text}")
                 raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST)
     else:
         if not urls.startswith(INDEXER_API_URL):
@@ -273,13 +273,13 @@ async def add_torrent(
             async with httpx_request.get_client() as client:
                 response = await client.get(urls)
                 if response.status_code != 200:
-                    log.error(f"[API] Failed to download new torrent file: {urls}")
+                    log.critical(f"[API] Failed to download new torrent file ({urls}): {response.status_code} - {response.text}")
                     raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST)
                 torrent_file = os.path.join(tempfile.gettempdir(), os.path.basename(urls))
                 with open(torrent_file, "wb") as f:
                     f.write(response.content)
         except Exception as e:
-            log.error(f"[API] Error while downloading URL '{urls}': {e}")
+            log.error(f"[API] Exception while downloading URL '{urls}': {e}")
             raise HTTPException(status_code=status.INTERNAL_SERVER_ERROR)
 
     # attempt to add the torrent to the download client and match qBittorrent return text
@@ -325,14 +325,14 @@ async def delete_torrent(
 
         # remove from torrent client
         if not await torrent_client.remove_torrent_by_hash(infohash, deleteFiles):
-            log.error(f"[API] Failed to remove torrent with hash '{torrent_hash}' from torrent client")
+            log.critical(f"[API] Failed to remove torrent with hash '{torrent_hash}' from torrent client")
             failures += 1
 
         try:
             # remove from database and delete torrent file
             await utils.remove_torrent_from_database(infohash, torrent_file=torrent_path)
         except Exception as e:
-            log.error(f"[API] Failed to delete torrent file with hash '{torrent_hash}': {e}")
+            log.error(f"[API] Exception while deleting torrent file with hash '{torrent_hash}': {e}")
             failures += 1
             continue
 

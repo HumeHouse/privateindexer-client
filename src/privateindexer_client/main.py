@@ -61,7 +61,7 @@ async def lifespan(_: FastAPI):
     if os.path.exists(DOWNLOADS_DIR):
         log.info(f"[APP] Downloads directory: {DOWNLOADS_DIR}")
     else:
-        log.error(f"[APP] Downloads directory doesn't exist or not accessible: {DOWNLOADS_DIR}")
+        log.critical(f"[APP] Downloads directory doesn't exist or not accessible: {DOWNLOADS_DIR}")
         exit(1)
 
     log.info(f"[APP] Scan interval: {SCAN_INTERVAL} seconds")
@@ -74,7 +74,7 @@ async def lifespan(_: FastAPI):
     # test Radarr connection if user has it configured
     if RADARR_URL:
         if not RADARR_API_KEY:
-            log.error(f"[APP] No API key provided for Radarr")
+            log.critical(f"[APP] No API key provided for Radarr")
             exit(1)
 
         await radarr.test_connection()
@@ -82,7 +82,7 @@ async def lifespan(_: FastAPI):
     # test Sonarr if user has it configured
     if SONARR_URL:
         if not SONARR_API_KEY:
-            log.error(f"[APP] No API key provided for Sonarr")
+            log.critical(f"[APP] No API key provided for Sonarr")
             exit(1)
 
         await sonarr.test_connection()
@@ -90,7 +90,7 @@ async def lifespan(_: FastAPI):
     # test Lidarr connection if user has it configured
     if LIDARR_URL:
         if not LIDARR_API_KEY:
-            log.error(f"[APP] No API key provided for Lidarr")
+            log.critical(f"[APP] No API key provided for Lidarr")
             exit(1)
 
         await lidarr.test_connection()
@@ -121,14 +121,14 @@ async def lifespan(_: FastAPI):
                 if is_reachable:
                     log.info(f"[APP] PrivateIndexer server successfully verified we are REACHABLE at {announce_ip}:{TORRENTING_PORT}")
                 else:
-                    log.error(f"[APP] PrivateIndexer server is UNABLE TO REACH US at {announce_ip}:{TORRENTING_PORT} - check your port forwarding settings")
+                    log.critical(f"[APP] PrivateIndexer server is UNABLE TO REACH US at {announce_ip}:{TORRENTING_PORT} - check your port forwarding settings")
             elif status_code == 403:
-                log.error("[APP] API key rejected by PrivateIndexer server")
+                log.critical("[APP] API key rejected by PrivateIndexer server")
                 exit(1)
             else:
                 log.warning(f"[APP] Unable to validate API key and port status with PrivateIndexer server - server could be down (status {status_code})")
     except Exception as e:
-        log.error(f"[APP] Failed to validate API key: {e}")
+        log.error(f"[APP] Exception while validating API key: {e}")
         exit(1)
 
     log.debug("[APP] Loading cache")

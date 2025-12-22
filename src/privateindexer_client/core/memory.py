@@ -46,4 +46,4 @@ async def periodic_memory_task():
                      f"Peak: {format_bytes(_max_memory)}")
 
         except Exception as e:
-            log.error(f"[MEMORY] Error during memory task: {e}")
+            log.error(f"[MEMORY] Exception during memory task: {e}")

@@ -42,7 +42,7 @@ async def periodic_cache_clean_task():
             delta = datetime.datetime.now() - before
             log.info(f"[CACHE] Cache clean completed ({delta}): {amount_expired} expired, {amount_dead} deads purged")
         except Exception as e:
-            log.error(f"[CACHE] Error during cache clean task: {e}")
+            log.error(f"[CACHE] Exception during cache clean task: {e}")
 
 
 class Cache:

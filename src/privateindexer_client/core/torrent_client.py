@@ -112,17 +112,16 @@ async def add_torrent_for_seeding(torrent_file: str, save_path: str) -> bool:
     Adds a single torrent file to libtorrent session in seed mode
     """
     if not os.path.exists(torrent_file):
-        log.error(f"[TORCLIENT] Torrent file not found: {torrent_file}")
+        log.critical(f"[TORCLIENT] Torrent file not found: {torrent_file}")
         return False
 
     try:
         info = lt.torrent_info(torrent_file)
-        torrent_name = info.name()
 
         # make sure the torrent we're trying to seed has v2 hash
         hashes = info.info_hashes()
         if not hashes.has_v2():
-            log.error(f"[TORCLIENT] Torrent '{torrent_name}' did not generate a v2 hash, it has been removed")
+            log.critical(f"[TORCLIENT] Torrent '{torrent_file}' did not generate a v2 hash, it has been removed")
             os.unlink(torrent_file)
             return False
 
@@ -140,10 +139,10 @@ async def add_torrent_for_seeding(torrent_file: str, save_path: str) -> bool:
 
         # add to the libtorrent session
         libtorrent_session.async_add_torrent(params)
-        log.info(f"[TORCLIENT] Added torrent for seeding: {torrent_name}")
+        log.info(f"[TORCLIENT] Added torrent for seeding: {torrent_file}")
         return True
     except Exception as e:
-        log.error(f"[TORCLIENT] Failed to add torrent '{torrent_file}': {e}")
+        log.error(f"[TORCLIENT] Exception while adding torrent '{torrent_file}': {e}")
         return False
 
 
@@ -152,7 +151,7 @@ async def add_torrent_for_download(torrent_file: str, save_path: str) -> bool:
     Adds a single torrent file to libtorrent session for download
     """
     if not os.path.exists(torrent_file):
-        log.error(f"[TORCLIENT] Torrent file not found: {torrent_file}")
+        log.critical(f"[TORCLIENT] Torrent file not found: {torrent_file}")
         return False
 
     # attempt to add the torrent to the client
@@ -169,7 +168,7 @@ async def add_torrent_for_download(torrent_file: str, save_path: str) -> bool:
         hashes = info.info_hashes()
 
         if not hashes.has_v2():
-            log.error(f"[TORCLIENT] Torrent '{torrent_name}' did not generate a v2 hash, it has been removed")
+            log.critical(f"[TORCLIENT] Torrent '{torrent_name}' did not generate a v2 hash, it has been removed")
             os.unlink(torrent_file)
             return None
         torrent_hash = str(hashes.v2)
@@ -184,7 +183,7 @@ async def add_torrent_for_download(torrent_file: str, save_path: str) -> bool:
             shutil.move(torrent_file, torrent_file_out)
             log.debug(f"[TORCLIENT] Saved torrent file for {torrent_name}")
         except Exception as e:
-            log.error(f"[TORCLIENT] Failed to save torrent file for {torrent_name}: {e}")
+            log.error(f"[TORCLIENT] Exception while saving torrent file for {torrent_name}: {e}")
 
         save_path = os.path.join(save_path, torrent_hash)
 
@@ -199,7 +198,7 @@ async def add_torrent_for_download(torrent_file: str, save_path: str) -> bool:
         # trigger a fastresume save task only
         torrent_handle.save_resume_data()
     except Exception as e:
-        log.error(f"[TORCLIENT] Failed to add new torrent: {e}")
+        log.error(f"[TORCLIENT] Exception while adding new torrent: {e}")
         return False
 
     # add the data for the torrent to the database
@@ -222,7 +221,7 @@ async def torrent_exists_in_session(torrent_hash: str | bytes) -> bool:
         existing = libtorrent_session.find_torrent(torrent_hash)
         return existing.is_valid()
     except Exception as e:
-        log.error(f"[TORCLIENT] Failed to check if torrent exists: {e}")
+        log.error(f"[TORCLIENT] Exception while checking if torrent exists: {e}")
         return False
 
 
@@ -239,7 +238,7 @@ async def remove_torrent_by_hash(torrent_hash: str, remove_downloads: bool = Fal
         if existing.is_valid():
             libtorrent_session.remove_torrent(existing)
     except Exception as e:
-        log.error(f"[TORCLIENT] Failed to remove torrent: {e}")
+        log.error(f"[TORCLIENT] Exception while removing torrent: {e}")
         return False
 
     # remove the fastresume/fastresume-ignore files if either exists
@@ -250,7 +249,7 @@ async def remove_torrent_by_hash(torrent_hash: str, remove_downloads: bool = Fal
             if os.path.exists(file):
                 os.unlink(file)
     except Exception as e:
-        log.error(f"[TORCLIENT] Failed to remove fastresume data when removing torrent: {e}")
+        log.error(f"[TORCLIENT] Exception while removing fastresume data when removing torrent: {e}")
         return False
 
     try:
@@ -264,7 +263,7 @@ async def remove_torrent_by_hash(torrent_hash: str, remove_downloads: bool = Fal
                 else:
                     shutil.rmtree(download_path)
     except Exception as e:
-        log.error(f"[TORCLIENT] Failed to remove downloads when removing torrent: {e}")
+        log.error(f"[TORCLIENT] Exception while removing downloads when removing torrent: {e}")
         return False
 
     log.info(f"[TORCLIENT] Removed torrent with hash: {torrent_hash}")
@@ -363,7 +362,7 @@ async def load_fastresume_data():
             # add the torrent to the session
             libtorrent_session.async_add_torrent(atp)
         except Exception as e:
-            log.error(f"[FASTRESUME] Error in fastresume data post-processing: {e}")
+            log.error(f"[FASTRESUME] Exception during fastresume data post-processing: {e}")
 
     executor.shutdown()
     log.debug(f"[FASTRESUME] Executor workers closed")
@@ -396,7 +395,7 @@ def save_all_fastresume_data() -> tuple[int, int]:
 
                 hashes_to_await.add(torrent_hash)
             except Exception as e:
-                log.error(f"[FASTRESUME] Error saving fastresume data for torrent: {e}")
+                log.error(f"[FASTRESUME] Exception while saving fastresume data for torrent: {e}")
 
         idle_loops = 0
 
@@ -427,7 +426,7 @@ def save_all_fastresume_data() -> tuple[int, int]:
             # let the thread sleep so libtorrent has time to generate alerts
             time.sleep(0.1)
     except Exception as e:
-        log.error(f"[FASTRESUME] Error saving fastresume data for all torrents: {e}")
+        log.error(f"[FASTRESUME] Exception while saving fastresume data for all torrents: {e}")
     return completed, total
 
 
@@ -449,9 +448,8 @@ async def periodic_torrent_status_task():
                 # get the infohash stored as raw bytes
                 torrent_hash = status.info_hashes.v2.to_bytes().hex()
 
-                name = status.name
                 if status.errc and status.errc.value() != 0:
-                    log.error(f"[STATUS] Torrent '{name}' is in error state")
+                    log.critical(f"[STATUS] Torrent in error state: {torrent_hash}")
 
                 is_downloading = status.state == lt.torrent_status.downloading
                 is_seeding = status.state == lt.torrent_status.seeding
@@ -466,7 +464,7 @@ async def periodic_torrent_status_task():
                 # check if torrent is downloading and has been downloading for more than the threshold with no progress OR 2x the threshold with >0 progress
                 if is_downloading and ((added_delta.total_seconds() > STALE_TORRENT_THRESHOLD and status.progress == 0) or (
                         added_delta.total_seconds() > 2 * STALE_TORRENT_THRESHOLD and status.progress > 0)):
-                    log.warning(f"[STATUS] Removing stale torrent: {name}")
+                    log.warning(f"[STATUS] Removing stale torrent: {torrent_hash}")
 
                     # remove from client and database
                     await remove_torrent_by_hash(torrent_hash, True)
@@ -479,14 +477,14 @@ async def periodic_torrent_status_task():
                     # pull the download path from the database
                     result = await database.fetch_one("SELECT download_path, torrent_path FROM torrents WHERE infohash = ?", (torrent_hash,))
                     if result and not result.get("download_path"):
-                        log.info(f"[STATUS] Removing download-frozen torrent: {name}")
+                        log.warning(f"[STATUS] Removing download-frozen torrent: {torrent_hash}")
 
                         # remove from client and database
                         await remove_torrent_by_hash(torrent_hash)
                         await utils.remove_torrent_from_database(torrent_hash, torrent_file=result["torrent_path"])
 
         except Exception as e:
-            log.error(f"[STATUS] Error in torrent status loop: {e}")
+            log.error(f"[STATUS] Exception during torrent status loop: {e}")
 
         await asyncio.sleep(5)
 
@@ -507,7 +505,7 @@ async def periodic_fastresume_task():
             delta = datetime.datetime.now() - before
             log.info(f"[FASTRESUME] Fastresume task completed, {completed} saved, {total} total torrents ({delta})")
         except Exception as e:
-            log.error(f"[FASTRESUME] Error in torrent fastresume loop: {e}")
+            log.error(f"[FASTRESUME] Exception during torrent fastresume loop: {e}")
 
 
 async def periodic_alerts_task():
@@ -525,7 +523,7 @@ async def periodic_alerts_task():
             for alert in alerts:
 
                 if isinstance(alert, lt.performance_alert):
-                    log.warning(f"[ALERTS] Performance alert detected: {alert}")
+                    log.critical(f"[ALERTS] Performance alert detected: {alert}")
 
                 # process fastresume available alerts
                 if isinstance(alert, lt.save_resume_data_alert):
@@ -554,6 +552,6 @@ async def periodic_alerts_task():
                         log.debug("[ALERTS] Saved persistent client stats")
 
         except Exception as e:
-            log.error(f"[ALERTS] Error in torrent alerts loop: {e}")
+            log.error(f"[ALERTS] Exception during torrent alerts loop: {e}")
 
         await asyncio.sleep(5)
