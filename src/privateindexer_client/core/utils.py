@@ -756,6 +756,10 @@ async def map_torrents_to_qbit(client_torrents: list) -> dict:
     all_mapped_torrents = []
 
     for torrent in client_torrents:
+        # check torrent handle for validity before proceeding
+        if not torrent.is_valid():
+            continue
+
         status = torrent.status()
 
         # here we have to normalize the infohashes because they are raw bytes out of the status
