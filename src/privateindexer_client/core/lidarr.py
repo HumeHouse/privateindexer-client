@@ -20,7 +20,7 @@ async def test_connection():
             if response.status_code == 200:
                 log.info(f"[LIDARR] Connected to Lidarr")
             else:
-                log.warning(f"[LIDARR] Failed to connect to Lidarr: {response.status_code}")
+                log.critical(f"[LIDARR] Failed to connect to Lidarr: {response.status_code} - {response.text}")
     except Exception as e:
         log.error(f"[LIDARR] Exception while testing Lidarr connection: {e}")
 
@@ -35,7 +35,7 @@ async def fetch_root_folders() -> list[str]:
             response = await client.get(f"{LIDARR_URL}/api/v1/rootfolder", headers={"X-API-Key": LIDARR_API_KEY}, timeout=30)
 
             if response.status_code != 200:
-                log.warning(f"[LIDARR] Failed to fetch root folders: {response.status_code}")
+                log.critical(f"[LIDARR] Failed to fetch root folders: {response.status_code} - {response.text}")
                 return []
 
             root_folders = response.json()
@@ -69,7 +69,7 @@ async def fetch_music_library(tracked_root_folders: list[str]) -> list[dict]:
             response = await client.get(f"{LIDARR_URL}/api/v1/artist", headers={"X-API-Key": LIDARR_API_KEY}, timeout=30)
 
             if response.status_code != 200:
-                log.warning(f"[LIDARR] Failed to fetch artist list: {response.status_code}")
+                log.critical(f"[LIDARR] Failed to fetch artist list: {response.status_code} - {response.text}")
                 return []
 
             artist_list = response.json()
@@ -90,7 +90,7 @@ async def fetch_music_library(tracked_root_folders: list[str]) -> list[dict]:
             response = await client.get(f"{LIDARR_URL}/api/v1/album", headers={"X-API-Key": LIDARR_API_KEY}, timeout=30)
 
             if response.status_code != 200:
-                log.warning(f"[LIDARR] Failed to fetch album list: {response.status_code}")
+                log.critical(f"[LIDARR] Failed to fetch album list: {response.status_code} - {response.text}")
                 return []
 
             album_list = response.json()
@@ -228,7 +228,7 @@ async def fetch_album_metadata(album_id: str) -> dict:
             response = await client.get(f"{LIDARR_URL}/api/v1/album/{album_id}", headers={"X-API-Key": LIDARR_API_KEY}, timeout=30)
 
             if response.status_code != 200:
-                log.warning(f"[LIDARR] Failed to fetch album metadata: {response.status_code}")
+                log.critical(f"[LIDARR] Failed to fetch album metadata: {response.status_code} - {response.text}")
                 return []
 
             album_response = response.json()

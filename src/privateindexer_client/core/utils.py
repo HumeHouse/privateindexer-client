@@ -110,9 +110,14 @@ async def fetch_indexer_user_data():
     try:
         async with httpx_request.get_client() as client:
             response = await client.get(f"{INDEXER_API_URL}/user/stats", headers={"X-API-Key": API_KEY}, timeout=30)
+
+            if response.status_code != 200:
+                log.warning(f"[INDEXER] Failed to fetch user stats: {response.status_code} - {response.text}")
+                return {}
+
             return response.json()
     except Exception as e:
-        log.error(f"[INDEXER] Failed to fetch user stats: {e}")
+        log.error(f"[INDEXER] Exception when fetching user stats: {e}")
         return None
 
 
@@ -310,7 +315,7 @@ def generate_media_hash(media_path: str) -> list[bytes]:
         hashes = [torrent_info.hash_for_piece(i) for i in range(torrent_info.num_pieces())]
 
     except Exception as e:
-        log.error(f"[TORRENT] Error generating hashes for '{media_path}': {e}")
+        log.error(f"[TORRENT] Exception while generating hashes for '{media_path}': {e}")
         return []
 
     delta = datetime.datetime.now() - before
@@ -415,7 +420,7 @@ def create_torrent(media_path: str, torrent_name: str, app_id: int, output_torre
         # get size of media
         total_media_size = info.files().total_size()
     except Exception as e:
-        log.error(f"[TORRENT] Failed to read hash for '{output_torrent_file}', it has been removed: {e}")
+        log.error(f"[TORRENT] Exception while reading hash for '{output_torrent_file}', it has been removed: {e}")
         os.unlink(output_torrent_file)
         return None, False
 
@@ -442,7 +447,7 @@ def create_torrent_threadsafe(media_path: str, torrent_name: str, app_id: int, o
     try:
         return create_torrent(media_path, torrent_name, app_id, output_torrent_file)
     except Exception as e:
-        log.error(f"[TORRENT] Failed to create torrent for '{media_path}': {e}")
+        log.error(f"[TORRENT] Exception while creating torrent for '{media_path}': {e}")
         return None, False
 
 
@@ -461,7 +466,7 @@ def path_exists_in_torrent(torrent_path: str, target_file_path: str) -> bool:
             if filename == target_file_path:
                 return True
     except Exception as e:
-        log.error(f"[TORRENT] Failed to get file index for '{target_file_path}' in torrent {torrent_path}: {e}")
+        log.error(f"[TORRENT] Exception while getting file index for '{target_file_path}' in torrent {torrent_path}: {e}")
     return False
 
 
@@ -499,7 +504,7 @@ def find_existing_torrent(media_path: str, ignored_torrents: list[str]) -> str |
                 log.debug(f"[TORRENT] Matched '{media_path}' to '{torrent_path}' by hash")
                 return torrent_path
         except Exception as e:
-            log.error(f"[TORRENT] Error comparing hash for '{media_path}' to '{torrent_file}': {e}")
+            log.error(f"[TORRENT] Exception while comparing hash for '{media_path}' to '{torrent_file}': {e}")
 
     log.debug(f"[TORRENT] Couldn't find torrent file for: {media_path}")
     return None
@@ -521,7 +526,7 @@ def find_media_for_torrent(torrent_path: str, media_dir: str) -> str | None:
                     log.debug(f"[TORRENT] Matched '{file_path}' to '{torrent_path}' by hash")
                     return file_path
             except Exception as e:
-                log.error(f"[TORRENT] Error comparing hash for '{file_path}' to '{torrent_path}': {e}")
+                log.error(f"[TORRENT] Exception while comparing hash for '{file_path}' to '{torrent_path}': {e}")
 
     log.debug(f"[TORRENT] Couldn't find media for: {torrent_path}")
     return None
@@ -566,7 +571,7 @@ def process_fastresume_file(fastresume_path: str, torrent_hash: str, torrent_pat
         log.debug(f"[FASTRESUME] Loaded fastresume file for hash: {torrent_hash}")
         return data, torrent_hash, torrent_path
     except Exception as e:
-        log.error(f"[FASTRESUME] Failed to read fastresume file for hash: {torrent_hash}: {e}")
+        log.error(f"[FASTRESUME] Exception while reading fastresume file for hash: {torrent_hash}: {e}")
         return None, torrent_hash, torrent_path
 
 
@@ -604,7 +609,7 @@ def save_fastresume_to_disk(alert: lt.save_resume_data_alert) -> str | None:
             with open(ignore_file, mode='a'):
                 pass
     except Exception as e:
-        log.error(f"[FASTRESUME] Failed to save fastresume data: {e}")
+        log.error(f"[FASTRESUME] Exception while saving fastresume data: {e}")
         return None
 
     log.debug(f"[FASTRESUME] Saved fastresume data for hash: {torrent_hash}")

@@ -204,7 +204,7 @@ async def scan_media_library(hash_executor: ProcessPoolExecutor) -> tuple[int, i
                     else:
                         log.debug(f"[SCAN] Updated existing torrent: {metadata.name}")
             except Exception as e:
-                log.error(f"[SCAN] Error in torrent post-torrent-creation process: {e}")
+                log.error(f"[SCAN] Exception during torrent post-torrent-creation process: {e}")
 
         log.info(f"[SCAN] Completed batch {batch_index} of {num_batches} ({SCAN_DONE_ITEMS} of {SCAN_TOTAL_ITEMS} total items processed)")
 

@@ -75,4 +75,4 @@ async def periodic_sync_task():
                 f"[SYNC] Server sync task completed ({delta}): {existing} existing, {len(missing_ids)} missing, {uploaded} uploaded, {failed} failed")
 
         except Exception as e:
-            log.error(f"[SYNC] Error during sync task: {e}")
+            log.error(f"[SYNC] Exception during sync task: {e}")
