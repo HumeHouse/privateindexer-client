@@ -9,7 +9,7 @@ from privateindexer_client.core import torrent_client, database, utils, thread_e
 from privateindexer_client.core.config import SCAN_INTERVAL, DOWNLOADS_DIR, TORRENTS_DIR, PURGE_UNTRACKED_TORRENTS, SCAN_BATCH_SIZE, PURGE_DUPLICATE_SEEDS, \
     PURGE_UNTRACKED_DOWNLOADS
 from privateindexer_client.core.logger import log
-from privateindexer_client.core.utils import TorrentCreationMetadata
+from privateindexer_client.core.utils import TorrentCreationMetadata, MediaDataEntry
 
 SCAN_PROCESS_STATE: int = 0
 SCAN_TOTAL_ITEMS: int = 0
@@ -32,7 +32,7 @@ class ScanTorrentJob:
         self.torrent_file: str = None
 
 
-async def scan_media_library(hash_executor: ProcessPoolExecutor) -> tuple[int, int, int, int]:
+async def scan_media_library(media_data_entries: list[MediaDataEntry], hash_executor: ProcessPoolExecutor) -> tuple[int, int, int, int]:
     """
     Main loop for scanning media libraries defined by user
     Will walk over all defined category paths, each single file gets turned into a single torrent file
@@ -41,14 +41,6 @@ async def scan_media_library(hash_executor: ProcessPoolExecutor) -> tuple[int, i
     Will attempt to use send_torrent_to_indexer() and seed_torrents() for each torrent if conditions are met
     """
     global SCAN_PROCESS_STATE, SCAN_TOTAL_ITEMS, SCAN_DONE_ITEMS
-
-    # fetch updated root folders from Radarr/Sonarr
-    category_paths = await utils.update_torznab_category_paths()
-
-    # make sure we have at least 1 directory to scan, otherwise skip scan
-    if len(category_paths) == 0:
-        log.warning(f"[SCAN] No root folders accessible for scanning")
-        return 0, 0, 0, 0
 
     # set scan state to pre-scan
     SCAN_PROCESS_STATE = ScannerStates.PRE_SCAN.value
@@ -63,7 +55,6 @@ async def scan_media_library(hash_executor: ProcessPoolExecutor) -> tuple[int, i
     updated_files = 0
 
     loop = asyncio.get_running_loop()
-    media_data_entries = await utils.get_managed_media_data()
 
     # set scan state to scanning and update progress values
     SCAN_TOTAL_ITEMS = len(media_data_entries)
@@ -248,7 +239,18 @@ async def periodic_scan_task():
             # spawn a new hash executor
             hash_executor = thread_executor.get_hash_executor()
 
-            total_files, ignored_files, updated_files, created_files = await scan_media_library(hash_executor)
+            # fetch updated root folders from *arr apps
+            category_paths = await utils.update_torznab_category_paths()
+
+            # fetch the compiled list of tracked media from *arr apps
+            media_data_entries = await utils.get_managed_media_data()
+
+            # make sure we have at least 1 directory to scan, otherwise skip scan
+            if len(category_paths) == 0:
+                log.warning(f"[SCAN] No root folders accessible for scanning")
+                total_files, ignored_files, updated_files, created_files = 0, 0, 0, 0
+            else:
+                total_files, ignored_files, updated_files, created_files = await scan_media_library(media_data_entries, hash_executor)
 
             log.debug("[SCAN] Scan complete, running post-scan checks")
 
@@ -259,7 +261,6 @@ async def periodic_scan_task():
             duplicate_entries: dict[str, dict] = {}
 
             loop = asyncio.get_running_loop()
-            media_data_entries = await utils.get_managed_media_data()
 
             # create a map to index entries by their path
             media_entry_path_map = {entry.path: entry for entry in media_data_entries}
