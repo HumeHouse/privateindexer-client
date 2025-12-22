@@ -42,9 +42,6 @@ async def scan_media_library(media_data_entries: list[MediaDataEntry], hash_exec
     """
     global SCAN_PROCESS_STATE, SCAN_TOTAL_ITEMS, SCAN_DONE_ITEMS
 
-    # set scan state to pre-scan
-    SCAN_PROCESS_STATE = ScannerStates.PRE_SCAN.value
-
     torrents = await database.fetch_all("SELECT id, name, media_path, torrent_path, app_id FROM torrents WHERE media_path IS NOT NULL")
     torrent_data_map = {torrent["media_path"]: torrent for torrent in torrents}
     ignored_torrents = set([torrent["torrent_path"] for torrent in torrents])
@@ -235,6 +232,9 @@ async def periodic_scan_task():
         try:
             log.info("[SCAN] Scanning media library for new or updated files")
             before = datetime.datetime.now()
+
+            # set scan state to pre-scan
+            SCAN_PROCESS_STATE = ScannerStates.PRE_SCAN.value
 
             # spawn a new hash executor
             hash_executor = thread_executor.get_hash_executor()
