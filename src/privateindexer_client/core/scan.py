@@ -382,7 +382,7 @@ async def periodic_scan_task():
                     if not fname.endswith(".torrent"):
                         continue
                     torrent_path = os.path.join(TORRENTS_DIR, fname)
-                    if torrent_path not in torrent_paths:
+                    if torrent_path not in torrent_paths and os.path.exists(torrent_path):
                         os.unlink(torrent_path)
                         log.info(f"[SCAN] Removed danlging torrent file '{torrent_path}'")
 
