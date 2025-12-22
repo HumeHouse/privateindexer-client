@@ -286,7 +286,7 @@ async def periodic_scan_task():
                 if not torrent_exists or (not media_exists and not download_exists):
                     removed_entries += 1
                     # remove from torrent client
-                    await torrent_client.remove_torrent_by_hash(torrent.get("infohash"), True)
+                    await torrent_client.remove_torrent_by_hash(torrent["infohash"], True)
                     # remove torrent file and from database
                     await utils.remove_torrent_from_database(torrent_hash, torrent_file=torrent_path)
                     log.info(f"[SCAN] All files missing for '{torrent_name}', removed torrent from database and torrent client")
@@ -354,7 +354,7 @@ async def periodic_scan_task():
                             # if no match was found, purge the multi-file torrent because it lost discovery - individual episodes exist instead
                             removed_entries += 1
                             # remove from torrent client
-                            await torrent_client.remove_torrent_by_hash(torrent.get("infohash"), True)
+                            await torrent_client.remove_torrent_by_hash(torrent["infohash"], True)
                             # remove torrent file and from database
                             await utils.remove_torrent_from_database(torrent_hash, torrent_file=torrent_path)
                             log.warning(f"[SCAN] Purged undiscovered multi-file torrent: '{torrent_name}'")
@@ -369,9 +369,9 @@ async def periodic_scan_task():
                     duplicate_torrent_path = duplicate_entry["torrent_path"]
                     removed_entries += 1
                     # remove from torrent client
-                    await torrent_client.remove_torrent_by_hash(duplicate_entry.get("infohash"), True)
+                    await torrent_client.remove_torrent_by_hash(duplicate_entry["infohash"], True)
                     # remove torrent file and from database
-                    await utils.remove_torrent_from_database(duplicate_entry.get("infohash"), torrent_file=duplicate_torrent_path)
+                    await utils.remove_torrent_from_database(duplicate_entry["infohash"], torrent_file=duplicate_torrent_path)
                     log.info(f"[SCAN] Purged duplicate: {duplicate_entry['name']}")
 
             # only purge dangling torrents if the user has this option enabled
