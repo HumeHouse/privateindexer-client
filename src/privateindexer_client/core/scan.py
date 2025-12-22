@@ -297,6 +297,7 @@ async def periodic_scan_task():
                     updated_files += 1
                     await database.execute("UPDATE torrents SET media_path = NULL WHERE id = ?", (torrent_id,))
                     log.info(f"[SCAN] Media files missing for '{torrent_name}', purged media path from database")
+                    media_path = None
 
                 # case if this is an external torrent (should have a download path), try to locate the download media if it's missing or invalid
                 if download_path and (not download_exists or download_path == DOWNLOADS_DIR or
