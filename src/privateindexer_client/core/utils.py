@@ -227,69 +227,60 @@ async def get_managed_media_data() -> list[MediaDataEntry]:
     media_data = []
 
     try:
-        # fetch all movie files from Radarr if configured
+        # fetch all movie entries from Radarr if configured
         if RADARR_URL:
-            radarr_movies = await radarr.fetch_movie_library(tracked_root_folders)
-            for movie in radarr_movies:
+            radarr_entries = await radarr.fetch_movie_library(tracked_root_folders)
+            for radarr_entry in radarr_entries:
+                media_entry = MediaDataEntry(MediaType.RADARR_MOVIE)
+                media_entry.app_id = radarr_entry["id"]
+                media_entry.path = radarr_entry["path"]
+                media_entry.title = radarr_entry["title"]
 
-                path = movie.get("movieFile", {}).get("path")
-                if path:
-                    # build a movie entry for valid movies
-                    movie_entry = MediaDataEntry(MediaType.RADARR_MOVIE)
-                    movie_entry.app_id = movie["id"]
-                    movie_entry.path = path
-
-                    media_data.append(movie_entry)
+                media_data.append(media_entry)
     except Exception as e:
         log.error(f"[RADARR] Exception while gathering media data: {e}")
 
     try:
-        # fetch all TV episode files from Sonarr if configured
+        # fetch all TV entries from Sonarr if configured
         if SONARR_URL:
-            sonarr_series = await sonarr.fetch_tv_library(tracked_root_folders)
-            for series_entry in sonarr_series:
+            sonarr_entries = await sonarr.fetch_tv_library(tracked_root_folders)
+            for sonarr_entry in sonarr_entries:
 
                 # build a season entry for season packs
-                if series_entry["season_pack"]:
-                    season_entry = MediaDataEntry(MediaType.SONARR_SEASON)
-                    season_entry.app_id = series_entry["id"]
-                    season_entry.path = series_entry["path"]
-                    season_entry.title = series_entry["title"]
-
-                    media_data.append(season_entry)
+                if sonarr_entry["season_pack"]:
+                    media_entry = MediaDataEntry(MediaType.SONARR_SEASON)
 
                 # build single episode entries for individual episodes
                 else:
-                    episode_entry = MediaDataEntry(MediaType.SONARR_EPISODE)
-                    episode_entry.app_id = series_entry["id"]
-                    episode_entry.path = series_entry["path"]
+                    media_entry = MediaDataEntry(MediaType.SONARR_EPISODE)
 
-                    media_data.append(episode_entry)
+                media_entry.app_id = sonarr_entry["id"]
+                media_entry.path = sonarr_entry["path"]
+                media_entry.title = sonarr_entry["title"]
+
+                media_data.append(media_entry)
     except Exception as e:
         log.error(f"[SONARR] Exception while gathering media data: {e}")
 
     try:
-        # fetch all music track files from Lidarr if configured
+        # fetch all music entries from Lidarr if configured
         if LIDARR_URL:
-            lidarr_tracks = await lidarr.fetch_music_library(tracked_root_folders)
-            for music_entry in lidarr_tracks:
+            lidarr_entries = await lidarr.fetch_music_library(tracked_root_folders)
+            for lidarr_entry in lidarr_entries:
 
                 # build an album entry for full albums
-                if music_entry["album"]:
-                    album_entry = MediaDataEntry(MediaType.LIDARR_ALBUM)
-                    album_entry.app_id = music_entry["id"]
-                    album_entry.path = music_entry["path"]
-                    album_entry.title = music_entry["title"]
-
-                    media_data.append(album_entry)
+                if lidarr_entry["album"]:
+                    media_entry = MediaDataEntry(MediaType.LIDARR_ALBUM)
 
                 # build single track entries for individual tracks
                 else:
-                    track_entry = MediaDataEntry(MediaType.LIDARR_TRACK)
-                    track_entry.app_id = music_entry["id"]
-                    track_entry.path = music_entry["path"]
+                    media_entry = MediaDataEntry(MediaType.LIDARR_TRACK)
 
-                    media_data.append(track_entry)
+                media_entry.app_id = lidarr_entry["id"]
+                media_entry.path = lidarr_entry["path"]
+                media_entry.title = lidarr_entry["title"]
+
+                media_data.append(media_entry)
     except Exception as e:
         log.error(f"[LIDARR] Exception while gathering media data: {e}")
 
@@ -371,7 +362,7 @@ def torrent_matches_media(torrent_path: str, media_path: str) -> bool:
     return file_hashes == torrent_hashes
 
 
-def create_torrent(media_path: str, app_id: int, output_torrent_file: str = None, title: str = None) -> tuple[TorrentCreationMetadata, bool]:
+def create_torrent(media_path: str, torrent_name: str, app_id: int, output_torrent_file: str = None) -> tuple[TorrentCreationMetadata, bool]:
     """
     Synchronous routine to build and generate a complete torrent file from the media passed in as media_path
     Checks if output torrent file already exists and skips the torrent generation process
@@ -387,13 +378,9 @@ def create_torrent(media_path: str, app_id: int, output_torrent_file: str = None
 
     else:
         is_new_file = True
-        is_file = os.path.isfile(media_path)
 
         # get the input path parent directory name
         parent_directory = os.path.dirname(media_path)
-
-        # this will become the name of the new torrent, if it's a file, split off the extension
-        torrent_name = title or (os.path.splitext(os.path.basename(media_path))[0] if is_file else os.path.basename(media_path))
 
         log.info(f"[TORRENT] Creating torrent '{torrent_name}'")
 
@@ -419,7 +406,6 @@ def create_torrent(media_path: str, app_id: int, output_torrent_file: str = None
     # attempt to pull the hash information from the torrent file, otherwise fail and remove torrent file from disk
     try:
         info = lt.torrent_info(output_torrent_file)
-        torrent_name = info.name()
         hashes = info.info_hashes()
         torrent_infohash = str(hashes.v2)
 
@@ -437,7 +423,7 @@ def create_torrent(media_path: str, app_id: int, output_torrent_file: str = None
 
     torrent_metadata = TorrentCreationMetadata()
     torrent_metadata.app_id = app_id
-    torrent_metadata.name = title or torrent_name
+    torrent_metadata.name = torrent_name
     torrent_metadata.size = total_media_size
     torrent_metadata.media_path = media_path
     torrent_metadata.torrent_path = output_torrent_file
@@ -449,12 +435,12 @@ def create_torrent(media_path: str, app_id: int, output_torrent_file: str = None
     return torrent_metadata, is_new_file
 
 
-def create_torrent_threadsafe(media_path: str, app_id: int, output_torrent_file: str = None, title: str = None) -> tuple[TorrentCreationMetadata, bool]:
+def create_torrent_threadsafe(media_path: str, torrent_name: str, app_id: int, output_torrent_file: str = None) -> tuple[TorrentCreationMetadata, bool]:
     """
     Wraps the create_torrent() routine in a try/accept to catch all runtime errors
     """
     try:
-        return create_torrent(media_path, app_id, output_torrent_file, title)
+        return create_torrent(media_path, torrent_name, app_id, output_torrent_file)
     except Exception as e:
         log.error(f"[TORRENT] Failed to create torrent for '{media_path}': {e}")
         return None, False

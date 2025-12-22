@@ -2,137 +2,10 @@ import asyncio
 import os
 from collections import defaultdict
 
-from privateindexer_client.core import httpx_request
+from privateindexer_client.core import httpx_request, arr_formatter
+from privateindexer_client.core.arr_formatter import VIDEO_EXTRACTORS
 from privateindexer_client.core.config import SONARR_URL, SONARR_API_KEY
 from privateindexer_client.core.logger import log
-
-
-class AggregatedSeasonMetadata:
-    def __init__(self):
-        self.qualities: set = set()
-        self.video_codecs: set = set()
-        self.audio_codecs: set = set()
-        self.audio_channels: set = set()
-        self.bit_depths: set = set()
-        self.hdr_types: set = set()
-        self.release_groups: set = set()
-
-
-def normalize_video_codec(codec: str | None) -> str | None:
-    """
-    Helper function to standardize the video codec
-    """
-    if not codec:
-        return None
-
-    codec = codec.strip().lower()
-
-    if codec in {"x265", "h265", "hevc", "h.265"}:
-        return "H265"
-
-    if codec in {"x264", "h264", "avc", "h.264"}:
-        return "H264"
-
-    # fallback to just uppercase codec if no matches
-    return codec.upper()
-
-
-def normalize_audio_codec(codec: str | None) -> str | None:
-    """
-    Helper function to standardize the audio codec
-    """
-    if not codec:
-        return None
-
-    codec = codec.strip().lower()
-
-    if codec in {"eac3", "ddp", "dd+", "dolby digital plus"}:
-        return "DDP"
-    if codec in {"dts", "dtshd"}:
-        return "DTS"
-    if codec in {"truehd"}:
-        return "TrueHD"
-
-    # fallback to just uppercase codec if no matches
-    return codec.upper()
-
-
-def aggregate_season_metadata(season_episodes: list[dict]) -> AggregatedSeasonMetadata:
-    """
-    Gathers info from each episode in a season and combines into a large aggregate object to be used for title formatting
-    """
-    aggregated = AggregatedSeasonMetadata()
-
-    for episode in season_episodes:
-        quality = episode.get("quality", {}).get("quality", {}).get("name", "Unknown")
-        aggregated.qualities.add(quality)
-
-        if episode.get("mediaInfo"):
-            media_info = episode["mediaInfo"]
-
-            video_codec = normalize_video_codec(media_info.get("videoCodec"))
-            audio_codec = normalize_audio_codec(media_info.get("audioCodec"))
-
-            aggregated.video_codecs.add(video_codec)
-            aggregated.audio_codecs.add(audio_codec)
-            aggregated.audio_channels.add(media_info.get("audioChannels"))
-            aggregated.bit_depths.add(f"{media_info.get("videoBitDepth")}bit")
-            aggregated.hdr_types.add(media_info.get("videoDynamicRangeType") or "")
-        else:
-            log.warning(f"[SONARR] Episode has no media info tracked by app: {episode.get("path", "Unknown path")}")
-
-        if episode.get("releaseGroup") and len(episode["releaseGroup"].strip()) > 0:
-            aggregated.release_groups.add(episode["releaseGroup"])
-
-    return aggregated
-
-
-def build_tags_from_metadata(aggregated: AggregatedSeasonMetadata) -> str:
-    """
-    Assembles a final string of metadata tags from an aggregate metadata object to be appended to season pack titles
-    """
-
-    def tag(values: list[str], wrap: str = "[]") -> str:
-        # sort and get first 3 tags
-        clean_values = sorted(v for v in values if v)
-
-        # no tags → return empty
-        if not clean_values:
-            return ""
-
-        left, right = wrap
-
-        formatted = f"{left}{'+'.join(clean_values[:3])}{"++" if len(clean_values) > 3 else ""}{right}"
-
-        return formatted
-
-    tags = [tag(aggregated.qualities), tag(aggregated.video_codecs), tag({str(bit_depth) for bit_depth in aggregated.bit_depths})]
-
-    if any(aggregated.hdr_types):
-        tags.append(tag(aggregated.hdr_types))
-
-    # add audio codecs and channels in parenthesis wrapper together
-    audio_entries = set()
-
-    for codec in sorted(v for v in aggregated.audio_codecs if v):
-        for ch in sorted(v for v in aggregated.audio_channels if v):
-            audio_entries.add(f"{codec} {ch:.1f}")
-
-    if audio_entries:
-        tags.append(tag(audio_entries, wrap="()"))
-
-    # put release groups at the end with hyphen separator
-    if aggregated.release_groups:
-        # sort and get first 3 release groups
-        release_groups = sorted(g for g in aggregated.release_groups if g)
-
-        # append all the groups
-        tags.append(f"-{"+".join(release_groups[:3])}")
-
-        if len(release_groups) > 3:
-            tags.append("++")
-
-    return "".join(tags)
 
 
 async def test_connection():
@@ -245,17 +118,29 @@ async def fetch_tv_library(tracked_root_folders: list[str]) -> list[dict]:
 
                 # build season pack for full seasons which share a single directory
                 if percent_of_episodes == 100 and missing_episode_count == 0 and shared_directory:
-                    aggregated_metadata = aggregate_season_metadata(season_episodes)
-                    metadata_tags = build_tags_from_metadata(aggregated_metadata)
+                    aggregated_metadata = arr_formatter.aggregate_metadata(season_episodes, app_name="SONARR", extractors=VIDEO_EXTRACTORS, )
+                    metadata_tags = arr_formatter.format_tags(aggregated_metadata)
                     title = f"{series["title"]} ({series["year"]}) - S{str(season_number).zfill(2)} {metadata_tags}"
-                    log.debug(f"[SONARR] Season pack ({len(season_episodes)} episodes) grouped with title: {title}")
+                    log.debug(f"[SONARR] Grouped season pack ({len(season_episodes)} episodes): {title}")
 
                     final_entries.append({"id": series_id, "title": title, "path": episode_paths.pop(), "season_pack": True, })
 
                 else:
                     # if there are missing episodes or non-shared directory, just build each episode one at a time
                     for season_episode in season_episodes:
-                        final_entries.append({"id": series_id, "path": season_episode["path"], "season_pack": False, })
+                        # skip if no file is tracked
+                        episode_path = season_episode.get("path")
+                        if not episode_path:
+                            continue
+
+                        episode_number = season_episode["episodeNumber"]
+                        episode_title = season_episode["title"]
+                        aggregated_metadata = arr_formatter.aggregate_metadata([season_episode], app_name="SONARR", extractors=VIDEO_EXTRACTORS, )
+                        metadata_tags = arr_formatter.format_tags(aggregated_metadata)
+                        title = f"{series["title"]} ({series["year"]}) - S{str(season_number).zfill(2)}E{str(episode_number).zfill(2)} {episode_title} {metadata_tags}"
+
+                        log.debug(f"[SONARR] Found individual episode: {title}")
+                        final_entries.append({"id": series_id, "title": title, "path": episode_path, "season_pack": False, })
 
         season_packs = 0
         individual_episodes = 0
@@ -280,15 +165,36 @@ async def fetch_series_episodes(series_id: str) -> list[dict]:
     try:
         async with httpx_request.get_client() as client:
             params = {"seriesID": series_id, }
-            response = await client.get(f"{SONARR_URL}/api/v3/episodeFile", headers={"X-API-Key": SONARR_API_KEY}, params=params, timeout=30)
+            episode_file_response = await client.get(f"{SONARR_URL}/api/v3/episodeFile", headers={"X-API-Key": SONARR_API_KEY}, params=params, timeout=30, )
 
-            if response.status_code != 200:
-                log.warning(f"[SONARR] Failed to fetch episode files: {response.status_code}")
+            if episode_file_response.status_code != 200:
+                log.critical(f"[SONARR] Failed to fetch episode files: {episode_file_response.status_code}")
                 return []
 
-            episode_response = response.json()
-            log.debug(f"[SONARR] Fetched episode files for series ID {series_id} ({len(episode_response)} episodes)")
-            return episode_response
+            episode_files = episode_file_response.json()
+
+            episode_response = await client.get(f"{SONARR_URL}/api/v3/episode", headers={"X-API-Key": SONARR_API_KEY}, params=params, timeout=30, )
+
+            if episode_response.status_code != 200:
+                log.critical(f"[SONARR] Failed to fetch episodes data: {episode_response.status_code}")
+                return []
+
+            episodes = episode_response.json()
+
+        # merge episodes with episode files based on episodeFileId
+        files_by_id = {f["id"]: f for f in episode_files}
+        merged_response = []
+        for episode in episodes:
+            if not episode["hasFile"]:
+                continue
+            episode_file_id = episode.get("episodeFileId")
+            merged_episode = {**episode}
+            merged_episode.update(files_by_id[episode_file_id])
+            merged_response.append(merged_episode)
+
+        log.debug(f"[SONARR] Fetched episodes for series ID {series_id} ({len(merged_response)} episodes)")
+
+        return merged_response
     except Exception as e:
         log.error(f"[SONARR] Exception while fetching episode files: {e}")
         return []
