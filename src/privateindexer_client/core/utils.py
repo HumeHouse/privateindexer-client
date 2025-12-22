@@ -620,23 +620,27 @@ def save_fastresume_to_disk(alert: lt.save_resume_data_alert) -> str | None:
     return torrent_hash
 
 
-def delete_empty_directories(root: str) -> int:
+def delete_empty_downloads_directories() -> int:
     """
-    Helper function to recursively delete empty directories
+    Helper function to recursively delete empty download directories in the tracked torrent category paths
     """
     deleted = set()
 
-    for current_dir, subdirs, files in os.walk(root, topdown=False):
+    for category_data in get_torrent_categories().values():
+        root = category_data.get("savePath")
 
-        still_has_subdirs = False
-        for subdir in subdirs:
-            if os.path.join(current_dir, subdir) not in deleted:
-                still_has_subdirs = True
-                break
+        for current_dir, subdirs, files in os.walk(root, topdown=False):
 
-        if not any(files) and not still_has_subdirs:
-            os.rmdir(current_dir)
-            deleted.add(current_dir)
+            still_has_subdirs = False
+            for subdir in subdirs:
+                if os.path.join(current_dir, subdir) not in deleted:
+                    still_has_subdirs = True
+                    break
+
+            if not any(files) and not still_has_subdirs:
+                os.rmdir(current_dir)
+                deleted.add(current_dir)
+
     return len(deleted)
 
 
