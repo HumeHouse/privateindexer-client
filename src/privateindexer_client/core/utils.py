@@ -769,7 +769,7 @@ async def map_torrents_to_qbit(client_torrents: list) -> dict:
         torrent_name = name_hash_map.get(torrent_hash, status.name)
 
         mapped = {"added_on": int(status.added_time or 0), "amount_left": int(status.total_wanted - status.total_wanted_done), "availability": status.distributed_copies,
-                  "completed": int(status.total_done), "completion_on": int(status.completed_time or -1), "content_path": status.save_path,
+                  "completed": int(status.total_done), "completion_on": int(status.completed_time or -1), "content_path": os.path.join(status.save_path, status.name),
                   "dlspeed": status.download_rate, "download_path": status.save_path, "downloaded": status.all_time_download,
                   "downloaded_session": status.total_payload_download, "eta": calc_eta(status), "has_metadata": status.has_metadata, "hash": torrent_hash,
                   "infohash_v1": infohash_v1 or "", "infohash_v2": torrent_hash or "", "name": torrent_name, "num_complete": status.num_complete,
