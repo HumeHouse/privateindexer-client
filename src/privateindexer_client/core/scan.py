@@ -404,15 +404,18 @@ async def periodic_scan_task():
                             for file in files:
                                 download_paths.add(os.path.join(root, file))
 
+            # purge downloads if the user has this option enabled
+            if PURGE_UNTRACKED_DOWNLOADS:
                 # walk over the downloads directory and delete every file which is not being tracked
                 for root, _, files in os.walk(DOWNLOADS_DIR):
                     for file in files:
                         file_path = os.path.abspath(os.path.join(root, file))
 
-                        if file_path not in download_paths:
+                        if file_path not in download_paths and os.path.isfile(file_path):
                             os.unlink(file_path)
                             log.info(f"[SCAN] Removed untracked download: {file_path}")
 
+            # delete empty download directories for each torrent category
             deleted_dirs = utils.delete_empty_downloads_directories()
             if deleted_dirs:
                 log.info(f"[SCAN] Removed {deleted_dirs} empty download directories")
