@@ -480,7 +480,7 @@ async def periodic_torrent_status_task():
                         log.warning(f"[STATUS] Removing download-frozen torrent: {torrent_hash}")
 
                         # remove from client and database
-                        await remove_torrent_by_hash(torrent_hash)
+                        await remove_torrent_by_hash(torrent_hash, True)
                         await utils.remove_torrent_from_database(torrent_hash, torrent_file=result["torrent_path"])
 
         except Exception as e:
