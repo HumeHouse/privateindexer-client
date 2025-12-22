@@ -52,9 +52,9 @@ ANNOUNCE_IP = os.getenv("ANNOUNCE_IP")
 TORRENTING_PORT = int(os.getenv("TORRENTING_PORT", 6881))
 TAG_SEARCH_RESULTS = os.getenv("TAG_SEARCH_RESULTS", "true").lower() == "true"
 
-PURGE_UNTRACKED_TORRENTS = os.getenv("PURGE_UNTRACKED_TORRENTS", "false").lower() == "true"
+PURGE_UNTRACKED_TORRENTS = os.getenv("PURGE_UNTRACKED_TORRENTS", "true").lower() == "true"
 
-PURGE_UNTRACKED_DOWNLOADS = os.getenv("PURGE_UNTRACKED_DOWNLOADS", "false").lower() == "true"
+PURGE_UNTRACKED_DOWNLOADS = os.getenv("PURGE_UNTRACKED_DOWNLOADS", "true").lower() == "true"
 
 PURGE_DUPLICATE_SEEDS = os.getenv("PURGE_DUPLICATE_SEEDS", "true").lower() == "true"
 
