@@ -484,7 +484,7 @@ function populateInfoPanel(torrent) {
                     <dt class="col-4 text-end">Downloaded:</dt><dd class="ms-2 col-7">${formatBytes(torrent["downloaded"])} (${formatBytes(torrent["downloaded_session"])} this session)</dd>
                     <dt class="col-4 text-end">Download Speed:</dt><dd class="ms-2 col-7">${formatSpeed(torrent["dlspeed"])}</dd>
                     <dt class="col-4 text-end">Progress:</dt><dd class="ms-2 col-7">${(torrent["progress"] * 100).toFixed(1)}%</dd>
-                    <dt class="col-4 text-end">Info Hash:</dt><dd class="ms-2 col-7">${torrent["hash"] || "N/A"}</dd>
+                    <dt class="col-4 text-end">Info Hash:</dt><dd class="ms-2 col-7 text-wrap text-break">${torrent["hash"] || "N/A"}</dd>
                 </dl>
             </div>
             <div class="col-md-4">
