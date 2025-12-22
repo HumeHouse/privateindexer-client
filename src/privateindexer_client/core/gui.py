@@ -29,12 +29,11 @@ async def dashboard_maindata():
     main_data = {}
 
     try:
-        torrents = torrent_client.get_all_torrents()
-        mapped = [utils.map_torrent_to_qbit(t) for t in torrents]
+        mapped = await utils.map_torrents_to_qbit(torrent_client.get_all_torrents())
 
         main_data["torrents"] = mapped
     except Exception as e:
-        log.error(f"[GUI] Failed to get torrent list: {e}")
+        log.error(f"[GUI] Exception while getting torrent list: {e}")
         raise HTTPException(status_code=HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to get torrent list")
 
     try:
@@ -43,13 +42,13 @@ async def dashboard_maindata():
 
         main_data["server_state"] = utils.map_stats_to_qbit(stats_now, time_now, stats_prev, time_prev, all_time_download, all_time_upload)
     except Exception as e:
-        log.error(f"[GUI] Failed to get session info: {e}")
+        log.error(f"[GUI] Exception while getting session info: {e}")
         raise HTTPException(status_code=HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to get session info")
 
     try:
         main_data["scanner_status"] = {"state": scan.SCAN_PROCESS_STATE, "total_items": scan.SCAN_TOTAL_ITEMS, "done_items": scan.SCAN_DONE_ITEMS}
     except Exception as e:
-        log.error(f"[GUI] Failed to get scanner info: {e}")
+        log.error(f"[GUI] Exception while getting scanner info: {e}")
         raise HTTPException(status_code=HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to get scanner info")
 
     return main_data
@@ -73,7 +72,7 @@ async def delete_torrent(torrent_hash: str = Query(), remove_downloads: bool = Q
     result = await database.fetch_one("SELECT infohash, torrent_path FROM torrents WHERE infohash = ?", (torrent_hash,))
 
     if not result:
-        log.error(f"[GUI] Torrent hash not found: {torrent_hash}")
+        log.warning(f"[GUI] Torrent hash not found: {torrent_hash}")
         raise HTTPException(status_code=HTTP_404_NOT_FOUND, detail="Torrent hash not found")
 
     torrent_path = result["torrent_path"]
@@ -87,7 +86,7 @@ async def delete_torrent(torrent_hash: str = Query(), remove_downloads: bool = Q
         # remove from database and delete torrent file
         await utils.remove_torrent_from_database(infohash, torrent_file=torrent_path)
     except Exception as e:
-        log.error(f"[GUI] Failed to delete torrent file: {e}")
+        log.error(f"[GUI] Exception while deleting torrent file: {e}")
         raise HTTPException(status_code=HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to delete torrent file from disk")
 
     raise HTTPException(status_code=HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to remove torrent from client")

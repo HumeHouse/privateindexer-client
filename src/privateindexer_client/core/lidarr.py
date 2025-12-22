@@ -1,91 +1,12 @@
 import asyncio
 import os
 from collections import defaultdict
+from datetime import datetime
 
-from privateindexer_client.core import httpx_request
+from privateindexer_client.core import httpx_request, arr_formatter
+from privateindexer_client.core.arr_formatter import AUDIO_EXTRACTORS
 from privateindexer_client.core.config import LIDARR_URL, LIDARR_API_KEY
 from privateindexer_client.core.logger import log
-
-
-class AggregatedTrackMetadata:
-    def __init__(self):
-        self.qualities: set = set()
-        self.audio_codecs: set = set()
-        self.audio_channels: set = set()
-        self.bit_depths: set = set()
-        self.release_groups: set = set()
-        self.sample_rates: set = set()
-
-
-def aggregate_album_metadata(album_tracks: list[dict]) -> AggregatedTrackMetadata:
-    """
-    Gathers info from each track in an album and combines into a large aggregate object to be used for title formatting
-    """
-    aggregated = AggregatedTrackMetadata()
-
-    for track in album_tracks:
-        quality = track.get("quality", {}).get("quality", {}).get("name", "Unknown")
-        aggregated.qualities.add(quality)
-
-        if track.get("mediaInfo"):
-            media_info = track["mediaInfo"]
-
-            aggregated.audio_codecs.add(media_info.get("audioCodec"))
-            aggregated.audio_channels.add(media_info.get("audioChannels"))
-            aggregated.bit_depths.add(media_info.get("audioBits"))
-            aggregated.sample_rates.add(media_info.get("audioSampleRate"))
-        else:
-            log.warning(f"[LIDARR] Track has no media info tracked by app: {track.get("path", "Unknown path")}")
-
-        if track.get("releaseGroup") and len(track["releaseGroup"].strip()) > 0:
-            aggregated.release_groups.add(track["releaseGroup"])
-
-    return aggregated
-
-
-def build_tags_from_metadata(aggregated: AggregatedTrackMetadata) -> str:
-    """
-    Assembles a final string of metadata tags from an aggregate metadata object to be appended to album titles
-    """
-
-    def tag(values: list[str], wrap: str = "[]") -> str:
-        # sort and get first 3 tags
-        clean_values = sorted(v for v in values if v)
-
-        # no tags → return empty
-        if not clean_values:
-            return ""
-
-        left, right = wrap
-
-        formatted = f"{left}{'+'.join(clean_values[:3])}{"++" if len(clean_values) > 3 else ""}{right}"
-
-        return formatted
-
-    tags = [tag(aggregated.qualities), tag({str(bit_depth) for bit_depth in aggregated.bit_depths}), tag(aggregated.sample_rates)]
-
-    # add audio codecs and channels in parenthesis wrapper together
-    audio_entries = set()
-
-    for codec in sorted(v for v in aggregated.audio_codecs if v):
-        for ch in sorted(v for v in aggregated.audio_channels if v):
-            audio_entries.add(f"{codec} {ch:.1f}")
-
-    if audio_entries:
-        tags.append(tag(audio_entries, wrap="()"))
-
-    # put release groups at the end with hyphen separator
-    if aggregated.release_groups:
-        # sort and get first 3 release groups
-        release_groups = sorted(g for g in aggregated.release_groups if g)
-
-        # append all the groups
-        tags.append(f"-{"+".join(release_groups[:3])}")
-
-        if len(release_groups) > 3:
-            tags.append("++")
-
-    return "".join(tags)
 
 
 async def test_connection():
@@ -99,7 +20,7 @@ async def test_connection():
             if response.status_code == 200:
                 log.info(f"[LIDARR] Connected to Lidarr")
             else:
-                log.warning(f"[LIDARR] Failed to connect to Lidarr: {response.status_code}")
+                log.critical(f"[LIDARR] Failed to connect to Lidarr: {response.status_code} - {response.text}")
     except Exception as e:
         log.error(f"[LIDARR] Exception while testing Lidarr connection: {e}")
 
@@ -114,7 +35,7 @@ async def fetch_root_folders() -> list[str]:
             response = await client.get(f"{LIDARR_URL}/api/v1/rootfolder", headers={"X-API-Key": LIDARR_API_KEY}, timeout=30)
 
             if response.status_code != 200:
-                log.warning(f"[LIDARR] Failed to fetch root folders: {response.status_code}")
+                log.critical(f"[LIDARR] Failed to fetch root folders: {response.status_code} - {response.text}")
                 return []
 
             root_folders = response.json()
@@ -148,7 +69,7 @@ async def fetch_music_library(tracked_root_folders: list[str]) -> list[dict]:
             response = await client.get(f"{LIDARR_URL}/api/v1/artist", headers={"X-API-Key": LIDARR_API_KEY}, timeout=30)
 
             if response.status_code != 200:
-                log.warning(f"[LIDARR] Failed to fetch artist list: {response.status_code}")
+                log.critical(f"[LIDARR] Failed to fetch artist list: {response.status_code} - {response.text}")
                 return []
 
             artist_list = response.json()
@@ -169,13 +90,13 @@ async def fetch_music_library(tracked_root_folders: list[str]) -> list[dict]:
             response = await client.get(f"{LIDARR_URL}/api/v1/album", headers={"X-API-Key": LIDARR_API_KEY}, timeout=30)
 
             if response.status_code != 200:
-                log.warning(f"[LIDARR] Failed to fetch album list: {response.status_code}")
+                log.critical(f"[LIDARR] Failed to fetch album list: {response.status_code} - {response.text}")
                 return []
 
             album_list = response.json()
 
         # key albums by their ID
-        album_metadata = {album["id"]: album for album in album_list}
+        all_album_metadata = {album["id"]: album for album in album_list}
 
         final_entries = []
 
@@ -196,7 +117,7 @@ async def fetch_music_library(tracked_root_folders: list[str]) -> list[dict]:
 
             # work through each album
             for album_id, album_tracks in albums.items():
-                album_metadata = album_metadata[album_id]
+                album_metadata = all_album_metadata[album_id]
                 album_stats = album_metadata["statistics"]
 
                 # get the percent of tracks for album that are currently tracked on disk
@@ -211,19 +132,34 @@ async def fetch_music_library(tracked_root_folders: list[str]) -> list[dict]:
                 if not shared_directory:
                     log.warning(f"[LIDARR] Skipping album creation for '{artist["artistName"]} - {album_metadata["title"]}', must share a single parent directory")
 
+                dt = datetime.fromisoformat(album_metadata["releaseDate"].replace("Z", "+00:00"))
+                album_year = dt.year
+
                 # build full albums which share a single directory
                 if percent_of_tracks == 100 and missing_track_count == 0 and shared_directory:
-                    aggregated_metadata = aggregate_album_metadata(album_tracks)
-                    metadata_tags = build_tags_from_metadata(aggregated_metadata)
-                    title = f"{artist["artistName"]} - {album_metadata["title"]} {metadata_tags}"
-                    log.debug(f"[LIDARR] Album ({len(album_tracks)} tracks) grouped with title: {title}")
+                    aggregated_metadata = arr_formatter.aggregate_metadata(album_tracks, app_name="LIDARR", extractors=AUDIO_EXTRACTORS, )
+                    metadata_tags = arr_formatter.format_tags(aggregated_metadata)
+                    title = f"{artist["artistName"]} - {album_metadata["title"]} ({album_year}) {metadata_tags}"
 
+                    log.debug(f"[LIDARR] Grouped album ({len(album_tracks)} tracks): {title}")
                     final_entries.append({"id": album_id, "title": title, "path": track_paths.pop(), "album": True, })
 
                 else:
                     # if there are missing tracks or non-shared directory, just build each track one at a time
                     for album_track in album_tracks:
-                        final_entries.append({"id": album_id, "path": album_track["path"], "album": False, })
+                        # skip if no file is tracked
+                        track_path = album_track.get("path")
+                        if not track_path:
+                            continue
+
+                        track_number = album_track["trackNumber"]
+                        track_title = album_track["title"]
+                        aggregated_metadata = arr_formatter.aggregate_metadata([album_track], app_name="LIDARR", extractors=AUDIO_EXTRACTORS, )
+                        metadata_tags = arr_formatter.format_tags(aggregated_metadata)
+                        title = f"{artist["artistName"]} - {album_metadata["title"]} ({album_year}) - {str(track_number).zfill(2)} {track_title} {metadata_tags}"
+
+                        log.debug(f"[LIDARR] Found individual track: {title}")
+                        final_entries.append({"id": album_id, "title": title, "path": track_path, "album": False, })
 
         album_count = 0
         individual_tracks = 0
@@ -243,20 +179,41 @@ async def fetch_music_library(tracked_root_folders: list[str]) -> list[dict]:
 
 async def fetch_artist_tracks(artist_id: str) -> list[dict]:
     """
-    Fetches the music track files for the given artist ID
+    Fetches the music tracks, including their files, for the given artist ID
     """
     try:
         async with httpx_request.get_client() as client:
             params = {"artistId": artist_id, }
-            response = await client.get(f"{LIDARR_URL}/api/v1/trackfile", headers={"X-API-Key": LIDARR_API_KEY}, params=params, timeout=30)
 
-            if response.status_code != 200:
-                log.warning(f"[LIDARR] Failed to fetch track files: {response.status_code}")
+            track_file_response = await client.get(f"{LIDARR_URL}/api/v1/trackfile", headers={"X-API-Key": LIDARR_API_KEY}, params=params, timeout=30)
+
+            if track_file_response.status_code != 200:
+                log.critical(f"[LIDARR] Failed to fetch track files: {track_file_response.status_code} - {track_file_response.text}")
                 return []
 
-            track_response = response.json()
-            log.debug(f"[LIDARR] Fetched track files for artist ID {artist_id} ({len(track_response)} tracks)")
-            return track_response
+            track_files = track_file_response.json()
+
+            track_response = await client.get(f"{LIDARR_URL}/api/v1/track", headers={"X-API-Key": LIDARR_API_KEY}, params=params, timeout=30)
+
+            if track_response.status_code != 200:
+                log.critical(f"[LIDARR] Failed to fetch tracks data: {track_response.status_code} - {track_response.text}")
+                return []
+
+            tracks = track_response.json()
+
+        # merge the two respones together based on the track file ID
+        files_by_id = {f["id"]: f for f in track_files}
+        merged_response = []
+        for track in tracks:
+            if not track["hasFile"]:
+                continue
+            track_file_id = track.get("trackFileId")
+            merged_track = {**track}
+            merged_track.update(files_by_id[track_file_id])
+            merged_response.append(merged_track)
+
+        log.debug(f"[LIDARR] Fetched track files for artist ID {artist_id} ({len(merged_response)} tracks)")
+        return merged_response
     except Exception as e:
         log.error(f"[LIDARR] Exception while fetching track files: {e}")
         return []
@@ -271,7 +228,7 @@ async def fetch_album_metadata(album_id: str) -> dict:
             response = await client.get(f"{LIDARR_URL}/api/v1/album/{album_id}", headers={"X-API-Key": LIDARR_API_KEY}, timeout=30)
 
             if response.status_code != 200:
-                log.warning(f"[LIDARR] Failed to fetch album metadata: {response.status_code}")
+                log.critical(f"[LIDARR] Failed to fetch album metadata: {response.status_code} - {response.text}")
                 return []
 
             album_response = response.json()
