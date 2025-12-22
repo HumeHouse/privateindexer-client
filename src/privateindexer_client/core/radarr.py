@@ -1,6 +1,7 @@
 import os
 
-from privateindexer_client.core import httpx_request
+from privateindexer_client.core import httpx_request, arr_formatter
+from privateindexer_client.core.arr_formatter import VIDEO_EXTRACTORS
 from privateindexer_client.core.config import RADARR_URL, RADARR_API_KEY
 from privateindexer_client.core.logger import log
 
@@ -70,11 +71,29 @@ async def fetch_movie_library(tracked_root_folders: list[str]) -> list[dict]:
         movie_response = response.json()
 
         # build list of movie data for movies which are located in our tracked root folders
-        all_movies = [movie for movie in movie_response if movie.get("rootFolderPath") in tracked_root_folders]
+        movies_in_scope = [movie for movie in movie_response if movie.get("rootFolderPath") in tracked_root_folders]
 
-        log.debug(f"[RADARR] Fetched movie library ({len(all_movies)} movies)")
+        final_entries = []
 
-        return all_movies
+        # loop through each movie to build a list of entries
+        for movie in movies_in_scope:
+            movie_id = movie["id"]
+            movie_path = movie.get("movieFile", {}).get("path")
+
+            # skip if no file is tracked
+            if not movie_path:
+                continue
+
+            aggregated_metadata = arr_formatter.aggregate_metadata([movie["movieFile"]], app_name="RADARR", extractors=VIDEO_EXTRACTORS, )
+            metadata_tags = arr_formatter.format_tags(aggregated_metadata)
+            title = f"{movie["title"]} ({movie["year"]}) {metadata_tags}"
+
+            log.debug(f"[RADARR] Found movie: {title}")
+            final_entries.append({"id": movie_id, "title": title, "path": movie_path, })
+
+        log.debug(f"[RADARR] Fetched movie library ({len(final_entries)} movies)")
+
+        return final_entries
     except Exception as e:
         log.error(f"[RADARR] Exception while fetching movie library: {e}")
         return []

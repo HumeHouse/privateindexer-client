@@ -27,9 +27,9 @@ class ScannerStates(Enum):
 class ScanTorrentJob:
     def __init__(self, file_path: str):
         self.file_path: str = file_path
+        self.torrent_name: str = None
         self.app_id: int = None
         self.torrent_file: str = None
-        self.title: str = None
 
 
 async def scan_media_library(hash_executor: ProcessPoolExecutor) -> tuple[int, int, int, int]:
@@ -133,7 +133,7 @@ async def scan_media_library(hash_executor: ProcessPoolExecutor) -> tuple[int, i
         scan_job.torrent_file = torrent_file
 
         if media_data_entry.title:
-            scan_job.title = media_data_entry.title
+            scan_job.torrent_name = media_data_entry.title
 
         # add the scan job to the queue
         scan_jobs.append(scan_job)
@@ -173,7 +173,7 @@ async def scan_media_library(hash_executor: ProcessPoolExecutor) -> tuple[int, i
 
             # dispatch the torrent creation to the pool of worker threads
             future = loop.run_in_executor(creation_executor, utils.create_torrent_threadsafe,
-                                          batch_job.file_path, batch_job.app_id, batch_job.torrent_file, batch_job.title)
+                                          batch_job.file_path, batch_job.torrent_name, batch_job.app_id, batch_job.torrent_file)
             futures.append(future)
 
         log.info(f"[SCAN] Queued {len(futures)} files for processing")
