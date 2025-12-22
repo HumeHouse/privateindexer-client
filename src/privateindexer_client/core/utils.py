@@ -110,9 +110,14 @@ async def fetch_indexer_user_data():
     try:
         async with httpx_request.get_client() as client:
             response = await client.get(f"{INDEXER_API_URL}/user/stats", headers={"X-API-Key": API_KEY}, timeout=30)
+
+            if response.status_code != 200:
+                log.warning(f"[INDEXER] Failed to fetch user stats: {response.status_code} - {response.text}")
+                return {}
+
             return response.json()
     except Exception as e:
-        log.error(f"[INDEXER] Failed to fetch user stats: {e}")
+        log.error(f"[INDEXER] Exception when fetching user stats: {e}")
         return None
 
 
@@ -223,73 +228,68 @@ async def get_managed_media_data() -> list[MediaDataEntry]:
     Returns list of data dicts for all tracked media
     Includes app ID (Sonarr/Radarr) and optionally a title
     """
+    # check if we have category paths available, otherwise update from apps
+    if not _torznab_category_paths:
+        await update_torznab_category_paths()
+
     tracked_root_folders = [cat_info.get("path") for cat_info in _torznab_category_paths]
     media_data = []
 
     try:
-        # fetch all movie files from Radarr if configured
+        # fetch all movie entries from Radarr if configured
         if RADARR_URL:
-            radarr_movies = await radarr.fetch_movie_library(tracked_root_folders)
-            for movie in radarr_movies:
+            radarr_entries = await radarr.fetch_movie_library(tracked_root_folders)
+            for radarr_entry in radarr_entries:
+                media_entry = MediaDataEntry(MediaType.RADARR_MOVIE)
+                media_entry.app_id = radarr_entry["id"]
+                media_entry.path = radarr_entry["path"]
+                media_entry.title = radarr_entry["title"]
 
-                path = movie.get("movieFile", {}).get("path")
-                if path:
-                    # build a movie entry for valid movies
-                    movie_entry = MediaDataEntry(MediaType.RADARR_MOVIE)
-                    movie_entry.app_id = movie["id"]
-                    movie_entry.path = path
-
-                    media_data.append(movie_entry)
+                media_data.append(media_entry)
     except Exception as e:
         log.error(f"[RADARR] Exception while gathering media data: {e}")
 
     try:
-        # fetch all TV episode files from Sonarr if configured
+        # fetch all TV entries from Sonarr if configured
         if SONARR_URL:
-            sonarr_series = await sonarr.fetch_tv_library(tracked_root_folders)
-            for series_entry in sonarr_series:
+            sonarr_entries = await sonarr.fetch_tv_library(tracked_root_folders)
+            for sonarr_entry in sonarr_entries:
 
                 # build a season entry for season packs
-                if series_entry["season_pack"]:
-                    season_entry = MediaDataEntry(MediaType.SONARR_SEASON)
-                    season_entry.app_id = series_entry["id"]
-                    season_entry.path = series_entry["path"]
-                    season_entry.title = series_entry["title"]
-
-                    media_data.append(season_entry)
+                if sonarr_entry["season_pack"]:
+                    media_entry = MediaDataEntry(MediaType.SONARR_SEASON)
 
                 # build single episode entries for individual episodes
                 else:
-                    episode_entry = MediaDataEntry(MediaType.SONARR_EPISODE)
-                    episode_entry.app_id = series_entry["id"]
-                    episode_entry.path = series_entry["path"]
+                    media_entry = MediaDataEntry(MediaType.SONARR_EPISODE)
 
-                    media_data.append(episode_entry)
+                media_entry.app_id = sonarr_entry["id"]
+                media_entry.path = sonarr_entry["path"]
+                media_entry.title = sonarr_entry["title"]
+
+                media_data.append(media_entry)
     except Exception as e:
         log.error(f"[SONARR] Exception while gathering media data: {e}")
 
     try:
-        # fetch all music track files from Lidarr if configured
+        # fetch all music entries from Lidarr if configured
         if LIDARR_URL:
-            lidarr_tracks = await lidarr.fetch_music_library(tracked_root_folders)
-            for music_entry in lidarr_tracks:
+            lidarr_entries = await lidarr.fetch_music_library(tracked_root_folders)
+            for lidarr_entry in lidarr_entries:
 
                 # build an album entry for full albums
-                if music_entry["album"]:
-                    album_entry = MediaDataEntry(MediaType.LIDARR_ALBUM)
-                    album_entry.app_id = music_entry["id"]
-                    album_entry.path = music_entry["path"]
-                    album_entry.title = music_entry["title"]
-
-                    media_data.append(album_entry)
+                if lidarr_entry["album"]:
+                    media_entry = MediaDataEntry(MediaType.LIDARR_ALBUM)
 
                 # build single track entries for individual tracks
                 else:
-                    track_entry = MediaDataEntry(MediaType.LIDARR_TRACK)
-                    track_entry.app_id = music_entry["id"]
-                    track_entry.path = music_entry["path"]
+                    media_entry = MediaDataEntry(MediaType.LIDARR_TRACK)
 
-                    media_data.append(track_entry)
+                media_entry.app_id = lidarr_entry["id"]
+                media_entry.path = lidarr_entry["path"]
+                media_entry.title = lidarr_entry["title"]
+
+                media_data.append(media_entry)
     except Exception as e:
         log.error(f"[LIDARR] Exception while gathering media data: {e}")
 
@@ -319,7 +319,7 @@ def generate_media_hash(media_path: str) -> list[bytes]:
         hashes = [torrent_info.hash_for_piece(i) for i in range(torrent_info.num_pieces())]
 
     except Exception as e:
-        log.error(f"[TORRENT] Error generating hashes for '{media_path}': {e}")
+        log.error(f"[TORRENT] Exception while generating hashes for '{media_path}': {e}")
         return []
 
     delta = datetime.datetime.now() - before
@@ -371,7 +371,7 @@ def torrent_matches_media(torrent_path: str, media_path: str) -> bool:
     return file_hashes == torrent_hashes
 
 
-def create_torrent(media_path: str, app_id: int, output_torrent_file: str = None, title: str = None) -> tuple[TorrentCreationMetadata, bool]:
+def create_torrent(media_path: str, torrent_name: str, app_id: int, output_torrent_file: str = None) -> tuple[TorrentCreationMetadata, bool]:
     """
     Synchronous routine to build and generate a complete torrent file from the media passed in as media_path
     Checks if output torrent file already exists and skips the torrent generation process
@@ -387,13 +387,9 @@ def create_torrent(media_path: str, app_id: int, output_torrent_file: str = None
 
     else:
         is_new_file = True
-        is_file = os.path.isfile(media_path)
 
         # get the input path parent directory name
         parent_directory = os.path.dirname(media_path)
-
-        # this will become the name of the new torrent, if it's a file, split off the extension
-        torrent_name = title or (os.path.splitext(os.path.basename(media_path))[0] if is_file else os.path.basename(media_path))
 
         log.info(f"[TORRENT] Creating torrent '{torrent_name}'")
 
@@ -419,7 +415,6 @@ def create_torrent(media_path: str, app_id: int, output_torrent_file: str = None
     # attempt to pull the hash information from the torrent file, otherwise fail and remove torrent file from disk
     try:
         info = lt.torrent_info(output_torrent_file)
-        torrent_name = info.name()
         hashes = info.info_hashes()
         torrent_infohash = str(hashes.v2)
 
@@ -429,7 +424,7 @@ def create_torrent(media_path: str, app_id: int, output_torrent_file: str = None
         # get size of media
         total_media_size = info.files().total_size()
     except Exception as e:
-        log.error(f"[TORRENT] Failed to read hash for '{output_torrent_file}', it has been removed: {e}")
+        log.error(f"[TORRENT] Exception while reading hash for '{output_torrent_file}', it has been removed: {e}")
         os.unlink(output_torrent_file)
         return None, False
 
@@ -437,7 +432,7 @@ def create_torrent(media_path: str, app_id: int, output_torrent_file: str = None
 
     torrent_metadata = TorrentCreationMetadata()
     torrent_metadata.app_id = app_id
-    torrent_metadata.name = title or torrent_name
+    torrent_metadata.name = torrent_name
     torrent_metadata.size = total_media_size
     torrent_metadata.media_path = media_path
     torrent_metadata.torrent_path = output_torrent_file
@@ -449,14 +444,14 @@ def create_torrent(media_path: str, app_id: int, output_torrent_file: str = None
     return torrent_metadata, is_new_file
 
 
-def create_torrent_threadsafe(media_path: str, app_id: int, output_torrent_file: str = None, title: str = None) -> tuple[TorrentCreationMetadata, bool]:
+def create_torrent_threadsafe(media_path: str, torrent_name: str, app_id: int, output_torrent_file: str = None) -> tuple[TorrentCreationMetadata, bool]:
     """
     Wraps the create_torrent() routine in a try/accept to catch all runtime errors
     """
     try:
-        return create_torrent(media_path, app_id, output_torrent_file, title)
+        return create_torrent(media_path, torrent_name, app_id, output_torrent_file)
     except Exception as e:
-        log.error(f"[TORRENT] Failed to create torrent for '{media_path}': {e}")
+        log.error(f"[TORRENT] Exception while creating torrent for '{media_path}': {e}")
         return None, False
 
 
@@ -475,11 +470,11 @@ def path_exists_in_torrent(torrent_path: str, target_file_path: str) -> bool:
             if filename == target_file_path:
                 return True
     except Exception as e:
-        log.error(f"[TORRENT] Failed to get file index for '{target_file_path}' in torrent {torrent_path}: {e}")
+        log.error(f"[TORRENT] Exception while getting file index for '{target_file_path}' in torrent {torrent_path}: {e}")
     return False
 
 
-def find_existing_torrent(media_path: str, ignored_torrents: list[str]) -> str | None:
+def find_existing_torrent(media_path: str, ignored_torrents: set[str]) -> str | None:
     """
     Given a media path, check if a torrent already exists in TORRENTS_DIR with the same name or hash
     Returns the existing torrent path if found, otherwise None
@@ -513,7 +508,7 @@ def find_existing_torrent(media_path: str, ignored_torrents: list[str]) -> str |
                 log.debug(f"[TORRENT] Matched '{media_path}' to '{torrent_path}' by hash")
                 return torrent_path
         except Exception as e:
-            log.error(f"[TORRENT] Error comparing hash for '{media_path}' to '{torrent_file}': {e}")
+            log.error(f"[TORRENT] Exception while comparing hash for '{media_path}' to '{torrent_file}': {e}")
 
     log.debug(f"[TORRENT] Couldn't find torrent file for: {media_path}")
     return None
@@ -535,7 +530,7 @@ def find_media_for_torrent(torrent_path: str, media_dir: str) -> str | None:
                     log.debug(f"[TORRENT] Matched '{file_path}' to '{torrent_path}' by hash")
                     return file_path
             except Exception as e:
-                log.error(f"[TORRENT] Error comparing hash for '{file_path}' to '{torrent_path}': {e}")
+                log.error(f"[TORRENT] Exception while comparing hash for '{file_path}' to '{torrent_path}': {e}")
 
     log.debug(f"[TORRENT] Couldn't find media for: {torrent_path}")
     return None
@@ -580,7 +575,7 @@ def process_fastresume_file(fastresume_path: str, torrent_hash: str, torrent_pat
         log.debug(f"[FASTRESUME] Loaded fastresume file for hash: {torrent_hash}")
         return data, torrent_hash, torrent_path
     except Exception as e:
-        log.error(f"[FASTRESUME] Failed to read fastresume file for hash: {torrent_hash}: {e}")
+        log.error(f"[FASTRESUME] Exception while reading fastresume file for hash: {torrent_hash}: {e}")
         return None, torrent_hash, torrent_path
 
 
@@ -618,7 +613,7 @@ def save_fastresume_to_disk(alert: lt.save_resume_data_alert) -> str | None:
             with open(ignore_file, mode='a'):
                 pass
     except Exception as e:
-        log.error(f"[FASTRESUME] Failed to save fastresume data: {e}")
+        log.error(f"[FASTRESUME] Exception while saving fastresume data: {e}")
         return None
 
     log.debug(f"[FASTRESUME] Saved fastresume data for hash: {torrent_hash}")
@@ -749,46 +744,57 @@ def format_peer_flags(peer: lt.peer_info) -> list[tuple[str, str]]:
     return flags
 
 
-def map_torrent_to_qbit(torrent: lt.torrent_handle) -> dict:
+async def map_torrents_to_qbit(client_torrents: list) -> dict:
     """
     Convert a libtorrent.torrent_status object into a qBittorrent-compatible dict
     Most of this is default or general taken from the qBittorrent API docs
     Many of the keys were removed because they weren't required by the apps
     """
-    status = torrent.status()
+    torrents = await database.fetch_all("SELECT name, infohash FROM torrents")
+    name_hash_map = {torrent["infohash"]: torrent["name"] for torrent in torrents}
 
-    # here we have to normalize the infohashes because they are raw bytes out of the status
-    infohash_v1 = status.info_hashes.v1.to_bytes().hex() if status.info_hashes.has_v1() else None
-    torrent_hash = status.info_hashes.v2.to_bytes().hex()
+    all_mapped_torrents = []
 
-    # try to match the save_path with the configured category paths
-    category = detect_torrent_category(status.save_path)
+    for torrent in client_torrents:
+        status = torrent.status()
 
-    mapped = {"added_on": int(status.added_time or 0), "amount_left": int(status.total_wanted - status.total_wanted_done), "availability": status.distributed_copies,
-              "completed": int(status.total_done), "completion_on": int(status.completed_time or -1), "content_path": os.path.join(status.save_path, status.name),
-              "dlspeed": status.download_rate, "download_path": status.save_path, "downloaded": status.all_time_download,
-              "downloaded_session": status.total_payload_download, "eta": calc_eta(status), "has_metadata": status.has_metadata, "hash": torrent_hash,
-              "infohash_v1": infohash_v1 or "", "infohash_v2": torrent_hash or "", "name": status.name, "num_complete": status.num_complete,
-              "num_incomplete": status.num_incomplete, "num_leechs": max(0, status.num_peers - status.num_seeds), "num_seeds": status.num_seeds,
-              "progress": round(status.progress, 3), "ratio": safe_ratio(status), "ratio_limit": -1, "reannounce": int(status.next_announce.total_seconds()),
-              "save_path": status.save_path, "seeding_time": int(status.seeding_duration.total_seconds()), "seeding_time_limit": -1,
-              "seen_complete": int(status.last_seen_complete or -1), "seq_dl": bool(status.flags & lt.torrent_flags.sequential_download), "size": status.total_wanted,
-              "state": map_state(status), "time_active": int(status.active_duration.total_seconds()), "total_size": status.total, "tracker": status.current_tracker,
-              "trackers_count": 1 if status.current_tracker else 0, "uploaded": status.all_time_upload, "uploaded_session": status.total_payload_upload,
-              "upspeed": status.upload_rate, "category": category, }
+        # here we have to normalize the infohashes because they are raw bytes out of the status
+        infohash_v1 = status.info_hashes.v1.to_bytes().hex() if status.info_hashes.has_v1() else None
+        torrent_hash = status.info_hashes.v2.to_bytes().hex()
 
-    peers_list = []
-    for p in torrent.get_peer_info():
-        peers_list.append({"ip": p.ip[0], "port": p.ip[1], "client": p.client.decode("utf-8", errors="ignore") if isinstance(p.client, bytes) else str(p.client),
-                           "flags": format_peer_flags(p), "up_speed": p.up_speed, "down_speed": p.down_speed, "progress": p.progress, })
-    mapped["peers"] = peers_list
+        # try to match the save_path with the configured category paths
+        category = detect_torrent_category(status.save_path)
 
-    trackers_list = []
-    for t in torrent.trackers():
-        trackers_list.append({"url": t["url"], "verified": t["verified"], "next_announce": t.get("next_announce"), "min_announce": t.get("min_announce")})
-    mapped["trackers"] = trackers_list
+        # we want to show the name in the database, not the internal torrent name - it's usually ugly (we use the internal one as a fallback)
+        torrent_name = name_hash_map.get(torrent_hash, status.name)
 
-    return mapped
+        mapped = {"added_on": int(status.added_time or 0), "amount_left": int(status.total_wanted - status.total_wanted_done), "availability": status.distributed_copies,
+                  "completed": int(status.total_done), "completion_on": int(status.completed_time or -1), "content_path": status.save_path,
+                  "dlspeed": status.download_rate, "download_path": status.save_path, "downloaded": status.all_time_download,
+                  "downloaded_session": status.total_payload_download, "eta": calc_eta(status), "has_metadata": status.has_metadata, "hash": torrent_hash,
+                  "infohash_v1": infohash_v1 or "", "infohash_v2": torrent_hash or "", "name": torrent_name, "num_complete": status.num_complete,
+                  "num_incomplete": status.num_incomplete, "num_leechs": max(0, status.num_peers - status.num_seeds), "num_seeds": status.num_seeds,
+                  "progress": round(status.progress, 3), "ratio": safe_ratio(status), "ratio_limit": -1, "reannounce": int(status.next_announce.total_seconds()),
+                  "save_path": status.save_path, "seeding_time": int(status.seeding_duration.total_seconds()), "seeding_time_limit": -1,
+                  "seen_complete": int(status.last_seen_complete or -1), "seq_dl": bool(status.flags & lt.torrent_flags.sequential_download), "size": status.total_wanted,
+                  "state": map_state(status), "time_active": int(status.active_duration.total_seconds()), "total_size": status.total, "tracker": status.current_tracker,
+                  "trackers_count": 1 if status.current_tracker else 0, "uploaded": status.all_time_upload, "uploaded_session": status.total_payload_upload,
+                  "upspeed": status.upload_rate, "category": category, }
+
+        peers_list = []
+        for p in torrent.get_peer_info():
+            peers_list.append({"ip": p.ip[0], "port": p.ip[1], "client": p.client.decode("utf-8", errors="ignore") if isinstance(p.client, bytes) else str(p.client),
+                               "flags": format_peer_flags(p), "up_speed": p.up_speed, "down_speed": p.down_speed, "progress": p.progress, })
+        mapped["peers"] = peers_list
+
+        trackers_list = []
+        for t in torrent.trackers():
+            trackers_list.append({"url": t["url"], "verified": t["verified"], "next_announce": t.get("next_announce"), "min_announce": t.get("min_announce")})
+        mapped["trackers"] = trackers_list
+
+        all_mapped_torrents.append(mapped)
+
+    return all_mapped_torrents
 
 
 def load_persistent_stats() -> tuple[int, int]:

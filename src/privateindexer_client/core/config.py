@@ -4,7 +4,7 @@ import threading
 
 from privateindexer_client.core.logger import log
 
-APP_VERSION = "1.7.0"
+APP_VERSION = "1.7.1"
 
 # gather/set environment variables for usage later
 DATABASE_FILE = "/app/data/torrents.db"
@@ -85,7 +85,7 @@ def load_config():
             with open(CONFIG_FILE, "r") as f:
                 _config_cache = json.load(f)
         except Exception as e:
-            log.error(f"[CONFIG] Failed to load config.json: {e}")
+            log.error(f"[CONFIG] Exception while loading config.json: {e}")
             _config_cache = {}
         return _config_cache
 
@@ -98,4 +98,4 @@ def save_config(config):
             with open(CONFIG_FILE, "w") as f:
                 json.dump(config, f, indent=2)
         except Exception as e:
-            log.error(f"[CONFIG] Failed to write config.json: {e}")
+            log.error(f"[CONFIG] Exception while writing config.json: {e}")

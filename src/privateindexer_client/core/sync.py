@@ -19,7 +19,7 @@ async def periodic_sync_task():
             before = datetime.datetime.now()
 
             # gather minimal data from database for each torrent from database for sync
-            local_torrents = await database.fetch_all("SELECT id, infohash FROM torrents")
+            local_torrents = await database.fetch_all("SELECT id, name, infohash FROM torrents")
             total = len(local_torrents)
             log.info(f"[SYNC] Syncing {total} torrents with indexer")
 
@@ -75,4 +75,4 @@ async def periodic_sync_task():
                 f"[SYNC] Server sync task completed ({delta}): {existing} existing, {len(missing_ids)} missing, {uploaded} uploaded, {failed} failed")
 
         except Exception as e:
-            log.error(f"[SYNC] Error during sync task: {e}")
+            log.error(f"[SYNC] Exception during sync task: {e}")

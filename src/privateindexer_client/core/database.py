@@ -43,7 +43,7 @@ async def initialize():
 
         # check if outdated
         if current_version > LATEST_SCHEMA_VERSION:
-            log.error(
+            log.critical(
                 f"[DATABASE] Current database version ({current_version}) is higher than max supported version ({LATEST_SCHEMA_VERSION}) - application was most likely rolled back.")
             exit(1)
 
@@ -60,7 +60,7 @@ async def initialize():
 
             migration_script = MIGRATIONS.get(current_version)
             if not migration_script:
-                log.error(f"[DATABASE] No migration script found for {current_version} to {next_version}")
+                log.critical(f"[DATABASE] No migration script found for {current_version} to {next_version}")
                 exit(1)
 
             await migration_script(db)
