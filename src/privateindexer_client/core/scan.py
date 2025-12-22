@@ -243,6 +243,9 @@ async def periodic_scan_task():
             loop = asyncio.get_running_loop()
             media_data_entries = await utils.get_managed_media_data()
 
+            # create a map to index entries by their path
+            media_entry_path_map = {entry.path: entry for entry in media_data_entries}
+
             # here we perform various database integrity and value correction checks
             torrents = await database.fetch_all("SELECT * FROM torrents")
             for torrent in torrents:
@@ -336,6 +339,13 @@ async def periodic_scan_task():
 
                         duplicate_entries[searching_torrent["id"]] = searching_torrent
                         log.warning(f"[SCAN] Potential duplicate seed found for '{torrent_name}': {searching_torrent['name']}")
+
+                # case where the name in the database doesn't match the torrent naming system
+                if media_path and media_path in media_entry_path_map and media_entry_path_map[media_path].title != torrent_name:
+                    new_name = media_entry_path_map[media_path].title
+                    updated_files += 1
+                    await database.execute("UPDATE torrents SET name = ? WHERE id = ?", (new_name, torrent_id,))
+                    log.info(f"[SCAN] Updated local torrent name from '{torrent_name}' to '{new_name}'")
 
             # purge duplicate seeds if the user has this option enabled
             if PURGE_DUPLICATE_SEEDS:
