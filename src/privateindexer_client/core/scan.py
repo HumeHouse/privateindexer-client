@@ -266,8 +266,8 @@ async def periodic_scan_task():
 
             loop = asyncio.get_running_loop()
 
-            # create a map to index entries by their path
-            media_entry_path_map = {entry.path: entry for entry in media_data_entries}
+            # create a set of media entry paths
+            media_entry_path_set = set([entry.path for entry in media_data_entries])
 
             # here we perform various database integrity and value correction checks
             torrents = await database.fetch_all("SELECT * FROM torrents")
@@ -351,7 +351,7 @@ async def periodic_scan_task():
                             continue
 
                         # check the media data entries for a path match
-                        if media_path not in media_entry_path_map:
+                        if media_path not in media_entry_path_set:
                             # if no match was found, purge the multi-file torrent because it lost discovery - individual episodes exist instead
                             removed_entries += 1
                             # remove from torrent client
