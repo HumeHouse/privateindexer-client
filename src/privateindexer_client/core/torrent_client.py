@@ -296,7 +296,11 @@ async def load_fastresume_data():
         if not torrent or not os.path.exists(torrent["torrent_path"]):
             for path in [fastresume_path, f"{fastresume_path}.ignore"]:
                 if os.path.exists(path):
-                    os.unlink(path)
+                    try:
+                        os.unlink(path)
+                    except Exception as e:
+                        log.error(f"[FASTRESUME] Exception while removing dangling fastresume data with hash '{torrent_hash}': {e}")
+
             log.info(f"[FASTRESUME] Removed dangling fastresume data with hash: {torrent_hash}")
 
     loop = asyncio.get_running_loop()
@@ -353,7 +357,10 @@ async def load_fastresume_data():
                 ignore_file = f"{fastresume_file}.ignore"
                 for file in [fastresume_file, ignore_file]:
                     if os.path.exists(file):
-                        os.unlink(file)
+                        try:
+                            os.unlink(file)
+                        except Exception as e:
+                            log.error(f"[FASTRESUME] Exception while removing invalid fastresume file '{file}': {e}")
                 log.warning(f"[FASTRESUME] Removed invalid fastresume data with hash: {torrent_hash}")
                 continue
 

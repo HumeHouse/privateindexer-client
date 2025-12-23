@@ -429,7 +429,10 @@ def create_torrent(media_path: str, torrent_name: str, app_id: int, output_torre
         total_media_size = info.files().total_size()
     except Exception as e:
         log.error(f"[TORRENT] Exception while reading hash for '{output_torrent_file}', it has been removed: {e}")
-        os.unlink(output_torrent_file)
+        try:
+            os.unlink(output_torrent_file)
+        except Exception as e:
+            log.error(f"[TORRENT] Exception while removing torrent file '{output_torrent_file}': {e}")
         return None, False
 
     category_id = detect_torznab_category(media_path)
@@ -564,7 +567,10 @@ async def remove_torrent_from_database(torrent_hash: str, remove_torrent_file: b
 
         if torrent_file:
             if os.path.exists(torrent_file):
-                os.unlink(torrent_file)
+                try:
+                    os.unlink(torrent_file)
+                except Exception as e:
+                    log.error(f"[TORRENT] Exception while removing torrent file '{torrent_file}': {e}")
     await database.execute("DELETE FROM torrents WHERE infohash = ?", (torrent_hash,))
 
 
@@ -642,8 +648,11 @@ def delete_empty_downloads_directories() -> int:
                     break
 
             if not any(files) and not still_has_subdirs:
-                os.rmdir(current_dir)
-                deleted.add(current_dir)
+                try:
+                    os.rmdir(current_dir)
+                    deleted.add(current_dir)
+                except Exception as e:
+                    log.error(f"[SCAN] Exception while removing empty download directory: {e}")
 
     return len(deleted)
 
