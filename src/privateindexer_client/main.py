@@ -135,6 +135,7 @@ async def lifespan(_: FastAPI):
                     log.info(f"[APP] PrivateIndexer server successfully verified we are REACHABLE at {announce_ip}:{TORRENTING_PORT}")
                 else:
                     log.critical(f"[APP] PrivateIndexer server is UNABLE TO REACH US at {announce_ip}:{TORRENTING_PORT} - check your port forwarding settings")
+                    exit(1)
             elif status_code == 403:
                 log.critical("[APP] API key rejected by PrivateIndexer server")
                 exit(1)
