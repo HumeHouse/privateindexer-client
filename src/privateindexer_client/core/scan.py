@@ -404,8 +404,11 @@ async def periodic_scan_task():
                         continue
                     torrent_path = os.path.join(TORRENTS_DIR, fname)
                     if torrent_path not in torrent_paths and os.path.exists(torrent_path):
-                        os.unlink(torrent_path)
-                        log.info(f"[SCAN] Removed danlging torrent file '{torrent_path}'")
+                        try:
+                            os.unlink(torrent_path)
+                            log.info(f"[SCAN] Removed dangling torrent file '{torrent_path}'")
+                        except Exception as e:
+                            log.error(f"[SCAN] Exception while removing dangling torrent file '{torrent_path}': {e}")
 
             # purge downloads if the user has this option enabled
             if PURGE_UNTRACKED_DOWNLOADS:
@@ -432,8 +435,11 @@ async def periodic_scan_task():
                         file_path = os.path.abspath(os.path.join(root, file))
 
                         if file_path not in download_paths and os.path.isfile(file_path):
-                            os.unlink(file_path)
-                            log.info(f"[SCAN] Removed untracked downloaded file: {file_path}")
+                            try:
+                                os.unlink(file_path)
+                                log.info(f"[SCAN] Removed untracked downloaded file: {file_path}")
+                            except Exception as e:
+                                log.error(f"[SCAN] Exception while removing untracked downloaded file '{file_path}': {e}")
 
             # delete empty download directories for each torrent category
             deleted_dirs = utils.delete_empty_downloads_directories()
