@@ -232,6 +232,7 @@ async def remove_torrent_by_hash(torrent_hash: str, remove_downloads: bool = Fal
     Optionally removes download path for torrent
     Returns bool True if successful, False otherwise
     """
+    successful = True
     try:
         sha1_hash = lt.sha1_hash(bytes.fromhex(torrent_hash))
         existing = libtorrent_session.find_torrent(sha1_hash)
@@ -239,7 +240,7 @@ async def remove_torrent_by_hash(torrent_hash: str, remove_downloads: bool = Fal
             libtorrent_session.remove_torrent(existing)
     except Exception as e:
         log.error(f"[TORCLIENT] Exception while removing torrent: {e}")
-        return False
+        successful = False
 
     # remove the fastresume/fastresume-ignore files if either exists
     try:
@@ -250,7 +251,7 @@ async def remove_torrent_by_hash(torrent_hash: str, remove_downloads: bool = Fal
                 os.unlink(file)
     except Exception as e:
         log.error(f"[TORCLIENT] Exception while removing fastresume data when removing torrent: {e}")
-        return False
+        successful = False
 
     try:
         if remove_downloads:
@@ -264,10 +265,10 @@ async def remove_torrent_by_hash(torrent_hash: str, remove_downloads: bool = Fal
                     shutil.rmtree(download_path)
     except Exception as e:
         log.error(f"[TORCLIENT] Exception while removing downloads when removing torrent: {e}")
-        return False
+        successful = False
 
     log.info(f"[TORCLIENT] Removed torrent with hash: {torrent_hash}")
-    return True
+    return successful
 
 
 async def load_fastresume_data():
