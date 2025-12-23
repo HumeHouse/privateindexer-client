@@ -10,7 +10,7 @@ from privateindexer_client.core import torrent_client, scan, api, gui, httpx_req
 from privateindexer_client.core.cache import Cache
 from privateindexer_client.core.config import TORRENTS_DIR, SCAN_INTERVAL, INDEXER_API_URL, API_KEY, TORRENTING_PORT, DOWNLOADS_DIR, FASTRESUME_DIR, APP_VERSION, \
     MAX_THREADS, FASTRESUME_INTERVAL, ANNOUNCE_IP, RADARR_URL, RADARR_API_KEY, SONARR_URL, SONARR_API_KEY, SYNC_INTERVAL, CACHE_CLEAN_INTERVAL, LEW_MEMORY_MODE, \
-    LIDARR_URL, LIDARR_API_KEY, MEMORY_LOG_INTERVAL, CACHE_DIR, TAG_SEARCH_RESULTS
+    LIDARR_URL, LIDARR_API_KEY, MEMORY_LOG_INTERVAL, CACHE_DIR, TAG_SEARCH_RESULTS, DATA_DIR
 from privateindexer_client.core.logger import log
 
 APP_TASKS: list[Task] = []
@@ -41,6 +41,19 @@ async def startup_tasks():
 async def lifespan(_: FastAPI):
     global APP_TASKS
     log.info(f"[APP] Starting PrivateIndexer client v{APP_VERSION}")
+
+    if not os.path.isdir(DATA_DIR):
+        log.critical(f"[APP] Data directory does not exist: {DATA_DIR}")
+        exit(1)
+
+    try:
+        test_file = os.path.join(DATA_DIR, ".write_test")
+        with open(test_file, "w"):
+            pass
+        os.unlink(test_file)
+    except OSError:
+        log.critical(f"[APP] Data directory is not writable: {DATA_DIR}")
+        exit(1)
 
     if MEMORY_LOG_INTERVAL > 0:
         log.info(f"[APP] Started memory logging every {MEMORY_LOG_INTERVAL} seconds")
