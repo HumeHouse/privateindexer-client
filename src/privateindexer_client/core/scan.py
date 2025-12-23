@@ -268,6 +268,10 @@ async def periodic_scan_task():
 
             # create a set of media entry paths
             media_entry_path_set = set([entry.path for entry in media_data_entries])
+            # build a map for indexing entry app IDs by their torznab category
+            media_entry_torznab_category_map = defaultdict(set)
+            for media_entry in media_data_entries:
+                media_entry_torznab_category_map[media_entry.torznab_category].add(media_entry.app_id)
 
             # here we perform various database integrity and value correction checks
             torrents = await database.fetch_all("SELECT * FROM torrents")
@@ -277,27 +281,42 @@ async def periodic_scan_task():
                 torrent_hash = torrent["infohash"]
                 torrent_path: str = torrent["torrent_path"]
                 torrent_exists = os.path.exists(torrent_path)
+                torznab_category = torrent["category"]
+                app_id = torrent.get("app_id")
                 media_path: str | None = torrent.get("media_path")
                 download_path: str | None = torrent.get("download_path")
                 media_exists = os.path.exists(media_path) if media_path else False
                 download_exists = os.path.exists(download_path) if download_path else False
 
-                # case where either the torrent is missing or both the media and the downloaded data are missing, purge from database
-                if not torrent_exists or (not media_exists and not download_exists):
+                # case where the torrent file is missing, purge from database
+                if not torrent_exists:
                     removed_entries += 1
                     # remove from torrent client
                     await torrent_client.remove_torrent_by_hash(torrent_hash, True)
                     # remove torrent file and from database
                     await utils.remove_torrent_from_database(torrent_hash, torrent_file=torrent_path)
-                    log.info(f"[SCAN] All files missing for '{torrent_name}', removed torrent from database and torrent client")
+                    log.info(f"[SCAN] Torrent file missing for '{torrent_name}', removed torrent from database and torrent client")
                     continue
 
-                # case where only the media data is missing, nullify the media_path in the database
-                if media_path and not media_exists:
-                    updated_files += 1
-                    await database.execute("UPDATE torrents SET media_path = NULL WHERE id = ?", (torrent_id,))
-                    log.info(f"[SCAN] Media files missing for '{torrent_name}', purged media path from database")
-                    media_path = None
+                # case where the media data is missing, purge from database
+                if media_path and not media_exists and len(media_entry_torznab_category_map[torznab_category]) > 0 and app_id not in media_entry_torznab_category_map:
+                    removed_entries += 1
+                    # remove from torrent client
+                    await torrent_client.remove_torrent_by_hash(torrent_hash, True)
+                    # remove torrent file and from database
+                    await utils.remove_torrent_from_database(torrent_hash, torrent_file=torrent_path)
+                    log.info(f"[SCAN] Media files missing for '{torrent_name}', removed torrent from database and torrent client")
+                    continue
+
+                # case where the app ID is missing, purge the database and torrent client
+                if media_path and app_id is None:
+                    removed_entries += 1
+                    # remove from torrent client
+                    await torrent_client.remove_torrent_by_hash(torrent_hash, True)
+                    # remove torrent file and from database
+                    await utils.remove_torrent_from_database(torrent_hash, torrent_file=torrent_path)
+                    log.info(f"[SCAN] App ID missing for '{torrent_name}', removed torrent from database and torrent client")
+                    continue
 
                 # case if this is an external torrent (should have a download path), try to locate the download media if it's missing or invalid
                 if download_path and (not download_exists or download_path == DOWNLOADS_DIR or
@@ -321,7 +340,7 @@ async def periodic_scan_task():
                             log.info(f"[SCAN] Removed the download path for '{torrent_name}', no file could be matched")
 
                 # case where media exists but the torznab category is unknown (0), try to fix it
-                if media_exists and torrent["category"] == 0:
+                if media_exists and torznab_category == 0:
                     category_id = utils.detect_torznab_category(media_path)
 
                     # update the category if a match was found
