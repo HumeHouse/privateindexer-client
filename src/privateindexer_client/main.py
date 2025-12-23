@@ -42,10 +42,12 @@ async def lifespan(_: FastAPI):
     global APP_TASKS
     log.info(f"[APP] Starting PrivateIndexer client v{APP_VERSION}")
 
+    # check if data directory exists
     if not os.path.isdir(DATA_DIR):
         log.critical(f"[APP] Data directory does not exist: {DATA_DIR}")
         exit(1)
 
+    # check if data directory has correct permissions
     try:
         test_file = os.path.join(DATA_DIR, ".write_test")
         with open(test_file, "w"):
@@ -70,11 +72,19 @@ async def lifespan(_: FastAPI):
     log.info(f"[APP] Cache directory: {CACHE_DIR}")
     os.makedirs(CACHE_DIR, exist_ok=True)
 
-    # check if the downloads directory exists, otherwise fail
-    if os.path.exists(DOWNLOADS_DIR):
-        log.info(f"[APP] Downloads directory: {DOWNLOADS_DIR}")
-    else:
-        log.critical(f"[APP] Downloads directory doesn't exist or not accessible: {DOWNLOADS_DIR}")
+    # check if downloads directory exists
+    if not os.path.isdir(DOWNLOADS_DIR):
+        log.critical(f"[APP] Downloads directory does not exist: {DOWNLOADS_DIR}")
+        exit(1)
+
+    # check if downloads directory has correct permissions
+    try:
+        test_file = os.path.join(DOWNLOADS_DIR, ".write_test")
+        with open(test_file, "w"):
+            pass
+        os.unlink(test_file)
+    except OSError:
+        log.critical(f"[APP] Downloads directory is not writable: {DOWNLOADS_DIR}")
         exit(1)
 
     log.info(f"[APP] Scan interval: {SCAN_INTERVAL} seconds")
