@@ -409,24 +409,23 @@ async def periodic_scan_task():
 
             # purge downloads if the user has this option enabled
             if PURGE_UNTRACKED_DOWNLOADS:
-                download_paths = set()
+                # fetch fresh torrent metadata from database
+                torrents = await database.fetch_all("SELECT * FROM torrents WHERE download_path IS NOT NULL")
 
                 # build a set of download paths we have tracked
+                download_paths = set()
                 for torrent in torrents:
-                    download_path = torrent.get("download_path")
-                    if not download_path:
-                        continue
-                    download_path = os.path.abspath(download_path)
-                    download_paths.add(download_path)
+                    download_path = torrent["download_path"]
 
+                    download_path = os.path.abspath(download_path)
                     # add all files from directory to the set
                     if os.path.isdir(download_path):
                         for root, _, files in os.walk(download_path):
                             for file in files:
                                 download_paths.add(os.path.join(root, file))
+                    else:
+                        download_paths.add(download_path)
 
-            # purge downloads if the user has this option enabled
-            if PURGE_UNTRACKED_DOWNLOADS:
                 # walk over the downloads directory and delete every file which is not being tracked
                 for root, _, files in os.walk(DOWNLOADS_DIR):
                     for file in files:
@@ -434,7 +433,7 @@ async def periodic_scan_task():
 
                         if file_path not in download_paths and os.path.isfile(file_path):
                             os.unlink(file_path)
-                            log.info(f"[SCAN] Removed untracked download: {file_path}")
+                            log.info(f"[SCAN] Removed untracked downloaded file: {file_path}")
 
             # delete empty download directories for each torrent category
             deleted_dirs = utils.delete_empty_downloads_directories()
