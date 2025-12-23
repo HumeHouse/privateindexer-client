@@ -9,7 +9,7 @@ FROM base AS builder
 WORKDIR /app
 
 # copy python requirements file
-COPY requirements.txt ./
+COPY requirements.txt /app
 
 # install dependencies
 RUN pip install -r requirements.txt
@@ -35,10 +35,10 @@ COPY --from=builder /usr/local/lib/python3.13/site-packages /usr/local/lib/pytho
 COPY --from=builder /usr/local/bin /usr/local/bin
 
 # copy all source code
-COPY --chown=${UID}:${GID} src ./
+COPY --chown=${UID}:${GID} src/ /app/src
 
 # copy logging config
-COPY --chown=${UID}:${GID} logging.yml ./
+COPY --chown=${UID}:${GID} logging.yml /app
 
 # create data directories with open permissions
 RUN mkdir -m 777 /app/data \
