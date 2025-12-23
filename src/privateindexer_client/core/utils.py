@@ -45,7 +45,7 @@ class TorrentCreationMetadata:
         self.torrent_path: str = None
         self.uploaded: bool = None
         self.files: int = None
-        self.category: int = None
+        self.torznab_category: int = None
         self.infohash: str = None
 
 
@@ -438,7 +438,7 @@ def create_torrent(media_path: str, torrent_name: str, app_id: int, output_torre
     torrent_metadata.torrent_path = output_torrent_file
     torrent_metadata.uploaded = False
     torrent_metadata.files = file_count
-    torrent_metadata.category = category_id
+    torrent_metadata.torznab_category = category_id
     torrent_metadata.infohash = torrent_infohash
 
     return torrent_metadata, is_new_file
