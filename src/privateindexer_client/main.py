@@ -145,7 +145,7 @@ async def lifespan(_: FastAPI):
 
     asyncio.create_task(startup_tasks())
 
-    log.info("[APP] API server started on 0.0.0.0:80")
+    log.info("[APP] API server started on 0.0.0.0:8080")
 
     yield
 
