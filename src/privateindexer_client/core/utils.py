@@ -34,6 +34,7 @@ class MediaDataEntry:
         self.app_id: int = None
         self.title: str = None
         self.path: str = None
+        self.torznab_category: int = None
 
 
 class TorrentCreationMetadata:
@@ -244,6 +245,7 @@ async def get_managed_media_data() -> list[MediaDataEntry]:
                 media_entry.app_id = radarr_entry["id"]
                 media_entry.path = radarr_entry["path"]
                 media_entry.title = radarr_entry["title"]
+                media_entry.torznab_category = RADARR_ROOT_CATEGORY
 
                 media_data.append(media_entry)
     except Exception as e:
@@ -266,6 +268,7 @@ async def get_managed_media_data() -> list[MediaDataEntry]:
                 media_entry.app_id = sonarr_entry["id"]
                 media_entry.path = sonarr_entry["path"]
                 media_entry.title = sonarr_entry["title"]
+                media_entry.torznab_category = SONARR_ROOT_CATEGORY
 
                 media_data.append(media_entry)
     except Exception as e:
@@ -288,6 +291,7 @@ async def get_managed_media_data() -> list[MediaDataEntry]:
                 media_entry.app_id = lidarr_entry["id"]
                 media_entry.path = lidarr_entry["path"]
                 media_entry.title = lidarr_entry["title"]
+                media_entry.torznab_category = LIDARR_ROOT_CATEGORY
 
                 media_data.append(media_entry)
     except Exception as e:
