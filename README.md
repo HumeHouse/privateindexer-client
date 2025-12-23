@@ -94,7 +94,7 @@ The Torrenting Port
 
 The Webserver Port
 
-- The built-in torrent client runs a web server on port 80 inside the container for RESTful API control of the
+- The built-in torrent client runs a web server on port 8080 inside the container for RESTful API control of the
   client.
 - You can map the web server port to any port on the host or none at all if you connect from within the Docker
   network like if using nginx reverse proxy.
@@ -241,7 +241,7 @@ services:
       - privateindexer-net
     ports:
       - "6881:6881"
-      - "8080:80"
+      - "8080:8080"
     logging:
       options:
         max-size: 10m
