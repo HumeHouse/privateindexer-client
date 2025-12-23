@@ -20,13 +20,12 @@ FROM base AS runner
 
 WORKDIR /app
 
-# set the container user
-ARG UID=1000
-ENV UID=${UID}
-
-# set the container group
-ARG GID=1000
-ENV GID=${GID}
+# set the container user/group, timezone, and python environment
+ENV UID=1000 \
+    GID=1000 \
+    TZ=America/Chicago \
+    PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1
 
 # copy installed python packages from the builder image
 COPY --from=builder /usr/local/lib/python3.13/site-packages /usr/local/lib/python3.13/site-packages
@@ -43,14 +42,6 @@ COPY --chown=${UID}:${GID} logging.yml /app
 # create data directories with open permissions
 RUN mkdir -m 777 /app/data \
  && chown -R ${UID}:${GID} /app/data
-
-# set the container timezone
-ARG TZ=America/Chicago
-ENV TZ=${TZ}
-
-# set up python environment
-ENV PYTHONUNBUFFERED=1 \
-    PYTHONDONTWRITEBYTECODE=1
 
 # add the healthcheck to hit the app's health endpoint
 HEALTHCHECK --start-period=30s --interval=30s --timeout=5s --retries=3 \
