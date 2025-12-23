@@ -67,4 +67,4 @@ EXPOSE 8080
 WORKDIR /app/src
 
 # run the app
-ENTRYPOINT exec uvicorn privateindexer_client.main:app --proxy-headers --workers 1 --host 0.0.0.0 --port 8080 --log-config /app/logging.yml
+ENTRYPOINT ["uvicorn", "privateindexer_client.main:app", "--proxy-headers", "--workers=1", "--host=0.0.0.0", "--port=8080", "--log-config=/app/logging.yml"]
