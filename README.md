@@ -1,11 +1,13 @@
 # PrivateIndexer Client
 
-This is the client container for the HumeHouse PrivateIndexer swam.
+This is the client container for the HumeHouse PrivateIndexer swarm.
 It pulls data from Radarr/Sonarr/Lidarr, creates torrents for media, and communicates with the PrivateIndexer server.
 There is also a built-in torrent client that will automatically start seeding all your media for you.
 The built-in torrent client also provides qBittorrent-compatible API endpoints for usage with the *arr suite apps.
 You can view a basic dashboard by visiting `http://hostname:8080/dashboard` from a browser if you use the example at the
 bottom of the README.
+
+**NOTE:** This is a `non-root`/`rootless` container, make sure the permissions on your system match your configuration.
 
 ---
 
@@ -50,28 +52,35 @@ below
 
 #### OPTIONAL VARIABLES
 
-| Variable                    | Default Value | Type                | Description                                                                                                                                                                  |
-|-----------------------------|---------------|---------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `MAX_THREADS `              | `8`           | `INTEGER`           | Number of threads to use for CPU & I/O bound tasks. Recommend matching CPU cores.                                                                                            |
-| `SCAN_INTERVAL`             | `30`          | `INTEGER` (minutes) | Minutes between media library scans. We rebuild the media library from Radarr and Sonarr every scan, so be cautious setting too low.                                         |
-| `SYNC_INTERVAL`             | `60`          | `INTEGER` (minutes) | Minutes between server sync task cycles. Sync cucles keep local database up-to-date with server database to ensure no torrents are missing.                                  |
-| `SCAN_BATCH_SIZE`           | `128`         | `INTEGER`           | Number of items in the scan task to process at any given time. This should ideally be set to a multiple of your `MAX_THREADS` variable.                                      |
-| `FASTRESUME_INTERVAL`       | `60`          | `INTEGER` (minutes) | How often (in minutes) to save fastresume data. *Setting this too low can negatively impact your disk performance.*                                                          |
-| `ANNOUNCE_IP`               | **NONE**      | `TEXT` (IPv4)       | Rarely needed, advanced only. If for some reason your client is making requests from different IP than you appear to peers.                                                  |
-| `TORRENTING_PORT`           | `6881`        | `INTEGER`           | Port accepting connections from other torrent clients. (Make sure to bind this to host and forward in router.)                                                               |
-| `LOG_LEVEL`                 | `INFO`        | `KEYWORD` (level)   | Lowest log level to show in console. Can be `DEBUG`, `INFO`, `WARNING`, `ERROR`, or `CRITICAL` where `DEBUG` shows most amount of logs                                       |
-| `PURGE_UNTRACKED_TORRENTS`  | `True`        | `BOOLEAN`           | Enable this to have the client purge any torent files that aren't currently tracked in the database - generally keep this enabled to help clean up old torrents.             |
-| `PURGE_UNTRACKED_DOWNLOADS` | `True`        | `BOOLEAN`           | Enable this to let the scanner remove downloads which are not tracked in the database. This can free up disk space for media you no longer have tracked in *arr apps.        |
-| `STALE_TORRENT_THRESHOLD`   | `30`          | `INTEGER` (days)    | Number of days a torrent is allowed to sit in downloading state before it is automatically purged from the torrent client.                                                   |
-| `PURGE_DUPLICATE_SEEDS`     | `True`        | `BOOLEAN`           | Disable this to prevent purging individual torrents that are part of a tracked multi-file torrent. Enabling is useful for de-duplication.                                    |
-| `CACHE_CLEAN_INTERVAL`      | `12`          | `INTEGER` (hours)   | Hours between cache clean task cycles. Cache clean is important to keep cache file size trimmed and up-to-date with what is actually on disk.                                |
-| `CACHE_EXPIRATION`          | `7`           | `INTEGER` (days)    | Number of days until a cache entry is purged causing its value to be re-caclulated during the next scan. Longer lived cache entries can reduce processing.                   |
-| `LEW_MEMORY_MODE`           | `False`       | `BOOLEAN`           | Enable this to set libtorrent into a low memory profile to help reduce the amount of RAM used by the torrent client. Lew caused this.                                        |
-| `ALLOW_UTP_CONNECTIONS`     | `False`       | `BOOLEAN`           | Enable this to allow the client to connect to peers using uTP instead of TCP. This may result in lower transfer speeds.                                                      |
-| `MEMORY_LOG_INTERVAL`       | `0`           | `INTEGER` (seconds) | Set this to something >0 to display thread memory utilization in the console at a desired interval. Most commonly used for debugging at ~5 seconds.                          |
-| `TAG_SEARCH_RESULTS`        | `True`        | `BOOLEAN`           | Disable this to prevent server from tagging search results which contain your uploads with your user label. This is a privacy option to anonymize your uploads if preferred. |
+| Variable                    | Default Value     | Type                | Description                                                                                                                                                                  |
+|-----------------------------|-------------------|---------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `MAX_THREADS `              | `8`               | `INTEGER`           | Number of threads to use for CPU & I/O bound tasks. Recommend matching CPU cores.                                                                                            |
+| `SCAN_INTERVAL`             | `30`              | `INTEGER` (minutes) | Minutes between media library scans. We rebuild the media library from Radarr and Sonarr every scan, so be cautious setting too low.                                         |
+| `SYNC_INTERVAL`             | `60`              | `INTEGER` (minutes) | Minutes between server sync task cycles. Sync cucles keep local database up-to-date with server database to ensure no torrents are missing.                                  |
+| `SCAN_BATCH_SIZE`           | `128`             | `INTEGER`           | Number of items in the scan task to process at any given time. This should ideally be set to a multiple of your `MAX_THREADS` variable.                                      |
+| `FASTRESUME_INTERVAL`       | `60`              | `INTEGER` (minutes) | How often (in minutes) to save fastresume data. *Setting this too low can negatively impact your disk performance.*                                                          |
+| `ANNOUNCE_IP`               | **NONE**          | `TEXT` (IPv4)       | Rarely needed, advanced only. If for some reason your client is making requests from different IP than you appear to peers.                                                  |
+| `TORRENTING_PORT`           | `6881`            | `INTEGER`           | Port accepting connections from other torrent clients. (Make sure to bind this to host and forward in router.)                                                               |
+| `LOG_LEVEL`                 | `INFO`            | `KEYWORD` (level)   | Lowest log level to show in console. Can be `DEBUG`, `INFO`, `WARNING`, `ERROR`, or `CRITICAL` where `DEBUG` shows most amount of logs                                       |
+| `PURGE_UNTRACKED_TORRENTS`  | `True`            | `BOOLEAN`           | Enable this to have the client purge any torent files that aren't currently tracked in the database - generally keep this enabled to help clean up old torrents.             |
+| `PURGE_UNTRACKED_DOWNLOADS` | `True`            | `BOOLEAN`           | Enable this to let the scanner remove downloads which are not tracked in the database. This can free up disk space for media you no longer have tracked in *arr apps.        |
+| `STALE_TORRENT_THRESHOLD`   | `30`              | `INTEGER` (days)    | Number of days a torrent is allowed to sit in downloading state before it is automatically purged from the torrent client.                                                   |
+| `PURGE_DUPLICATE_SEEDS`     | `True`            | `BOOLEAN`           | Disable this to prevent purging individual torrents that are part of a tracked multi-file torrent. Enabling is useful for de-duplication.                                    |
+| `CACHE_CLEAN_INTERVAL`      | `12`              | `INTEGER` (hours)   | Hours between cache clean task cycles. Cache clean is important to keep cache file size trimmed and up-to-date with what is actually on disk.                                |
+| `CACHE_EXPIRATION`          | `7`               | `INTEGER` (days)    | Number of days until a cache entry is purged causing its value to be re-caclulated during the next scan. Longer lived cache entries can reduce processing.                   |
+| `LEW_MEMORY_MODE`           | `False`           | `BOOLEAN`           | Enable this to set libtorrent into a low memory profile to help reduce the amount of RAM used by the torrent client. Lew caused this.                                        |
+| `ALLOW_UTP_CONNECTIONS`     | `False`           | `BOOLEAN`           | Enable this to allow the client to connect to peers using uTP instead of TCP. This may result in lower transfer speeds.                                                      |
+| `MEMORY_LOG_INTERVAL`       | `0`               | `INTEGER` (seconds) | Set this to something >0 to display thread memory utilization in the console at a desired interval. Most commonly used for debugging at ~5 seconds.                          |
+| `TAG_SEARCH_RESULTS`        | `True`            | `BOOLEAN`           | Disable this to prevent server from tagging search results which contain your uploads with your user label. This is a privacy option to anonymize your uploads if preferred. |
+| `TZ`                        | `America/Chicago` | `TEXT` (ISO 8601)   | Change this to your desired time zone. Check online for a list of ISO 8601 time zones.                                                                                       |
+| `UID`                       | `1000`            | `INTEGER` (user)    | This is the user ID on the system to run the app as. Make sure this user can read and write to the `app data` and `DOWNLOADS_DIR` directories.                               |
+| `GID`                       | `1000`            | `INTEGER` (group)   | This is the group ID on the system to run the app as. Make sure this group can read and write to the `app data` and `DOWNLOADS_DIR` directories.                             |
 
 ### 2. Configure Volumes
+
+**NOTE:** Make sure the `/app/data` mountpoint and `DOWNLOADS_DIR` directories are readable and writable by your
+configured `UID:GID`, otherwise the container will fail to start. Normally this just means 'don't create the
+directories as root' as a general rule of thumb.
 
 | Volume      | Description                                                                                                              | Example                                           |
 |-------------|:-------------------------------------------------------------------------------------------------------------------------|---------------------------------------------------|
