@@ -34,6 +34,7 @@ class MediaDataEntry:
         self.app_id: int = None
         self.title: str = None
         self.path: str = None
+        self.torznab_category: int = None
 
 
 class TorrentCreationMetadata:
@@ -45,7 +46,7 @@ class TorrentCreationMetadata:
         self.torrent_path: str = None
         self.uploaded: bool = None
         self.files: int = None
-        self.category: int = None
+        self.torznab_category: int = None
         self.infohash: str = None
 
 
@@ -194,7 +195,7 @@ async def send_torrent_to_indexer(torrent_path: str, category: int, torrent_name
 
 async def update_torznab_category_paths() -> set[dict[str, str]]:
     """
-    Fetches root folders from Radarr/Sonarr and updates the tracked paths with valid directories
+    Fetches root folders from *arr apps and updates the tracked paths with valid directories
     """
     global _torznab_category_paths
     _torznab_category_paths = []
@@ -226,7 +227,7 @@ async def update_torznab_category_paths() -> set[dict[str, str]]:
 async def get_managed_media_data() -> list[MediaDataEntry]:
     """
     Returns list of data dicts for all tracked media
-    Includes app ID (Sonarr/Radarr) and optionally a title
+    Includes app ID (*arr apps) and optionally a title
     """
     # check if we have category paths available, otherwise update from apps
     if not _torznab_category_paths:
@@ -244,6 +245,7 @@ async def get_managed_media_data() -> list[MediaDataEntry]:
                 media_entry.app_id = radarr_entry["id"]
                 media_entry.path = radarr_entry["path"]
                 media_entry.title = radarr_entry["title"]
+                media_entry.torznab_category = RADARR_ROOT_CATEGORY
 
                 media_data.append(media_entry)
     except Exception as e:
@@ -266,6 +268,7 @@ async def get_managed_media_data() -> list[MediaDataEntry]:
                 media_entry.app_id = sonarr_entry["id"]
                 media_entry.path = sonarr_entry["path"]
                 media_entry.title = sonarr_entry["title"]
+                media_entry.torznab_category = SONARR_ROOT_CATEGORY
 
                 media_data.append(media_entry)
     except Exception as e:
@@ -288,6 +291,7 @@ async def get_managed_media_data() -> list[MediaDataEntry]:
                 media_entry.app_id = lidarr_entry["id"]
                 media_entry.path = lidarr_entry["path"]
                 media_entry.title = lidarr_entry["title"]
+                media_entry.torznab_category = LIDARR_ROOT_CATEGORY
 
                 media_data.append(media_entry)
     except Exception as e:
@@ -425,7 +429,10 @@ def create_torrent(media_path: str, torrent_name: str, app_id: int, output_torre
         total_media_size = info.files().total_size()
     except Exception as e:
         log.error(f"[TORRENT] Exception while reading hash for '{output_torrent_file}', it has been removed: {e}")
-        os.unlink(output_torrent_file)
+        try:
+            os.unlink(output_torrent_file)
+        except Exception as e:
+            log.error(f"[TORRENT] Exception while removing torrent file '{output_torrent_file}': {e}")
         return None, False
 
     category_id = detect_torznab_category(media_path)
@@ -438,7 +445,7 @@ def create_torrent(media_path: str, torrent_name: str, app_id: int, output_torre
     torrent_metadata.torrent_path = output_torrent_file
     torrent_metadata.uploaded = False
     torrent_metadata.files = file_count
-    torrent_metadata.category = category_id
+    torrent_metadata.torznab_category = category_id
     torrent_metadata.infohash = torrent_infohash
 
     return torrent_metadata, is_new_file
@@ -560,7 +567,10 @@ async def remove_torrent_from_database(torrent_hash: str, remove_torrent_file: b
 
         if torrent_file:
             if os.path.exists(torrent_file):
-                os.unlink(torrent_file)
+                try:
+                    os.unlink(torrent_file)
+                except Exception as e:
+                    log.error(f"[TORRENT] Exception while removing torrent file '{torrent_file}': {e}")
     await database.execute("DELETE FROM torrents WHERE infohash = ?", (torrent_hash,))
 
 
@@ -620,23 +630,30 @@ def save_fastresume_to_disk(alert: lt.save_resume_data_alert) -> str | None:
     return torrent_hash
 
 
-def delete_empty_directories(root: str) -> int:
+def delete_empty_downloads_directories() -> int:
     """
-    Helper function to recursively delete empty directories
+    Helper function to recursively delete empty download directories in the tracked torrent category paths
     """
     deleted = set()
 
-    for current_dir, subdirs, files in os.walk(root, topdown=False):
+    for category_data in get_torrent_categories().values():
+        root = category_data.get("savePath")
 
-        still_has_subdirs = False
-        for subdir in subdirs:
-            if os.path.join(current_dir, subdir) not in deleted:
-                still_has_subdirs = True
-                break
+        for current_dir, subdirs, files in os.walk(root, topdown=False):
 
-        if not any(files) and not still_has_subdirs:
-            os.rmdir(current_dir)
-            deleted.add(current_dir)
+            still_has_subdirs = False
+            for subdir in subdirs:
+                if os.path.join(current_dir, subdir) not in deleted:
+                    still_has_subdirs = True
+                    break
+
+            if not any(files) and not still_has_subdirs:
+                try:
+                    os.rmdir(current_dir)
+                    deleted.add(current_dir)
+                except Exception as e:
+                    log.error(f"[SCAN] Exception while removing empty download directory: {e}")
+
     return len(deleted)
 
 
@@ -756,6 +773,10 @@ async def map_torrents_to_qbit(client_torrents: list) -> dict:
     all_mapped_torrents = []
 
     for torrent in client_torrents:
+        # check torrent handle for validity before proceeding
+        if not torrent.is_valid():
+            continue
+
         status = torrent.status()
 
         # here we have to normalize the infohashes because they are raw bytes out of the status

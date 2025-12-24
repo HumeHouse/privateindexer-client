@@ -246,7 +246,11 @@ async def add_torrent(
         hashes = info.info_hashes()
         if not hashes.has_v2():
             log.warning(f"[API] Refusing to keep torrent, no v2 hash (not from PrivateIndexer?): {torrent_name}")
-            os.unlink(torrent_file)
+            try:
+                os.unlink(torrent_file)
+            except Exception as e:
+                log.error(f"[API] Exception while removing torrent file '{torrent_file}': {e}")
+                raise HTTPException(status_code=status.INTERNAL_SERVER_ERROR)
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST)
         torrent_hash = str(hashes.v2)
 
@@ -286,7 +290,11 @@ async def add_torrent(
 
     # remove the temporary file if it still exists
     if os.path.exists(torrent_file):
-        os.unlink(torrent_file)
+        try:
+            os.unlink(torrent_file)
+        except Exception as e:
+            log.error(f"[API] Exception while removing torrent file '{torrent_file}': {e}")
+            raise HTTPException(status_code=status.INTERNAL_SERVER_ERROR)
 
     log.debug(f"[API] Torrent added: {torrent_file} ({request.headers.get("user-agent")})")
 

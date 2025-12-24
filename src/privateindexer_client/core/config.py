@@ -4,20 +4,22 @@ import threading
 
 from privateindexer_client.core.logger import log
 
-APP_VERSION = "1.7.1"
+APP_VERSION = "1.8.0"
+
+DATA_DIR = "/app/data"
 
 # gather/set environment variables for usage later
-DATABASE_FILE = "/app/data/torrents.db"
-TORRENTS_DIR = "/app/data/torrents"
+DATABASE_FILE = f"{DATA_DIR}/torrents.db"
+TORRENTS_DIR = f"{DATA_DIR}/torrents"
 FASTRESUME_DIR = os.path.join(TORRENTS_DIR, "fastresume")
 
 DOWNLOADS_DIR = os.getenv("DOWNLOADS_DIR")
 
-STATS_FILE = "/app/data/stats.json"
+STATS_FILE = f"{DATA_DIR}/stats.json"
 
-CONFIG_FILE = "/app/data/config.json"
+CONFIG_FILE = f"{DATA_DIR}/config.json"
 
-CACHE_DIR = "/app/data/cache"
+CACHE_DIR = f"{DATA_DIR}/cache"
 
 INDEXER_API_URL = "https://indexer.humehouse.com"
 
@@ -52,9 +54,9 @@ ANNOUNCE_IP = os.getenv("ANNOUNCE_IP")
 TORRENTING_PORT = int(os.getenv("TORRENTING_PORT", 6881))
 TAG_SEARCH_RESULTS = os.getenv("TAG_SEARCH_RESULTS", "true").lower() == "true"
 
-PURGE_UNTRACKED_TORRENTS = os.getenv("PURGE_UNTRACKED_TORRENTS", "false").lower() == "true"
+PURGE_UNTRACKED_TORRENTS = os.getenv("PURGE_UNTRACKED_TORRENTS", "true").lower() == "true"
 
-PURGE_UNTRACKED_DOWNLOADS = os.getenv("PURGE_UNTRACKED_DOWNLOADS", "false").lower() == "true"
+PURGE_UNTRACKED_DOWNLOADS = os.getenv("PURGE_UNTRACKED_DOWNLOADS", "true").lower() == "true"
 
 PURGE_DUPLICATE_SEEDS = os.getenv("PURGE_DUPLICATE_SEEDS", "true").lower() == "true"
 

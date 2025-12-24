@@ -478,17 +478,17 @@ function populateInfoPanel(torrent) {
 
     // general info
     const generalHtml = `
-        <div class="row g-0">
+        <div class="row g-0 mb-0">
             <div class="col-md-4">
-                <dl class="row mb-2 g-0">
+                <dl class="row g-0 mb-0">
                     <dt class="col-4 text-end">Downloaded:</dt><dd class="ms-2 col-7">${formatBytes(torrent["downloaded"])} (${formatBytes(torrent["downloaded_session"])} this session)</dd>
                     <dt class="col-4 text-end">Download Speed:</dt><dd class="ms-2 col-7">${formatSpeed(torrent["dlspeed"])}</dd>
                     <dt class="col-4 text-end">Progress:</dt><dd class="ms-2 col-7">${(torrent["progress"] * 100).toFixed(1)}%</dd>
-                    <dt class="col-4 text-end">Info Hash:</dt><dd class="ms-2 col-7">${torrent["hash"] || "N/A"}</dd>
+                    <dt class="col-4 text-end">Info Hash:</dt><dd class="ms-2 col-7 text-wrap text-break">${torrent["hash"] || "N/A"}</dd>
                 </dl>
             </div>
             <div class="col-md-4">
-                <dl class="row mb-2 g-0">
+                <dl class="row g-0 mb-0">
                     <dt class="col-4 text-end">Uploaded:</dt><dd class="ms-2 col-7">${formatBytes(torrent["uploaded"])} (${formatBytes(torrent["uploaded_session"])} this session)</dd>
                     <dt class="col-4 text-end">Upload Speed:</dt><dd class="ms-2 col-7">${formatSpeed(torrent["upspeed"])}</dd>
                     <dt class="col-4 text-end">Seeds:</dt><dd class="ms-2 col-7">${torrent["num_seeds"]} / ${torrent["num_complete"]}</dd>
@@ -496,7 +496,7 @@ function populateInfoPanel(torrent) {
                 </dl>
             </div>
             <div class="col-md-4">
-                <dl class="row mb-2 g-0">
+                <dl class="row g-0 mb-0">
                     <dt class="col-4 text-end">Tracker Status:</dt><dd class="ms-2 col-7"><span class="fw-bold ${trackerWorking ? "text-success" : "text-danger"}">${trackerWorking ? 'Working' : 'Not Working'}</span> (Next announce ${nextAnnounce})</dd>
                     <dt class="col-4 text-end">Added On:</dt><dd class="ms-2 col-7">${new Date(torrent["added_on"] * 1000).toLocaleString()}</dd>
                     <dt class="col-4 text-end">Save Path:</dt><dd class="ms-2 col-7 text-wrap text-break">${torrent["save_path"]}</dd>
