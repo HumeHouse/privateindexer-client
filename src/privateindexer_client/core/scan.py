@@ -2,6 +2,7 @@ import asyncio
 import datetime
 import itertools
 import os
+from collections import defaultdict
 from concurrent.futures.process import ProcessPoolExecutor
 from enum import Enum
 
@@ -9,7 +10,7 @@ from privateindexer_client.core import torrent_client, database, utils, thread_e
 from privateindexer_client.core.config import SCAN_INTERVAL, DOWNLOADS_DIR, TORRENTS_DIR, PURGE_UNTRACKED_TORRENTS, SCAN_BATCH_SIZE, PURGE_DUPLICATE_SEEDS, \
     PURGE_UNTRACKED_DOWNLOADS
 from privateindexer_client.core.logger import log
-from privateindexer_client.core.utils import TorrentCreationMetadata
+from privateindexer_client.core.utils import TorrentCreationMetadata, MediaDataEntry
 
 SCAN_PROCESS_STATE: int = 0
 SCAN_TOTAL_ITEMS: int = 0
@@ -32,7 +33,7 @@ class ScanTorrentJob:
         self.torrent_file: str = None
 
 
-async def scan_media_library(hash_executor: ProcessPoolExecutor) -> tuple[int, int, int, int]:
+async def scan_media_library(media_data_entries: list[MediaDataEntry], hash_executor: ProcessPoolExecutor) -> tuple[int, int, int, int]:
     """
     Main loop for scanning media libraries defined by user
     Will walk over all defined category paths, each single file gets turned into a single torrent file
@@ -41,17 +42,6 @@ async def scan_media_library(hash_executor: ProcessPoolExecutor) -> tuple[int, i
     Will attempt to use send_torrent_to_indexer() and seed_torrents() for each torrent if conditions are met
     """
     global SCAN_PROCESS_STATE, SCAN_TOTAL_ITEMS, SCAN_DONE_ITEMS
-
-    # fetch updated root folders from Radarr/Sonarr
-    category_paths = await utils.update_torznab_category_paths()
-
-    # make sure we have at least 1 directory to scan, otherwise skip scan
-    if len(category_paths) == 0:
-        log.warning(f"[SCAN] No root folders accessible for scanning")
-        return 0, 0, 0, 0
-
-    # set scan state to pre-scan
-    SCAN_PROCESS_STATE = ScannerStates.PRE_SCAN.value
 
     torrents = await database.fetch_all("SELECT id, name, media_path, torrent_path, app_id FROM torrents WHERE media_path IS NOT NULL")
     torrent_data_map = {torrent["media_path"]: torrent for torrent in torrents}
@@ -63,7 +53,6 @@ async def scan_media_library(hash_executor: ProcessPoolExecutor) -> tuple[int, i
     updated_files = 0
 
     loop = asyncio.get_running_loop()
-    media_data_entries = await utils.get_managed_media_data()
 
     # set scan state to scanning and update progress values
     SCAN_TOTAL_ITEMS = len(media_data_entries)
@@ -77,7 +66,7 @@ async def scan_media_library(hash_executor: ProcessPoolExecutor) -> tuple[int, i
     for media_data_entry in media_data_entries:
         file_path = media_data_entry.path
 
-        # make sure we can see whatever was passed through from Radarr/Sonarr
+        # make sure we can see whatever was passed through from the *arr app
         if not os.path.exists(file_path):
             log.debug(f"[SCAN] File path not found or accessible, skipped: {file_path}")
             # increment global items counter
@@ -206,10 +195,10 @@ async def scan_media_library(hash_executor: ProcessPoolExecutor) -> tuple[int, i
                 if metadata:
 
                     # attempt to send torrent file to indexer server
-                    uploaded = await utils.send_torrent_to_indexer(metadata.torrent_path, metadata.category, metadata.name, app_id=metadata.app_id)
+                    uploaded = await utils.send_torrent_to_indexer(metadata.torrent_path, metadata.torznab_category, metadata.name, app_id=metadata.app_id)
 
                     # add the data for the torrent to the database
-                    await utils.add_torrent_to_database(metadata.name, metadata.size, metadata.torrent_path, uploaded, metadata.files, metadata.category,
+                    await utils.add_torrent_to_database(metadata.name, metadata.size, metadata.torrent_path, uploaded, metadata.files, metadata.torznab_category,
                                                         media_path=metadata.media_path, torrent_hash=metadata.infohash, app_id=metadata.app_id)
 
                     if is_new_file:
@@ -245,10 +234,28 @@ async def periodic_scan_task():
             log.info("[SCAN] Scanning media library for new or updated files")
             before = datetime.datetime.now()
 
+            # set scan state to pre-scan
+            SCAN_PROCESS_STATE = ScannerStates.PRE_SCAN.value
+
             # spawn a new hash executor
             hash_executor = thread_executor.get_hash_executor()
 
-            total_files, ignored_files, updated_files, created_files = await scan_media_library(hash_executor)
+            # fetch updated root folders from *arr apps
+            category_paths = await utils.update_torznab_category_paths()
+
+            # fetch the compiled list of tracked media from *arr apps
+            media_data_entries = await utils.get_managed_media_data()
+
+            # make sure we have at least 1 directory to scan, otherwise skip scan
+            if len(category_paths) == 0:
+                log.warning(f"[SCAN] No root folders accessible for scanning")
+                total_files, ignored_files, updated_files, created_files = 0, 0, 0, 0
+            else:
+                try:
+                    total_files, ignored_files, updated_files, created_files = await scan_media_library(media_data_entries, hash_executor)
+                except Exception as e:
+                    total_files, ignored_files, updated_files, created_files = 0, 0, 0, 0
+                    log.error(f"[SCAN] Exception during periodic scan task (scan/processing): {e}")
 
             log.debug("[SCAN] Scan complete, running post-scan checks")
 
@@ -259,10 +266,13 @@ async def periodic_scan_task():
             duplicate_entries: dict[str, dict] = {}
 
             loop = asyncio.get_running_loop()
-            media_data_entries = await utils.get_managed_media_data()
 
-            # create a map to index entries by their path
-            media_entry_path_map = {entry.path: entry for entry in media_data_entries}
+            # create a set of media entry paths
+            media_entry_path_set = set([entry.path for entry in media_data_entries])
+            # build a map for indexing entry app IDs by their torznab category
+            media_entry_torznab_category_map = defaultdict(set)
+            for media_entry in media_data_entries:
+                media_entry_torznab_category_map[media_entry.torznab_category].add(media_entry.app_id)
 
             # here we perform various database integrity and value correction checks
             torrents = await database.fetch_all("SELECT * FROM torrents")
@@ -272,26 +282,42 @@ async def periodic_scan_task():
                 torrent_hash = torrent["infohash"]
                 torrent_path: str = torrent["torrent_path"]
                 torrent_exists = os.path.exists(torrent_path)
+                torznab_category = torrent["category"]
+                app_id = torrent.get("app_id")
                 media_path: str | None = torrent.get("media_path")
                 download_path: str | None = torrent.get("download_path")
                 media_exists = os.path.exists(media_path) if media_path else False
                 download_exists = os.path.exists(download_path) if download_path else False
 
-                # case where either the torrent is missing or both the media and the downloaded data are missing, purge from database
-                if not torrent_exists or (not media_exists and not download_exists):
+                # case where the torrent file is missing, purge from database
+                if not torrent_exists:
                     removed_entries += 1
                     # remove from torrent client
-                    await torrent_client.remove_torrent_by_hash(torrent.get("infohash"))
+                    await torrent_client.remove_torrent_by_hash(torrent_hash, True)
                     # remove torrent file and from database
                     await utils.remove_torrent_from_database(torrent_hash, torrent_file=torrent_path)
-                    log.info(f"[SCAN] All files missing for '{torrent_name}', removed torrent from database and torrent client")
+                    log.info(f"[SCAN] Torrent file missing for '{torrent_name}', removed torrent from database and torrent client")
                     continue
 
-                # case where only the media data is missing, nullify the media_path in the database
-                if media_path and not media_exists:
-                    updated_files += 1
-                    await database.execute("UPDATE torrents SET media_path = NULL WHERE id = ?", (torrent_id,))
-                    log.info(f"[SCAN] Media files missing for '{torrent_name}', purged media path from database")
+                # case where the media data is missing, purge from database
+                if media_path and not media_exists and len(media_entry_torznab_category_map[torznab_category]) > 0 and app_id not in media_entry_torznab_category_map:
+                    removed_entries += 1
+                    # remove from torrent client
+                    await torrent_client.remove_torrent_by_hash(torrent_hash, True)
+                    # remove torrent file and from database
+                    await utils.remove_torrent_from_database(torrent_hash, torrent_file=torrent_path)
+                    log.info(f"[SCAN] Media files missing for '{torrent_name}', removed torrent from database and torrent client")
+                    continue
+
+                # case where the app ID is missing, purge the database and torrent client
+                if media_path and app_id is None:
+                    removed_entries += 1
+                    # remove from torrent client
+                    await torrent_client.remove_torrent_by_hash(torrent_hash, True)
+                    # remove torrent file and from database
+                    await utils.remove_torrent_from_database(torrent_hash, torrent_file=torrent_path)
+                    log.info(f"[SCAN] App ID missing for '{torrent_name}', removed torrent from database and torrent client")
+                    continue
 
                 # case if this is an external torrent (should have a download path), try to locate the download media if it's missing or invalid
                 if download_path and (not download_exists or download_path == DOWNLOADS_DIR or
@@ -315,7 +341,7 @@ async def periodic_scan_task():
                             log.info(f"[SCAN] Removed the download path for '{torrent_name}', no file could be matched")
 
                 # case where media exists but the torznab category is unknown (0), try to fix it
-                if media_exists and torrent["category"] == 0:
+                if media_exists and torznab_category == 0:
                     category_id = utils.detect_torznab_category(media_path)
 
                     # update the category if a match was found
@@ -345,11 +371,11 @@ async def periodic_scan_task():
                             continue
 
                         # check the media data entries for a path match
-                        if media_path not in media_entry_path_map:
+                        if media_path not in media_entry_path_set:
                             # if no match was found, purge the multi-file torrent because it lost discovery - individual episodes exist instead
                             removed_entries += 1
                             # remove from torrent client
-                            await torrent_client.remove_torrent_by_hash(torrent.get("infohash"))
+                            await torrent_client.remove_torrent_by_hash(torrent_hash, True)
                             # remove torrent file and from database
                             await utils.remove_torrent_from_database(torrent_hash, torrent_file=torrent_path)
                             log.warning(f"[SCAN] Purged undiscovered multi-file torrent: '{torrent_name}'")
@@ -364,9 +390,9 @@ async def periodic_scan_task():
                     duplicate_torrent_path = duplicate_entry["torrent_path"]
                     removed_entries += 1
                     # remove from torrent client
-                    await torrent_client.remove_torrent_by_hash(duplicate_entry.get("infohash"))
+                    await torrent_client.remove_torrent_by_hash(duplicate_entry["infohash"], True)
                     # remove torrent file and from database
-                    await utils.remove_torrent_from_database(duplicate_entry.get("infohash"), torrent_file=duplicate_torrent_path)
+                    await utils.remove_torrent_from_database(duplicate_entry["infohash"], torrent_file=duplicate_torrent_path)
                     log.info(f"[SCAN] Purged duplicate: {duplicate_entry['name']}")
 
             # only purge dangling torrents if the user has this option enabled
@@ -377,40 +403,48 @@ async def periodic_scan_task():
                     if not fname.endswith(".torrent"):
                         continue
                     torrent_path = os.path.join(TORRENTS_DIR, fname)
-                    if torrent_path not in torrent_paths:
-                        os.unlink(torrent_path)
-                        log.info(f"[SCAN] Removed danlging torrent file '{torrent_path}'")
+                    if torrent_path not in torrent_paths and os.path.exists(torrent_path):
+                        try:
+                            os.unlink(torrent_path)
+                            log.info(f"[SCAN] Removed dangling torrent file '{torrent_path}'")
+                        except Exception as e:
+                            log.error(f"[SCAN] Exception while removing dangling torrent file '{torrent_path}': {e}")
 
             # purge downloads if the user has this option enabled
             if PURGE_UNTRACKED_DOWNLOADS:
-                download_paths = set()
+                # fetch fresh torrent metadata from database
+                torrents = await database.fetch_all("SELECT * FROM torrents WHERE download_path IS NOT NULL")
 
                 # build a set of download paths we have tracked
+                download_paths = set()
                 for torrent in torrents:
-                    download_path = torrent.get("download_path")
-                    if not download_path:
-                        continue
-                    download_path = os.path.abspath(download_path)
-                    download_paths.add(download_path)
+                    download_path = torrent["download_path"]
 
+                    download_path = os.path.abspath(download_path)
                     # add all files from directory to the set
                     if os.path.isdir(download_path):
                         for root, _, files in os.walk(download_path):
                             for file in files:
                                 download_paths.add(os.path.join(root, file))
+                    else:
+                        download_paths.add(download_path)
 
                 # walk over the downloads directory and delete every file which is not being tracked
                 for root, _, files in os.walk(DOWNLOADS_DIR):
                     for file in files:
                         file_path = os.path.abspath(os.path.join(root, file))
 
-                        if file_path not in download_paths:
-                            os.unlink(file_path)
-                            log.info(f"[SCAN] Removed untracked download: {file_path}")
+                        if file_path not in download_paths and os.path.isfile(file_path):
+                            try:
+                                os.unlink(file_path)
+                                log.info(f"[SCAN] Removed untracked downloaded file: {file_path}")
+                            except Exception as e:
+                                log.error(f"[SCAN] Exception while removing untracked downloaded file '{file_path}': {e}")
 
-                deleted_dirs = utils.delete_empty_directories(DOWNLOADS_DIR)
-                if deleted_dirs:
-                    log.info(f"[SCAN] Removed {deleted_dirs} empty download directories")
+            # delete empty download directories for each torrent category
+            deleted_dirs = utils.delete_empty_downloads_directories()
+            if deleted_dirs:
+                log.info(f"[SCAN] Removed {deleted_dirs} empty download directories")
 
             duplicate_entries = len(duplicate_entries.keys())
 
@@ -423,7 +457,7 @@ async def periodic_scan_task():
                      f"total {total_files} files, {ignored_files} ignored, {updated_files} updated, {created_files} created, {removed_entries} removed, {duplicate_entries} duplicates")
 
         except Exception as e:
-            log.error(f"[SCAN] Exception during periodic scan: {e}")
+            log.error(f"[SCAN] Exception during periodic scan task (pre/post-processing): {e}")
 
         # set scan state back to idle
         SCAN_PROCESS_STATE = ScannerStates.IDLE.value

@@ -10,7 +10,7 @@ from privateindexer_client.core import torrent_client, scan, api, gui, httpx_req
 from privateindexer_client.core.cache import Cache
 from privateindexer_client.core.config import TORRENTS_DIR, SCAN_INTERVAL, INDEXER_API_URL, API_KEY, TORRENTING_PORT, DOWNLOADS_DIR, FASTRESUME_DIR, APP_VERSION, \
     MAX_THREADS, FASTRESUME_INTERVAL, ANNOUNCE_IP, RADARR_URL, RADARR_API_KEY, SONARR_URL, SONARR_API_KEY, SYNC_INTERVAL, CACHE_CLEAN_INTERVAL, LEW_MEMORY_MODE, \
-    LIDARR_URL, LIDARR_API_KEY, MEMORY_LOG_INTERVAL, CACHE_DIR, TAG_SEARCH_RESULTS
+    LIDARR_URL, LIDARR_API_KEY, MEMORY_LOG_INTERVAL, CACHE_DIR, TAG_SEARCH_RESULTS, DATA_DIR
 from privateindexer_client.core.logger import log
 
 APP_TASKS: list[Task] = []
@@ -42,6 +42,21 @@ async def lifespan(_: FastAPI):
     global APP_TASKS
     log.info(f"[APP] Starting PrivateIndexer client v{APP_VERSION}")
 
+    # check if data directory exists
+    if not os.path.isdir(DATA_DIR):
+        log.critical(f"[APP] Data directory does not exist: {DATA_DIR}")
+        exit(1)
+
+    # check if data directory has correct permissions
+    try:
+        test_file = os.path.join(DATA_DIR, ".write_test")
+        with open(test_file, "w"):
+            pass
+        os.unlink(test_file)
+    except OSError:
+        log.critical(f"[APP] Data directory is not writable: {DATA_DIR}")
+        exit(1)
+
     if MEMORY_LOG_INTERVAL > 0:
         log.info(f"[APP] Started memory logging every {MEMORY_LOG_INTERVAL} seconds")
         APP_TASKS.append(asyncio.create_task(memory.periodic_memory_task(), name="memory"))
@@ -57,11 +72,19 @@ async def lifespan(_: FastAPI):
     log.info(f"[APP] Cache directory: {CACHE_DIR}")
     os.makedirs(CACHE_DIR, exist_ok=True)
 
-    # check if the downloads directory exists, otherwise fail
-    if os.path.exists(DOWNLOADS_DIR):
-        log.info(f"[APP] Downloads directory: {DOWNLOADS_DIR}")
-    else:
-        log.critical(f"[APP] Downloads directory doesn't exist or not accessible: {DOWNLOADS_DIR}")
+    # check if downloads directory exists
+    if not os.path.isdir(DOWNLOADS_DIR):
+        log.critical(f"[APP] Downloads directory does not exist: {DOWNLOADS_DIR}")
+        exit(1)
+
+    # check if downloads directory has correct permissions
+    try:
+        test_file = os.path.join(DOWNLOADS_DIR, ".write_test")
+        with open(test_file, "w"):
+            pass
+        os.unlink(test_file)
+    except OSError:
+        log.critical(f"[APP] Downloads directory is not writable: {DOWNLOADS_DIR}")
         exit(1)
 
     log.info(f"[APP] Scan interval: {SCAN_INTERVAL} seconds")
@@ -122,6 +145,7 @@ async def lifespan(_: FastAPI):
                     log.info(f"[APP] PrivateIndexer server successfully verified we are REACHABLE at {announce_ip}:{TORRENTING_PORT}")
                 else:
                     log.critical(f"[APP] PrivateIndexer server is UNABLE TO REACH US at {announce_ip}:{TORRENTING_PORT} - check your port forwarding settings")
+                    exit(1)
             elif status_code == 403:
                 log.critical("[APP] API key rejected by PrivateIndexer server")
                 exit(1)
@@ -145,7 +169,7 @@ async def lifespan(_: FastAPI):
 
     asyncio.create_task(startup_tasks())
 
-    log.info("[APP] API server started on 0.0.0.0:80")
+    log.info("[APP] API server started on 0.0.0.0:8080")
 
     yield
 

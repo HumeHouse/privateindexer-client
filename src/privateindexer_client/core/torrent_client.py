@@ -232,6 +232,7 @@ async def remove_torrent_by_hash(torrent_hash: str, remove_downloads: bool = Fal
     Optionally removes download path for torrent
     Returns bool True if successful, False otherwise
     """
+    successful = True
     try:
         sha1_hash = lt.sha1_hash(bytes.fromhex(torrent_hash))
         existing = libtorrent_session.find_torrent(sha1_hash)
@@ -239,7 +240,7 @@ async def remove_torrent_by_hash(torrent_hash: str, remove_downloads: bool = Fal
             libtorrent_session.remove_torrent(existing)
     except Exception as e:
         log.error(f"[TORCLIENT] Exception while removing torrent: {e}")
-        return False
+        successful = False
 
     # remove the fastresume/fastresume-ignore files if either exists
     try:
@@ -250,7 +251,7 @@ async def remove_torrent_by_hash(torrent_hash: str, remove_downloads: bool = Fal
                 os.unlink(file)
     except Exception as e:
         log.error(f"[TORCLIENT] Exception while removing fastresume data when removing torrent: {e}")
-        return False
+        successful = False
 
     try:
         if remove_downloads:
@@ -264,10 +265,10 @@ async def remove_torrent_by_hash(torrent_hash: str, remove_downloads: bool = Fal
                     shutil.rmtree(download_path)
     except Exception as e:
         log.error(f"[TORCLIENT] Exception while removing downloads when removing torrent: {e}")
-        return False
+        successful = False
 
     log.info(f"[TORCLIENT] Removed torrent with hash: {torrent_hash}")
-    return True
+    return successful
 
 
 async def load_fastresume_data():
@@ -296,7 +297,11 @@ async def load_fastresume_data():
         if not torrent or not os.path.exists(torrent["torrent_path"]):
             for path in [fastresume_path, f"{fastresume_path}.ignore"]:
                 if os.path.exists(path):
-                    os.unlink(path)
+                    try:
+                        os.unlink(path)
+                    except Exception as e:
+                        log.error(f"[FASTRESUME] Exception while removing dangling fastresume data with hash '{torrent_hash}': {e}")
+
             log.info(f"[FASTRESUME] Removed dangling fastresume data with hash: {torrent_hash}")
 
     loop = asyncio.get_running_loop()
@@ -353,7 +358,10 @@ async def load_fastresume_data():
                 ignore_file = f"{fastresume_file}.ignore"
                 for file in [fastresume_file, ignore_file]:
                     if os.path.exists(file):
-                        os.unlink(file)
+                        try:
+                            os.unlink(file)
+                        except Exception as e:
+                            log.error(f"[FASTRESUME] Exception while removing invalid fastresume file '{file}': {e}")
                 log.warning(f"[FASTRESUME] Removed invalid fastresume data with hash: {torrent_hash}")
                 continue
 
@@ -376,7 +384,7 @@ def save_all_fastresume_data() -> tuple[int, int]:
     Immediately schedules a save of fastresume data for all torrents in the session
     This function waits for all alerts to clear before finishing
     """
-    torrents = libtorrent_session.get_torrents()
+    torrents = get_all_torrents()
     total = len(torrents)
     completed = 0
     try:
@@ -442,7 +450,7 @@ async def periodic_torrent_status_task():
             libtorrent_session.post_session_stats()
 
             # loop through torrents and check their status
-            torrents = libtorrent_session.get_torrents()
+            torrents = get_all_torrents()
             for torrent in torrents:
                 status = torrent.status()
                 # get the infohash stored as raw bytes
@@ -459,7 +467,10 @@ async def periodic_torrent_status_task():
                 if not is_seeding:
                     ignore_file = utils.fastresume_ignore_exists(torrent_hash)
                     if ignore_file:
-                        os.unlink(ignore_file)
+                        try:
+                            os.unlink(ignore_file)
+                        except Exception as e:
+                            log.error(f"[STATUS] Exception while removing fastresume-ignore file '{ignore_file}': {e}")
 
                 # check if torrent is downloading and has been downloading for more than the threshold with no progress OR 2x the threshold with >0 progress
                 if is_downloading and ((added_delta.total_seconds() > STALE_TORRENT_THRESHOLD and status.progress == 0) or (
@@ -480,7 +491,7 @@ async def periodic_torrent_status_task():
                         log.warning(f"[STATUS] Removing download-frozen torrent: {torrent_hash}")
 
                         # remove from client and database
-                        await remove_torrent_by_hash(torrent_hash)
+                        await remove_torrent_by_hash(torrent_hash, True)
                         await utils.remove_torrent_from_database(torrent_hash, torrent_file=result["torrent_path"])
 
         except Exception as e:
