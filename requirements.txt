@@ -4,6 +4,6 @@ python-multipart~=0.0.21
 libtorrent~=2.0.11
 httpx~=0.28.1
 jinja2~=3.1.6
-aiosqlite~=0.22.0
+aiosqlite~=0.22.1
 psutil~=7.1.3
 diskcache~=5.6.3
