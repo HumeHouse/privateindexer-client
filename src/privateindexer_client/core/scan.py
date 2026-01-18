@@ -26,8 +26,8 @@ class ScannerStates(Enum):
 
 
 class ScanTorrentJob:
-    def __init__(self, file_path: str):
-        self.file_path: str = file_path
+    def __init__(self, file_paths: list[str]):
+        self.file_paths: list[str] = file_paths
         self.torrent_name: str = None
         self.app_id: int = None
         self.torrent_file: str = None
@@ -43,9 +43,51 @@ async def scan_media_library(media_data_entries: list[MediaDataEntry], hash_exec
     """
     global SCAN_PROCESS_STATE, SCAN_TOTAL_ITEMS, SCAN_DONE_ITEMS
 
-    torrents = await database.fetch_all("SELECT id, name, media_path, torrent_path, app_id FROM torrents WHERE media_path IS NOT NULL")
-    torrent_data_map = {torrent["media_path"]: torrent for torrent in torrents}
-    ignored_torrents = set([torrent["torrent_path"] for torrent in torrents])
+    query = """
+            SELECT t.id,
+                   t.name,
+                   t.torrent_path,
+                   t.app_id,
+                   GROUP_CONCAT(m.file_path || "%SIZEDELIMIT%" || m.size, "%PATHDELIMIT%") AS media_paths
+            FROM torrents t
+                     LEFT JOIN media m ON t.id = m.torrent_id
+            GROUP BY t.id, t.name, t.torrent_path, t.app_id
+            """
+    torrents = await database.fetch_all(query)
+
+    # ignore torrent files from hash checks which we already track in database
+    ignored_torrents = set(torrent["torrent_path"] for torrent in torrents)
+
+    # create a map of torrent data keyed on their database torrent IDs
+    torrent_data_map = {}
+
+    # create a map of media files keyed on their database torrent IDs
+    torrent_file_map: dict[int, dict[str, int]] = {}
+    for torrent in torrents:
+        files = {}
+        if torrent["media_paths"]:
+
+            # loop through each media path tracked in database
+            for entry in torrent["media_paths"].split("%PATHDELIMIT%"):
+                # split the previously concatenated string from the database query
+                path, size = entry.rsplit("%SIZEDELIMIT%", 1)
+                files[path] = int(size)
+
+        # index the files by torrent ID
+        torrent_file_map[torrent["id"]] = files
+
+        # update the data map
+        torrent_data_map[torrent["id"]] = {
+            "name": torrent["name"],
+            "torrent_path": torrent["torrent_path"],
+            "app_id": torrent["app_id"],
+        }
+
+    # create a lookup index for each file path and the torrent ID it belongs to
+    file_path_id_map: dict[str, set[int]] = defaultdict(set)
+    for torrent_id, files in torrent_file_map.items():
+        for path in files:
+            file_path_id_map[path].add(torrent_id)
 
     total_files = 0
     ignored_files = 0
@@ -64,78 +106,122 @@ async def scan_media_library(media_data_entries: list[MediaDataEntry], hash_exec
 
     # loop through the files we intend to scan
     for media_data_entry in media_data_entries:
-        file_path = media_data_entry.path
+        file_paths = set(media_data_entry.files)
 
-        # make sure we can see whatever was passed through from the *arr app
-        if not os.path.exists(file_path):
-            log.debug(f"[SCAN] File path not found or accessible, skipped: {file_path}")
+        # get the input path parent directory name, use the first media path in the list
+        parent_directory = os.path.dirname(next(iter(file_paths)))
+
+        # make sure we can see the parent directory of the files passed through from the *arr app
+        if not os.path.exists(parent_directory):
+            log.warning(f"[SCAN] Path doesn't exist or is not accessible, skipped: {parent_directory}")
             # increment global items counter
             SCAN_DONE_ITEMS += 1
             continue
 
         total_files += 1
 
-        # ignore the media file if the current path is matches what is in the database
-        if file_path in torrent_data_map:
-            has_updates = False
+        # loop through all the files in this media entry and compare to database files
+        torrent_id_matches = None
+        for path in file_paths:
+            # get all torrents with this file associated
+            torrents_with_file = file_path_id_map.get(path)
 
-            torrent_data = torrent_data_map[file_path]
-            torrent_id = torrent_data["id"]
-            torrent_name = torrent_data["name"]
-            torrent_file = torrent_data["torrent_path"]
+            # if a single path is not available in the database, abort matching and continue to further processing
+            if not torrents_with_file:
+                torrent_id_matches = set()
+                break
 
-            # check if the app_id is correct in the database
-            if torrent_data["app_id"] != media_data_entry.app_id:
-                has_updates = True
-                # trigger a re-upload to make sure the app metadata gets synced to the server again
-                await database.execute("UPDATE torrents SET app_id = ?, uploaded = FALSE WHERE id = ?", (media_data_entry.app_id, torrent_id,))
-                log.info(f"[SCAN] Updated app ID for media at '{file_path}', will re-upload to server during next sync")
+            # append the matched ID with previously matched IDs
+            torrent_id_matches = (
+                torrents_with_file if torrent_id_matches is None
+                else torrent_id_matches & torrents_with_file
+            )
 
-            # check if the torrent name is correct in the database
-            if torrent_name != media_data_entry.title:
-                has_updates = True
-                new_name = media_data_entry.title
-                await database.execute("UPDATE torrents SET name = ? WHERE id = ?", (new_name, torrent_id,))
-                log.info(f"[SCAN] Updated local torrent name from '{torrent_name}' to '{new_name}'")
+        # we only want to skip media entries if we actually track everything passed through
+        if torrent_id_matches is not None and len(torrent_id_matches) == 1:
+            # get the matching torrent ID and files belonging to it
+            torrent_id = next(iter(torrent_id_matches))
+            tracked_files = set(torrent_file_map[torrent_id].keys())
 
-            if has_updates:
-                updated_files += 1
+            # make sure the media entry and the database torrent entry track the exact same file list
+            if tracked_files == file_paths:
 
-            # only ignore the creation process if the torrent file exists
-            if os.path.exists(torrent_file):
-                ignored_files += 1
-                # increment global items counter
-                SCAN_DONE_ITEMS += 1
-                continue
+                # compare all file sizes on disk with what is tracked in database
+                sizes_match = all(
+                    torrent_file_map[torrent_id][path] == os.path.getsize(path)
+                    for path in file_paths
+                )
 
-        log.debug(f"[SCAN] Trying to locate torrent file for: {file_path}")
-        # ignore the media file if we can find a matching torrent file for it
-        find_future = loop.run_in_executor(hash_executor, utils.find_existing_torrent, file_path, ignored_torrents)
+                # if all sizes match, continue the skip/ignore process
+                if sizes_match:
+                    torrent_data = torrent_data_map[torrent_id]
+                    torrent_name = torrent_data["name"]
+                    torrent_file = torrent_data["torrent_path"]
+
+                    has_updates = False
+
+                    # check if the app_id is correct in the database
+                    if torrent_data["app_id"] != media_data_entry.app_id:
+                        has_updates = True
+                        # trigger a re-upload to make sure the app metadata gets synced to the server again
+                        await database.execute("UPDATE torrents SET app_id = ?, uploaded = FALSE WHERE id = ?", (media_data_entry.app_id, torrent_id,))
+                        log.info(f"[SCAN] Updated app ID for torrent '{torrent_name}', will re-upload to server during next sync")
+
+                    # check if the torrent name is correct in the database
+                    if torrent_name != media_data_entry.title:
+                        has_updates = True
+                        new_name = media_data_entry.title
+                        await database.execute("UPDATE torrents SET name = ? WHERE id = ?", (new_name, torrent_id,))
+                        log.info(f"[SCAN] Updated local torrent name from '{torrent_name}' to '{new_name}'")
+
+                    if has_updates:
+                        updated_files += 1
+
+                    # only ignore the creation process if the torrent file exists
+                    if os.path.exists(torrent_file):
+                        ignored_files += 1
+                        # increment global items counter
+                        SCAN_DONE_ITEMS += 1
+                        continue
+
+        log.debug(f"[SCAN] Trying to locate torrent file for: {parent_directory}")
+        # use the parent directory if this entry contains more than one file
+        media_path = parent_directory if len(file_paths) > 1 else next(iter(file_paths))
+
+        # ignore the media files if we can find a matching torrent file
+        find_future = loop.run_in_executor(hash_executor, utils.find_existing_torrent, media_path, ignored_torrents)
         torrent_file = await find_future
         if torrent_file:
             # ignore this torrent file on subsequent loops
             ignored_torrents.add(torrent_file)
 
             # try to update the media path in the database to match the current path
-            result = await database.fetch_one("SELECT id, name, media_path FROM torrents WHERE torrent_path = ?", (torrent_file,))
+            result = await database.fetch_one("SELECT id, name FROM torrents WHERE torrent_path = ?", (torrent_file,))
             if result and result.get("id") is not None:
-                # check to see if the file path was only moved, not renamed or modified
-                if utils.path_exists_in_torrent(torrent_file, file_path):
+                # check to see if the entry files all exist in the torrent file
+                if utils.files_exist_in_torrent(torrent_file, file_paths):
                     updated_files += 1
                     # detect category in case it's not matching in the database
-                    category_id = utils.detect_torznab_category(file_path)
-                    # update the old media location to match current location
-                    await database.execute("UPDATE torrents SET media_path = ?, category = ?, app_id = ? WHERE id = ?",
-                                           (file_path, category_id, media_data_entry.app_id, result["id"],))
-                    log.info(f"[SCAN] Updated the media path for '{result["name"]}'")
+                    category_id = utils.detect_torznab_category(parent_directory)
+                    # update the torrent metadata
+                    await database.execute("UPDATE torrents SET category = ?, app_id = ? WHERE id = ?", (category_id, media_data_entry.app_id, result["id"],))
+
+                    # clear the old media paths for this torrent
+                    await database.execute("DELETE FROM media WHERE torrent_id = ?", (result["id"],))
+
+                    # loop through each media entry file
+                    for file_path in file_paths:
+                        # get file size
+                        file_size = os.path.getsize(file_path)
+                        # add each file to the database
+                        await database.execute("INSERT INTO media (torrent_id, size, file_path) VALUES (?, ?, ?)", (result["id"], file_size, file_path,))
+                    log.info(f"[SCAN] Updated the media paths for '{result["name"]}'")
                     # increment global items counter
                     SCAN_DONE_ITEMS += 1
                     continue
-                else:
-                    log.debug(f"[SCAN] File was modified, media path not updated: {result["name"]}")
 
         # construct the scan job
-        scan_job = ScanTorrentJob(file_path)
+        scan_job = ScanTorrentJob(list(file_paths))
         scan_job.app_id = media_data_entry.app_id
         scan_job.torrent_file = torrent_file
 
@@ -176,14 +262,12 @@ async def scan_media_library(media_data_entries: list[MediaDataEntry], hash_exec
 
         # add each scan job to the execution queue
         for batch_job in batched_jobs:
-            log.debug(f"[SCAN] Queueing file for processing: {batch_job.file_path}")
-
             # dispatch the torrent creation to the pool of worker threads
             future = loop.run_in_executor(creation_executor, utils.create_torrent_threadsafe,
-                                          batch_job.file_path, batch_job.torrent_name, batch_job.app_id, batch_job.torrent_file)
+                                          batch_job.file_paths, batch_job.torrent_name, batch_job.app_id, batch_job.torrent_file)
             futures.append(future)
 
-        log.info(f"[SCAN] Queued {len(futures)} files for processing")
+        log.info(f"[SCAN] Queued {len(futures)} jobs for processing")
 
         # collect the workers as they finish and process their output
         async for future in asyncio.as_completed(futures):
@@ -198,13 +282,14 @@ async def scan_media_library(media_data_entries: list[MediaDataEntry], hash_exec
                     uploaded = await utils.send_torrent_to_indexer(metadata.torrent_path, metadata.torznab_category, metadata.name, app_id=metadata.app_id)
 
                     # add the data for the torrent to the database
-                    await utils.add_torrent_to_database(metadata.name, metadata.size, metadata.torrent_path, uploaded, metadata.files, metadata.torznab_category,
-                                                        media_path=metadata.media_path, torrent_hash=metadata.infohash, app_id=metadata.app_id)
+                    await utils.add_torrent_to_database(metadata.name, metadata.size, metadata.torrent_path, uploaded, metadata.torznab_category,
+                                                        file_paths=metadata.file_paths, torrent_hash=metadata.infohash, app_id=metadata.app_id)
 
                     if is_new_file:
                         created_files += 1
                         # attempt to add the torrent to the libtorrent session right away for immediate seeding
-                        if await torrent_client.add_torrent_for_seeding(metadata.torrent_path, metadata.media_path):
+                        seed_path = os.path.dirname(metadata.file_paths[0]) if len(metadata.file_paths) > 1 else metadata.file_paths[0]
+                        if await torrent_client.add_torrent_for_seeding(metadata.torrent_path, seed_path):
                             log.info(f"[SCAN] Created and started seeding new torrent: {metadata.name}")
                         else:
                             log.warning(f"[SCAN] Created but failed to start seeding new torrent: {metadata.name}")
@@ -268,14 +353,27 @@ async def periodic_scan_task():
             loop = asyncio.get_running_loop()
 
             # create a set of media entry paths
-            media_entry_path_set = set([entry.path for entry in media_data_entries])
+            media_entry_path_set = set([file for entry in media_data_entries for file in entry.files])
             # build a map for indexing entry app IDs by their torznab category
             media_entry_torznab_category_map = defaultdict(set)
             for media_entry in media_data_entries:
                 media_entry_torznab_category_map[media_entry.torznab_category].add(media_entry.app_id)
 
             # here we perform various database integrity and value correction checks
-            torrents = await database.fetch_all("SELECT * FROM torrents")
+            query = """
+                    SELECT t.id,
+                           t.name,
+                           t.infohash,
+                           t.torrent_path,
+                           t.category,
+                           t.app_id,
+                           t.download_path,
+                           GROUP_CONCAT(m.file_path || "%SIZEDELIMIT%" || m.size, "%PATHDELIMIT%") AS media_paths
+                    FROM torrents t
+                             LEFT JOIN media m ON t.id = m.torrent_id
+                    GROUP BY t.id, t.name, t.torrent_path, t.app_id
+                    """
+            torrents = await database.fetch_all(query)
             for torrent in torrents:
                 torrent_id = torrent["id"]
                 torrent_name = torrent["name"]
@@ -284,8 +382,18 @@ async def periodic_scan_task():
                 torrent_exists = os.path.exists(torrent_path)
                 torznab_category = torrent["category"]
                 app_id = torrent.get("app_id")
-                media_path: str | None = torrent.get("media_path")
                 download_path: str | None = torrent.get("download_path")
+
+                # organize media paths
+                media_files = {}
+                if torrent["media_paths"]:
+
+                    # loop through each media path tracked in database
+                    for entry in torrent["media_paths"].split("%PATHDELIMIT%"):
+                        # split the previously concatenated string from the database query
+                        path, size = entry.rsplit("%SIZEDELIMIT%", 1)
+                        files[path] = int(size)
+
                 media_exists = os.path.exists(media_path) if media_path else False
                 download_exists = os.path.exists(download_path) if download_path else False
 
@@ -358,7 +466,7 @@ async def periodic_scan_task():
                     continue
 
                 # case where we have a multi-file torrent tracked, but either files inside are still being seeded individually or it is no longer discovered
-                if media_path and os.path.isdir(media_path) and torrent["files"] > 1:
+                if media_path and os.path.isdir(media_path) and torrent_file_count > 1:
                     for searching_torrent in torrents:
                         searched_media_path = searching_torrent.get("media_path")
 
