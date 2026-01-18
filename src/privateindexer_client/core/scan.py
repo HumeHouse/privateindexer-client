@@ -458,13 +458,6 @@ async def periodic_scan_task():
                         await database.execute("UPDATE torrents SET category = ? WHERE id = ?", (category_id, torrent_id,))
                         log.info(f"[SCAN] Updated the category to '{category_id}' for '{torrent_name}'")
 
-                # case where we have tracked media but it's somehow set inside the downloads directory, nullify its value so it can be rescanned next time
-                if media_path and media_path.startswith(DOWNLOADS_DIR):
-                    updated_files += 1
-                    await database.execute("UPDATE torrents SET media_path = NULL WHERE id = ?", (torrent_id,))
-                    log.info(f"[SCAN] Invalid media path for '{torrent_name}', purged media path from database")
-                    continue
-
                 # case where we have a multi-file torrent tracked, but either files inside are still being seeded individually or it is no longer discovered
                 if media_path and os.path.isdir(media_path) and torrent_file_count > 1:
                     for searching_torrent in torrents:
