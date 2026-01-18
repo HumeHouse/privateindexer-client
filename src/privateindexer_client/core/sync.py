@@ -42,12 +42,12 @@ async def periodic_sync_task():
             torrents_to_upload = []
             if missing_ids:
                 placeholders = ", ".join(["?"] * len(missing_ids))
-                query = f"SELECT id, name, category, torrent_path, media_path, download_path, app_id FROM torrents WHERE id IN ({placeholders})"
+                query = f"SELECT id, name, category, torrent_path, app_id FROM torrents WHERE id IN ({placeholders})"
                 missing_torrent_data = await database.fetch_all(query, tuple(missing_ids))
                 torrents_to_upload.extend(missing_torrent_data)
 
             # fetch torrents which need to be uploaded to server
-            not_uploaded = await database.fetch_all("SELECT id, name, category, torrent_path, media_path, download_path, app_id FROM torrents WHERE uploaded = FALSE")
+            not_uploaded = await database.fetch_all("SELECT id, name, category, torrent_path, app_id FROM torrents WHERE uploaded = FALSE")
             # add these to the metadata lookup map
             torrents_to_upload.extend(not_uploaded)
 
@@ -55,11 +55,9 @@ async def periodic_sync_task():
             for torrent_data in torrents_to_upload:
                 torrent_name = torrent_data["name"]
                 torrent_path = torrent_data["torrent_path"]
-                media_path = torrent_data["media_path"]
-                download_path = torrent_data["download_path"]
 
                 # make sure the torrent and either the media or the download files exist before uploading to the server
-                if os.path.exists(torrent_path) and ((media_path and os.path.exists(media_path)) or (download_path and os.path.exists(download_path))):
+                if os.path.exists(torrent_path):
                     log.debug(f"[SYNC] Attempting to resend torrent to indexer: {torrent_name}")
                     if await utils.send_torrent_to_indexer(torrent_path, torrent_data["category"], torrent_name, torrent_data["app_id"]):
                         await database.execute("UPDATE torrents SET uploaded = TRUE WHERE id = ?", (torrent_data["id"],))
