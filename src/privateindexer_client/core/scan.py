@@ -382,21 +382,29 @@ async def periodic_scan_task():
                 torznab_category = torrent["category"]
                 app_id = torrent.get("app_id")
                 download_path: str | None = torrent.get("download_path")
+                download_exists = os.path.exists(download_path) if download_path else False
 
-                # organize media paths
+                # organize media paths from database
                 media_files = {}
                 if torrent["media_paths"]:
-
                     # loop through each media path tracked in database
                     for entry in torrent["media_paths"].split("%PATHDELIMIT%"):
                         # split the previously concatenated string from the database query
                         path, size = entry.rsplit("%SIZEDELIMIT%", 1)
-                        files[path] = int(size)
+                        media_files[path] = int(size)
+                else:
+                    log.warning(f"[SCAN] No media files tracked for '{torrent_name}'")
 
-                media_exists = os.path.exists(media_path) if media_path else False
-                download_exists = os.path.exists(download_path) if download_path else False
+                if len(media_files) != 0:
+                    # get the media's parent directory if tracked media is found
+                    media_parent_directory = os.path.dirname(list(media_files.keys())[0])
+                    # media exists if and only if all file sizes match database
+                    media_exists = all(os.path.exists(media_file) and os.path.getsize(media_file) == file_size for media_file, file_size in media_files.items())
+                else:
+                    media_parent_directory = None
+                    media_exists = False
 
-                # case where the torrent file is missing, purge from database
+                # case where the torrent file is missing, purge torrent
                 if not torrent_exists:
                     removed_entries += 1
                     # remove from torrent client
@@ -406,8 +414,8 @@ async def periodic_scan_task():
                     log.info(f"[SCAN] Torrent file missing for '{torrent_name}', removed torrent from database and torrent client")
                     continue
 
-                # case where the media data is missing, purge from database
-                if media_path and not media_exists and len(media_entry_torznab_category_map[torznab_category]) > 0 and app_id not in media_entry_torznab_category_map:
+                # case where the media data is missing, purge torrent
+                if media_files and not media_exists:
                     removed_entries += 1
                     # remove from torrent client
                     await torrent_client.remove_torrent_by_hash(torrent_hash, True)
@@ -416,8 +424,18 @@ async def periodic_scan_task():
                     log.info(f"[SCAN] Media files missing for '{torrent_name}', removed torrent from database and torrent client")
                     continue
 
-                # case where the app ID is missing, purge the database and torrent client
-                if media_path and app_id is None:
+                # case where media does exist, but the tracked file sizes within the torrent do not match what's on disk, purge torrent
+                if media_exists and any(os.path.getsize(media_file) != size_in_database for media_file, size_in_database in media_files.items()):
+                    removed_entries += 1
+                    # remove from torrent client
+                    await torrent_client.remove_torrent_by_hash(torrent_hash, True)
+                    # remove torrent file and from database
+                    await utils.remove_torrent_from_database(torrent_hash, torrent_file=torrent_path)
+                    log.info(f"[SCAN] Media file size mismatch for '{torrent_name}', removed torrent from database and torrent client")
+                    continue
+
+                # case where the app ID is missing, purge torrent
+                if media_files and app_id is None:
                     removed_entries += 1
                     # remove from torrent client
                     await torrent_client.remove_torrent_by_hash(torrent_hash, True)
@@ -435,21 +453,20 @@ async def periodic_scan_task():
                     find_future = loop.run_in_executor(hash_executor, utils.find_media_for_torrent, torrent_path, DOWNLOADS_DIR)
                     download_path = await find_future
 
-                    if download_path:
-                        download_exists = os.path.exists(download_path) if download_path else False
+                    download_exists = os.path.exists(download_path) if download_path else False
 
-                        updated_files += 1
-                        # update the database if the download path exists
-                        if download_exists:
-                            await database.execute("UPDATE torrents SET download_path = ? WHERE id = ?", (download_path, torrent_id,))
-                            log.info(f"[SCAN] Updated the download path for '{torrent_name}'")
-                        else:
-                            await database.execute("UPDATE torrents SET download_path = NULL WHERE id = ?", (torrent_id,))
-                            log.info(f"[SCAN] Removed the download path for '{torrent_name}', no file could be matched")
+                    updated_files += 1
+                    # update the database if the download path exists
+                    if download_exists:
+                        await database.execute("UPDATE torrents SET download_path = ? WHERE id = ?", (download_path, torrent_id,))
+                        log.info(f"[SCAN] Updated the download path for '{torrent_name}'")
+                    else:
+                        await database.execute("UPDATE torrents SET download_path = NULL WHERE id = ?", (torrent_id,))
+                        log.info(f"[SCAN] Removed the download path for '{torrent_name}', no file could be matched")
 
                 # case where media exists but the torznab category is unknown (0), try to fix it
-                if media_exists and torznab_category == 0:
-                    category_id = utils.detect_torznab_category(media_path)
+                if media_exists and torznab_category == 0 and media_parent_directory is not None:
+                    category_id = utils.detect_torznab_category(media_parent_directory)
 
                     # update the category if a match was found
                     if category_id != 0:
@@ -458,31 +475,53 @@ async def periodic_scan_task():
                         log.info(f"[SCAN] Updated the category to '{category_id}' for '{torrent_name}'")
 
                 # case where we have a multi-file torrent tracked, but either files inside are still being seeded individually or it is no longer discovered
-                if media_path and os.path.isdir(media_path) and torrent_file_count > 1:
+                if len(media_files) > 1:
                     for searching_torrent in torrents:
-                        searched_media_path = searching_torrent.get("media_path")
-
-                        # skip empty and identical ID matches
-                        if not searched_media_path or searching_torrent["id"] == torrent_id:
+                        # skip identical ID matches
+                        if searching_torrent["id"] == torrent_id:
                             continue
 
-                        # skip non-matching media paths
-                        if os.path.commonpath([searched_media_path, media_path]) != media_path:
+                        # organize media paths from database
+                        searched_media_files = {}
+                        if searching_torrent["media_paths"]:
+                            # loop through each media path tracked in database
+                            for entry in searching_torrent["media_paths"].split("%PATHDELIMIT%"):
+                                # split the previously concatenated string from the database query
+                                path, size = entry.rsplit("%SIZEDELIMIT%", 1)
+                                searched_media_files[path] = int(size)
+
+                        # skip empty matches
+                        if not searched_media_files:
                             continue
 
-                        # check the media data entries for a path match
-                        if media_path not in media_entry_path_set:
-                            # if no match was found, purge the multi-file torrent because it lost discovery - individual episodes exist instead
-                            removed_entries += 1
-                            # remove from torrent client
-                            await torrent_client.remove_torrent_by_hash(torrent_hash, True)
-                            # remove torrent file and from database
-                            await utils.remove_torrent_from_database(torrent_hash, torrent_file=torrent_path)
-                            log.warning(f"[SCAN] Purged undiscovered multi-file torrent: '{torrent_name}'")
+                        is_discovered = True
+
+                        # loop through media files for the current torrent
+                        for media_file in media_files.keys():
+
+                            # loop through the current comparison's media files to check for a common root path
+                            for searched_media_file in searched_media_files.keys():
+
+                                # if a common root path exists between the current torrent's file and the comparison, mark as duplicate
+                                if os.path.commonpath([searched_media_file, media_file]) == media_parent_directory:
+                                    duplicate_entries[searching_torrent["id"]] = searching_torrent
+                                    log.warning(f"[SCAN] Potential duplicate seed found for '{torrent_name}': {searching_torrent['name']}")
+                                    break
+
+                            # if the media is not tracked (and its category has at least 1 tracked), purge the multi-file torrent because it lost discovery
+                            if media_file not in media_entry_path_set and len(media_entry_torznab_category_map[torznab_category]) > 0:
+                                removed_entries += 1
+                                # remove from torrent client
+                                await torrent_client.remove_torrent_by_hash(torrent_hash, True)
+                                # remove torrent file and from database
+                                await utils.remove_torrent_from_database(torrent_hash, torrent_file=torrent_path)
+                                log.warning(f"[SCAN] Purged undiscovered multi-file torrent: '{torrent_name}'")
+                                is_discovered = False
+                                break
+
+                        # stop searching for a match if this torrent is confirmed to be undiscovered
+                        if not is_discovered:
                             break
-
-                        duplicate_entries[searching_torrent["id"]] = searching_torrent
-                        log.warning(f"[SCAN] Potential duplicate seed found for '{torrent_name}': {searching_torrent['name']}")
 
             # purge duplicate seeds if the user has this option enabled
             if PURGE_DUPLICATE_SEEDS:
