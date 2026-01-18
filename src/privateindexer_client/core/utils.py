@@ -47,6 +47,7 @@ class TorrentCreationMetadata:
         self.uploaded: bool = None
         self.torznab_category: int = None
         self.infohash: str = None
+        self.seed_path: str = None
 
 
 def detect_torznab_category(file_path: str) -> int:
@@ -401,12 +402,9 @@ def create_torrent(media_paths: list[str], torrent_name: str, app_id: int, outpu
         fs = lt.file_storage()
 
         # add the media to the file storage
-        if len(media_paths) > 1:
-            for media_path in media_paths:
-                file_size = os.path.getsize(media_path)
-                fs.add_file(media_path, file_size)
-        else:
-            lt.add_files(fs, media_paths[0])
+        for media_path in media_paths:
+            file_size = os.path.getsize(media_path)
+            fs.add_file(os.path.join(os.path.basename(parent_directory), os.path.basename(media_path)), file_size)
 
         # create the torrent from the file storage object
         t = lt.create_torrent(fs)
@@ -414,10 +412,7 @@ def create_torrent(media_paths: list[str], torrent_name: str, app_id: int, outpu
         t.set_priv(True)
 
         # build peice map from parent directory
-        if len(media_paths) > 1:
-            lt.set_piece_hashes(t, os.path.dirname(parent_directory))
-        else:
-            lt.set_piece_hashes(t, parent_directory)
+        lt.set_piece_hashes(t, os.path.dirname(parent_directory))
 
         with open(output_torrent_file, "wb") as f:
             f.write(lt.bencode(t.generate()))
@@ -449,6 +444,7 @@ def create_torrent(media_paths: list[str], torrent_name: str, app_id: int, outpu
     torrent_metadata.uploaded = False
     torrent_metadata.torznab_category = category_id
     torrent_metadata.infohash = torrent_infohash
+    torrent_metadata.seed_path = os.path.dirname(parent_directory)
 
     return torrent_metadata, is_new_file
 
