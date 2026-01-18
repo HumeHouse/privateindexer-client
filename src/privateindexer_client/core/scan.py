@@ -144,7 +144,7 @@ async def scan_media_library(media_data_entries: list[MediaDataEntry], hash_exec
             tracked_files = set(torrent_file_map[torrent_id].keys())
 
             # make sure the media entry and the database torrent entry track the exact same file list
-            if tracked_files == file_paths:
+            if len(tracked_files) > 0 and tracked_files == file_paths:
 
                 # compare all file sizes on disk with what is tracked in database
                 sizes_match = all(
