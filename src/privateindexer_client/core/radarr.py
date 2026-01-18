@@ -89,7 +89,7 @@ async def fetch_movie_library(tracked_root_folders: list[str]) -> list[dict]:
             title = f"{movie["title"]} ({movie["year"]}) {metadata_tags}"
 
             log.debug(f"[RADARR] Found movie: {title}")
-            final_entries.append({"id": movie_id, "title": title, "path": movie_path, })
+            final_entries.append({"id": movie_id, "title": title, "files": [movie_path], })
 
         log.debug(f"[RADARR] Fetched movie library ({len(final_entries)} movies)")
 

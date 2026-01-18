@@ -143,7 +143,7 @@ async def fetch_music_library(tracked_root_folders: list[str]) -> list[dict]:
                     title = f"{artist["artistName"]} - {album_metadata["title"]} ({album_year}) {metadata_tags}"
 
                     log.debug(f"[LIDARR] Grouped album ({len(album_tracks)} tracks): {title}")
-                    final_entries.append({"id": album_id, "title": title, "path": track_paths.pop(), "album": True, })
+                    final_entries.append({"id": album_id, "title": title, "files": track_paths, "album": True, })
 
                 else:
                     # if there are missing tracks or non-shared directory, just build each track one at a time
@@ -160,7 +160,7 @@ async def fetch_music_library(tracked_root_folders: list[str]) -> list[dict]:
                         title = f"{artist["artistName"]} - {album_metadata["title"]} ({album_year}) - {str(track_number).zfill(2)} {track_title} {metadata_tags}"
 
                         log.debug(f"[LIDARR] Found individual track: {title}")
-                        final_entries.append({"id": album_id, "title": title, "path": track_path, "album": False, })
+                        final_entries.append({"id": album_id, "title": title, "files": [track_path], "album": False, })
 
         album_count = 0
         individual_tracks = 0

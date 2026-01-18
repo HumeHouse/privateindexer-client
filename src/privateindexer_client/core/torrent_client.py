@@ -160,8 +160,6 @@ async def add_torrent_for_download(torrent_file: str, save_path: str) -> bool:
         torrent_name = os.path.splitext(os.path.basename(torrent_file))[0]
 
         # get the number of files in the torrent
-        file_count = info.num_files()
-        # get the number of files in the torrent
         total_size = info.total_size()
 
         # make sure the torrent we download has a v2 hash
@@ -202,7 +200,7 @@ async def add_torrent_for_download(torrent_file: str, save_path: str) -> bool:
         return False
 
     # add the data for the torrent to the database
-    await utils.add_torrent_to_database(name=torrent_name, size=total_size, torrent_path=torrent_file_out, uploaded=True, files=file_count, category=0,
+    await utils.add_torrent_to_database(name=torrent_name, size=total_size, torrent_path=torrent_file_out, uploaded=True, category=0,
                                         download_path=save_path, torrent_hash=torrent_hash)
 
     log.info(f"[TORCLIENT] Added new torrent for download: {torrent_name}")

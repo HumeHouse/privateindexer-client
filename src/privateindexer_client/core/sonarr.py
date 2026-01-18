@@ -124,7 +124,7 @@ async def fetch_tv_library(tracked_root_folders: list[str]) -> list[dict]:
                     title = f"{series["title"]} ({series["year"]}) - S{str(season_number).zfill(2)} {metadata_tags}"
                     log.debug(f"[SONARR] Grouped season pack ({len(season_episodes)} episodes): {title}")
 
-                    final_entries.append({"id": series_id, "title": title, "path": episode_paths.pop(), "season_pack": True, })
+                    final_entries.append({"id": series_id, "title": title, "files": episode_paths, "season_pack": True, })
 
                 else:
                     # if there are missing episodes or non-shared directory, just build each episode one at a time
@@ -141,7 +141,7 @@ async def fetch_tv_library(tracked_root_folders: list[str]) -> list[dict]:
                         title = f"{series["title"]} ({series["year"]}) - S{str(season_number).zfill(2)}E{str(episode_number).zfill(2)} {episode_title} {metadata_tags}"
 
                         log.debug(f"[SONARR] Found individual episode: {title}")
-                        final_entries.append({"id": series_id, "title": title, "path": episode_path, "season_pack": False, })
+                        final_entries.append({"id": series_id, "title": title, "files": [episode_path], "season_pack": False, })
 
         season_packs = 0
         individual_episodes = 0
