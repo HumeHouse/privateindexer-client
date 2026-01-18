@@ -4,7 +4,7 @@ from privateindexer_client.core import database_migrations
 from privateindexer_client.core.config import DATABASE_FILE
 from privateindexer_client.core.logger import log
 
-LATEST_SCHEMA_VERSION = 3
+LATEST_SCHEMA_VERSION = 5
 
 TORRENTS_TABLE_SQL = """
                      CREATE TABLE IF NOT EXISTS "torrents"
@@ -12,18 +12,27 @@ TORRENTS_TABLE_SQL = """
                          id            INTEGER primary key,
                          name          TEXT    not null,
                          size          INTEGER not null,
-                         torrent_path TEXT not null unique,
-                         media_path    TEXT,
                          download_path TEXT,
                          uploaded      BOOLEAN not null,
-                         files         INTEGER not null,
                          category      INTEGER not null,
-                         infohash     TEXT not null,
-                         app_id       INTEGER
+                         infohash TEXT not null,
+                         app_id   INTEGER
                      )
                      """
 
-MIGRATIONS = {0: database_migrations.v0_to_v1, 1: database_migrations.v1_to_v2, 2: database_migrations.v2_to_v3, }
+MEDIA_TABLE_SQL = """
+                  CREATE TABLE IF NOT EXISTS "media"
+                  (
+                      id         INTEGER primary key,
+                      torrent_id INTEGER not null,
+                      size       INTEGER not null,
+                      file_path  TEXT    not null unique,
+                      FOREIGN KEY (torrent_id) REFERENCES torrents (id)
+                  )
+                  """
+
+MIGRATIONS = {0: database_migrations.v0_to_v1, 1: database_migrations.v1_to_v2, 2: database_migrations.v2_to_v3, 3: database_migrations.v3_to_v4,
+              4: database_migrations.v4_to_v5, }
 
 
 async def initialize():
@@ -35,6 +44,7 @@ async def initialize():
         db.row_factory = aiosqlite.Row
         # ensure tables exist
         await db.execute(TORRENTS_TABLE_SQL)
+        await db.execute(MEDIA_TABLE_SQL)
 
         # get current version
         version_result = await db.execute("PRAGMA user_version")

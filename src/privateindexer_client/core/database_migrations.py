@@ -62,3 +62,46 @@ async def v2_to_v3(db: aiosqlite.Connection):
     if "infohash" not in cols:
         await db.execute("ALTER TABLE torrents RENAME COLUMN hash_v2 to infohash")
         log.info("[DATABASE] Renamed hash_v2 column to infohash in torrents table")
+
+
+async def v3_to_v4(db: aiosqlite.Connection):
+    """
+    Removes the legacy media_path column from torrents table
+    """
+    cursor = await db.execute("PRAGMA table_info(torrents)")
+    cols = {row[1] for row in await cursor.fetchall()}
+
+    if "media_path" in cols:
+        cursor = await db.execute("SELECT id, media_path FROM torrents")
+        old_data = await cursor.fetchall()
+
+        converted = 0
+
+        for torrent in old_data:
+            torrent_id = torrent["id"]
+            old_media_path = torrent["media_path"]
+
+            if old_media_path is None:
+                continue
+
+            if os.path.exists(old_media_path) and os.path.isfile(old_media_path):
+                file_size = os.path.getsize(old_media_path)
+                await db.execute("INSERT INTO media (torrent_id, size, file_path) VALUES (?, ?, ?)", (torrent_id, file_size, old_media_path))
+                converted += 1
+
+        log.info(f"[DATABASE] Converted {converted} torrent media paths to new media table out of {len(old_data)} total")
+
+        await db.execute("ALTER TABLE torrents DROP COLUMN media_path")
+        log.info("[DATABASE] Removed media_path column from torrents table")
+
+
+async def v4_to_v5(db: aiosqlite.Connection):
+    """
+    Removes the legacy files column from torrents table
+    """
+    cursor = await db.execute("PRAGMA table_info(torrents)")
+    cols = {row[1] for row in await cursor.fetchall()}
+
+    if "files" in cols:
+        await db.execute("ALTER TABLE torrents DROP COLUMN files")
+        log.info("[DATABASE] Removed files column from torrents table")
