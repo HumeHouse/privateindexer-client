@@ -334,16 +334,14 @@ async def load_fastresume_data():
         # if no fastresume data exists, add the torrent manually so libtorrent can do a re-check and continue seeding
         download_path = torrent.get("download_path")
         download_exists = os.path.exists(download_path) if download_path else False
-        media_path = torrent.get("media_path")
-        media_exists = os.path.exists(media_path) if media_path else False
 
-        # try to seed the download media first, then fall back to media path
-        seed_path = download_path if download_exists else (media_path if media_exists else None)
-        if os.path.exists(torrent_path) and seed_path:
-            if await add_torrent_for_seeding(torrent_path, seed_path):
-                log.info(f"[FASTRESUME] Re-added '{torrent["name"]}' for seeding from {"download" if download_exists else "media"} path")
+        # try to seed the download media
+        if os.path.exists(torrent_path) and download_exists:
+            save_path = os.path.dirname(download_path)
+            if await add_torrent_for_seeding(torrent_path, save_path):
+                log.info(f"[FASTRESUME] Re-added '{torrent["name"]}' for seeding from download path")
             else:
-                log.warning(f"[FASTRESUME] Unable to re-add '{torrent["name"]}' for seeding from {"download" if download_exists else "media"} path")
+                log.warning(f"[FASTRESUME] Unable to re-add '{torrent["name"]}' for seeding from download path")
 
     log.info(f"[FASTRESUME] Queued {len(futures)} fastresume data files for processing")
 
