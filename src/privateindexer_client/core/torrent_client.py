@@ -107,7 +107,7 @@ def get_all_torrents() -> list:
     return libtorrent_session.get_torrents()
 
 
-async def add_torrent_for_seeding(torrent_file: str, save_path: str) -> bool:
+async def add_torrent_for_seeding(torrent_file: str, save_path: str, replace: bool = False) -> bool:
     """
     Adds a single torrent file to libtorrent session in seed mode
     """
@@ -125,14 +125,20 @@ async def add_torrent_for_seeding(torrent_file: str, save_path: str) -> bool:
             os.unlink(torrent_file)
             return False
 
-        # skip torrent if torrent already exists in libtorrent session
-        if await torrent_exists_in_session(info.info_hash()):
+        torrent_hash = str(hashes.v2)
+
+        # if replacement is allowed, remove the existing torrent from the session
+        if replace:
+            await remove_torrent_by_hash(torrent_hash, True)
+
+        # check if torrent already exists in session
+        elif await torrent_exists_in_session(torrent_hash):
             return False
 
         # add the tracker URL
         info.add_tracker(ANNOUNCE_TRACKER_URL)
 
-        params = {"ti": info, "save_path": os.path.dirname(save_path)}
+        params = {"ti": info, "save_path": save_path}
 
         flags = lt.torrent_flags.default_flags | lt.torrent_flags.seed_mode
         params["flags"] = flags
