@@ -242,6 +242,7 @@ async def remove_torrent_by_hash(torrent_hash: str, remove_downloads: bool = Fal
         existing = libtorrent_session.find_torrent(sha1_hash)
         if existing.is_valid():
             libtorrent_session.remove_torrent(existing)
+            log.info(f"[TORCLIENT] Removed torrent with hash: {torrent_hash}")
     except Exception as e:
         log.error(f"[TORCLIENT] Exception while removing torrent: {e}")
         successful = False
@@ -271,7 +272,6 @@ async def remove_torrent_by_hash(torrent_hash: str, remove_downloads: bool = Fal
         log.error(f"[TORCLIENT] Exception while removing downloads when removing torrent: {e}")
         successful = False
 
-    log.info(f"[TORCLIENT] Removed torrent with hash: {torrent_hash}")
     return successful
 
 
