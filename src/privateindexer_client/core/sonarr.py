@@ -108,9 +108,10 @@ async def fetch_tv_library(tracked_root_folders: list[str]) -> list[dict]:
                 percent_of_episodes = current_season_stats["percentOfEpisodes"]
                 missing_episode_count = current_season_stats["totalEpisodeCount"] - current_season_stats["episodeFileCount"]
 
+                episode_paths = [episode["path"] for episode in season_episodes]
+
                 # add all the episode paths to a set to ensure non are unique
-                episode_paths = {os.path.dirname(episode["path"]) for episode in season_episodes}
-                shared_directory = len(episode_paths) == 1
+                shared_directory = len({os.path.dirname(path) for path in episode_paths}) == 1
 
                 # skip the season if episodes do not share a single directory
                 if not shared_directory:

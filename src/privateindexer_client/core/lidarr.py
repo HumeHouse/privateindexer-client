@@ -124,9 +124,10 @@ async def fetch_music_library(tracked_root_folders: list[str]) -> list[dict]:
                 percent_of_tracks = album_stats["percentOfTracks"]
                 missing_track_count = album_stats["totalTrackCount"] - album_stats["trackFileCount"]
 
+                track_paths = [track["path"] for track in album_tracks]
+
                 # add all the track parent directories to a set to ensure none are unique
-                track_paths = {os.path.dirname(track["path"]) for track in album_tracks}
-                shared_directory = len(track_paths) == 1
+                shared_directory = len({os.path.dirname(path) for path in album_tracks}) == 1
 
                 # skip the album if tracks do not share a single directory
                 if not shared_directory:
