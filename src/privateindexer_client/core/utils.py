@@ -535,16 +535,17 @@ async def add_torrent_to_database(name: str, size: int, torrent_path: str, uploa
                                         "ON CONFLICT(torrent_path) DO UPDATE SET name=excluded.name, size=excluded.size, uploaded=excluded.uploaded, category=excluded.category, download_path=COALESCE(excluded.download_path, download_path), infohash=excluded.infohash, app_id=excluded.app_id",
                                         (name, size, torrent_path, uploaded, category, download_path, torrent_hash, app_id))
 
-    # loop through each file path and add to media table
-    for file_path in file_paths:
-        # check if file exists and is actually a file
-        if not os.path.exists(file_path) or not os.path.isfile(file_path):
-            continue
+    if file_paths is not None:
+        # loop through each file path and add to media table
+        for file_path in file_paths:
+            # check if file exists and is actually a file
+            if not os.path.exists(file_path) or not os.path.isfile(file_path):
+                continue
 
-        # get file size and insert into media table
-        file_size = os.path.getsize(file_path)
-        await database.execute("INSERT INTO media (torrent_id, size, file_path) VALUES (?, ?, ?)"
-                               "ON CONFLICT(file_path) DO UPDATE SET torrent_id=excluded.torrent_id, size=excluded.size", (torrent_id, file_size, file_path))
+            # get file size and insert into media table
+            file_size = os.path.getsize(file_path)
+            await database.execute("INSERT INTO media (torrent_id, size, file_path) VALUES (?, ?, ?)"
+                                   "ON CONFLICT(file_path) DO UPDATE SET torrent_id=excluded.torrent_id, size=excluded.size", (torrent_id, file_size, file_path))
 
 
 async def remove_torrent_from_database(torrent_hash: str, remove_torrent_file: bool = True, torrent_file: str = None) -> bool:
@@ -552,19 +553,30 @@ async def remove_torrent_from_database(torrent_hash: str, remove_torrent_file: b
     Delete torrent metadata from the database
     Optionally deletes torrent file
     """
-    if remove_torrent_file:
-        if not torrent_file:
-            result = await database.fetch_one("SELECT torrent_path FROM torrents WHERE infohash = ?", (torrent_hash,))
-            if result and result.get("torrent_path"):
-                torrent_file = result["torrent_path"]
+    # fetch the torrent ID for this hash
+    result = await database.fetch_one("SELECT id, torrent_path FROM torrents WHERE infohash = ?", (torrent_hash,))
+    torrent_id = result.get("id")
+    if torrent_id is None:
+        log.warning(f"[TORRENT] Torrent hash not in database during removal: {torrent_id}")
 
-        if torrent_file:
+    if remove_torrent_file:
+        if torrent_file is None:
+            torrent_file = result.get("torrent_path")
+
+        if torrent_file is not None:
             if os.path.exists(torrent_file):
                 try:
                     os.unlink(torrent_file)
                 except Exception as e:
                     log.error(f"[TORRENT] Exception while removing torrent file '{torrent_file}': {e}")
-    await database.execute("DELETE FROM torrents WHERE infohash = ?", (torrent_hash,))
+
+    if torrent_id is not None:
+        # purge media first, then torrent
+        await database.execute("DELETE FROM media WHERE torrent_id = ?", (torrent_id,))
+        await database.execute("DELETE FROM torrents WHERE id = ?", (torrent_id,))
+        return True
+
+    return False
 
 
 def process_fastresume_file(fastresume_path: str, torrent_hash: str, torrent_path: str | None):
