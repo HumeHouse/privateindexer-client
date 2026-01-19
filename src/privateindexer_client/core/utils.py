@@ -530,10 +530,13 @@ async def add_torrent_to_database(name: str, size: int, torrent_path: str, uploa
     """
     Add torrent metadata into the database or update upon duplicate torrent_path
     """
-    torrent_id = await database.execute("INSERT INTO torrents (name, size, torrent_path, uploaded, category, download_path, infohash, app_id)"
-                                        "VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
-                                        "ON CONFLICT(torrent_path) DO UPDATE SET name=excluded.name, size=excluded.size, uploaded=excluded.uploaded, category=excluded.category, download_path=COALESCE(excluded.download_path, download_path), infohash=excluded.infohash, app_id=excluded.app_id",
-                                        (name, size, torrent_path, uploaded, category, download_path, torrent_hash, app_id))
+    await database.execute("INSERT INTO torrents (name, size, torrent_path, uploaded, category, download_path, infohash, app_id)"
+                           "VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
+                           "ON CONFLICT(torrent_path) DO UPDATE SET name=excluded.name, size=excluded.size, uploaded=excluded.uploaded, category=excluded.category, download_path=COALESCE(excluded.download_path, download_path), infohash=excluded.infohash, app_id=excluded.app_id",
+                           (name, size, torrent_path, uploaded, category, download_path, torrent_hash, app_id))
+
+    result = await database.fetch_one("SELECT id FROM torrents WHERE infohash = ?", (torrent_hash,))
+    torrent_id = result["id"]
 
     if file_paths is not None:
         # loop through each file path and add to media table
