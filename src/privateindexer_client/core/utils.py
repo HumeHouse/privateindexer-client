@@ -525,7 +525,7 @@ def find_media_for_torrent(torrent_path: str, media_dir: str) -> str | None:
     return None
 
 
-async def add_torrent_to_database(name: str, size: int, torrent_path: str, uploaded: bool, category: int, file_paths: str = None, download_path: str = None,
+async def add_torrent_to_database(name: str, size: int, torrent_path: str, uploaded: bool, category: int, file_paths: list[str] = None, download_path: str = None,
                                   torrent_hash: str = None, app_id: str = None):
     """
     Add torrent metadata into the database or update upon duplicate torrent_path
