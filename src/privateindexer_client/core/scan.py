@@ -77,11 +77,7 @@ async def scan_media_library(media_data_entries: list[MediaDataEntry], hash_exec
         torrent_file_map[torrent["id"]] = files
 
         # update the data map
-        torrent_data_map[torrent["id"]] = {
-            "name": torrent["name"],
-            "torrent_path": torrent["torrent_path"],
-            "app_id": torrent["app_id"],
-        }
+        torrent_data_map[torrent["id"]] = {"name": torrent["name"], "torrent_path": torrent["torrent_path"], "app_id": torrent["app_id"], }
 
     # create a lookup index for each file path and the torrent ID it belongs to
     file_path_id_map: dict[str, set[int]] = defaultdict(set)
@@ -132,10 +128,7 @@ async def scan_media_library(media_data_entries: list[MediaDataEntry], hash_exec
                 break
 
             # append the matched ID with previously matched IDs
-            torrent_id_matches = (
-                torrents_with_file if torrent_id_matches is None
-                else torrent_id_matches & torrents_with_file
-            )
+            torrent_id_matches = (torrents_with_file if torrent_id_matches is None else torrent_id_matches & torrents_with_file)
 
         # we only want to skip media entries if we actually track everything passed through
         if torrent_id_matches is not None and len(torrent_id_matches) == 1:
@@ -147,10 +140,7 @@ async def scan_media_library(media_data_entries: list[MediaDataEntry], hash_exec
             if len(tracked_files) > 0 and tracked_files == file_paths:
 
                 # compare all file sizes on disk with what is tracked in database
-                sizes_match = all(
-                    torrent_file_map[torrent_id][path] == os.path.getsize(path)
-                    for path in file_paths
-                )
+                sizes_match = all(torrent_file_map[torrent_id][path] == os.path.getsize(path) for path in file_paths)
 
                 # if all sizes match, continue the skip/ignore process
                 if sizes_match:
@@ -263,8 +253,8 @@ async def scan_media_library(media_data_entries: list[MediaDataEntry], hash_exec
         # add each scan job to the execution queue
         for batch_job in batched_jobs:
             # dispatch the torrent creation to the pool of worker threads
-            future = loop.run_in_executor(creation_executor, utils.create_torrent_threadsafe,
-                                          batch_job.file_paths, batch_job.torrent_name, batch_job.app_id, batch_job.torrent_file)
+            future = loop.run_in_executor(creation_executor, utils.create_torrent_threadsafe, batch_job.file_paths, batch_job.torrent_name, batch_job.app_id,
+                                          batch_job.torrent_file)
             futures.append(future)
 
         log.info(f"[SCAN] Queued {len(futures)} jobs for processing")
@@ -445,8 +435,8 @@ async def periodic_scan_task():
                     continue
 
                 # case if this is an external torrent (should have a download path), try to locate the download media if it's missing or invalid
-                if download_path and (not download_exists or download_path == DOWNLOADS_DIR or
-                                      download_path == os.path.join(DOWNLOADS_DIR, (utils.detect_torrent_category(download_path)))):
+                if download_path and (not download_exists or download_path == DOWNLOADS_DIR or download_path == os.path.join(DOWNLOADS_DIR, (
+                        utils.detect_torrent_category(download_path)))):
                     log.info(f"[SCAN] Trying to locate download media for: {torrent_path}")
 
                     # locate the download in the hash thread pool
