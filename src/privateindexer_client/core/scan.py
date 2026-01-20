@@ -173,45 +173,42 @@ async def scan_media_library(media_data_entries: list[MediaDataEntry], hash_exec
                         # increment global items counter
                         SCAN_DONE_ITEMS += 1
                         continue
-        # use the parent directory if this entry contains more than one file
-        media_path = parent_directory if len(file_paths) > 1 else next(iter(file_paths))
 
         # ignore the media files if we can find a matching torrent file
-        find_future = loop.run_in_executor(hash_executor, utils.find_existing_torrent, media_path, ignored_torrents)
-        torrent_file = await find_future
-        if torrent_file:
+        torrent_data = await (loop.run_in_executor(hash_executor, utils.find_existing_torrent, torrents, list(file_paths), ignored_torrents))
+
+        if torrent_data:
+            torrent_id = torrent_data["id"]
+            torrent_name = torrent_data["name"]
+            torrent_file = torrent_data["torrent_path"]
+
             # ignore this torrent file on subsequent loops
             ignored_torrents.add(torrent_file)
 
-            # try to update the media path in the database to match the current path
-            result = await database.fetch_one("SELECT id, name FROM torrents WHERE torrent_path = ?", (torrent_file,))
-            if result and result.get("id") is not None:
-                # check to see if the entry files all exist in the torrent file
-                if utils.files_exist_in_torrent(torrent_file, file_paths):
-                    updated_files += 1
-                    # detect category in case it's not matching in the database
-                    category_id = utils.detect_torznab_category(parent_directory)
-                    # update the torrent metadata
-                    await database.execute("UPDATE torrents SET category = ?, app_id = ? WHERE id = ?", (category_id, media_data_entry.app_id, result["id"],))
+            updated_files += 1
+            # detect category in case it's not matching in the database
+            category_id = utils.detect_torznab_category(parent_directory)
+            # update the torrent metadata
+            await database.execute("UPDATE torrents SET category = ?, app_id = ? WHERE id = ?", (category_id, media_data_entry.app_id, torrent_id,))
 
-                    # clear the old media paths for this torrent
-                    await database.execute("DELETE FROM media WHERE torrent_id = ?", (result["id"],))
+            # clear the old media paths for this torrent
+            await database.execute("DELETE FROM media WHERE torrent_id = ?", (torrent_id,))
 
-                    # loop through each media entry file
-                    for file_path in file_paths:
-                        # get file size
-                        file_size = os.path.getsize(file_path)
-                        # add each file to the database
-                        await database.execute("INSERT INTO media (torrent_id, size, file_path) VALUES (?, ?, ?)", (result["id"], file_size, file_path,))
-                    log.info(f"[SCAN] Updated the media paths for '{result["name"]}'")
-                    # increment global items counter
-                    SCAN_DONE_ITEMS += 1
-                    continue
+            # loop through each media entry file
+            for file_path in file_paths:
+                # get file size
+                file_size = os.path.getsize(file_path)
+                # add each file to the database
+                await database.execute("INSERT INTO media (torrent_id, size, file_path) VALUES (?, ?, ?)", (torrent_id, file_size, file_path,))
+            log.info(f"[SCAN] Updated the media paths for '{torrent_name}'")
+            # increment global items counter
+            SCAN_DONE_ITEMS += 1
+            continue
 
         # construct the scan job
         scan_job = ScanTorrentJob(list(file_paths))
         scan_job.app_id = media_data_entry.app_id
-        scan_job.torrent_file = torrent_file
+        scan_job.torrent_file = torrent_data["torrent_path"] if torrent_data else None
 
         if media_data_entry.title:
             scan_job.torrent_name = media_data_entry.title
