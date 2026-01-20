@@ -334,8 +334,6 @@ async def periodic_scan_task():
             removed_entries = 0
             duplicate_entries: dict[str, dict] = {}
 
-            loop = asyncio.get_running_loop()
-
             # create a set of media entry paths
             media_entry_path_set = set([file for entry in media_data_entries for file in entry.files])
             # build a map for indexing entry app IDs by their torznab category
@@ -343,7 +341,7 @@ async def periodic_scan_task():
             for media_entry in media_data_entries:
                 media_entry_torznab_category_map[media_entry.torznab_category].add(media_entry.app_id)
 
-            # here we perform various database integrity and value correction checks
+            # pull fresh data from torrents and media tables
             query = """
                     SELECT t.id,
                            t.name,
@@ -358,6 +356,23 @@ async def periodic_scan_task():
                     GROUP BY t.id, t.name, t.torrent_path, t.app_id
                     """
             torrents = await database.fetch_all(query)
+
+            # build a map of torrent files indexed by their torrent ID
+            torrent_file_map: dict[int, dict[str, int]] = {}
+            for torrent in torrents:
+                # only map torrents with files
+                if torrent["media_paths"]:
+                    files = {}
+                    # loop through each media path tracked in database
+                    for entry in torrent["media_paths"].split("%PATHDELIMIT%"):
+                        # split the previously concatenated string from the database query
+                        path, size = entry.rsplit("%SIZEDELIMIT%", 1)
+                        files[path] = int(size)
+
+                    # index the files by torrent ID
+                    torrent_file_map[torrent["id"]] = files
+
+            # here we perform various database integrity and value correction checks
             for torrent in torrents:
                 torrent_id = torrent["id"]
                 torrent_name = torrent["name"]
@@ -369,22 +384,25 @@ async def periodic_scan_task():
                 download_path: str | None = torrent.get("download_path")
                 download_exists = os.path.exists(download_path) if download_path else False
 
-                # organize media paths from database
-                media_files = {}
-                if torrent["media_paths"]:
-                    # loop through each media path tracked in database
-                    for entry in torrent["media_paths"].split("%PATHDELIMIT%"):
-                        # split the previously concatenated string from the database query
-                        path, size = entry.rsplit("%SIZEDELIMIT%", 1)
-                        media_files[path] = int(size)
-                else:
-                    log.warning(f"[SCAN] No media files tracked for '{torrent_name}'")
+                # pull media files from map
+                media_files = torrent_file_map.get(torrent_id, {})
 
-                if len(media_files) != 0:
+                if media_files:
                     # get the media's parent directory if tracked media is found
                     media_parent_directory = os.path.dirname(list(media_files.keys())[0])
                     # media exists if and only if all file sizes match database
                     media_exists = all(os.path.exists(media_file) and os.path.getsize(media_file) == file_size for media_file, file_size in media_files.items())
+
+                # if no media files are tracked, purge torrent
+                elif len(media_entry_torznab_category_map[torznab_category]) > 0 and app_id not in media_entry_torznab_category_map:
+                    removed_entries += 1
+                    # remove from torrent client
+                    await torrent_client.remove_torrent_by_hash(torrent_hash, True)
+                    # remove torrent file and from database
+                    await utils.remove_torrent_from_database(torrent_hash, torrent_file=torrent_path)
+                    log.info(f"[SCAN] Media files missing for '{torrent_name}', removed torrent from database and torrent client")
+                    continue
+
                 else:
                     media_parent_directory = None
                     media_exists = False
@@ -429,25 +447,11 @@ async def periodic_scan_task():
                     log.info(f"[SCAN] App ID missing for '{torrent_name}', removed torrent from database and torrent client")
                     continue
 
-                # case if this is an external torrent (should have a download path), try to locate the download media if it's missing or invalid
-                if download_path and (not download_exists or download_path == DOWNLOADS_DIR or download_path == os.path.join(DOWNLOADS_DIR, (
+                # case where the download data doesn't exist or is invalid, clear the download path from database
+                if download_path is not None and (not download_exists or download_path == DOWNLOADS_DIR or download_path == os.path.join(DOWNLOADS_DIR, (
                         utils.detect_torrent_category(download_path)))):
-                    log.info(f"[SCAN] Trying to locate download media for: {torrent_path}")
-
-                    # locate the download in the hash thread pool
-                    find_future = loop.run_in_executor(hash_executor, utils.find_media_for_torrent, torrent_path, DOWNLOADS_DIR)
-                    download_path = await find_future
-
-                    download_exists = os.path.exists(download_path) if download_path else False
-
-                    updated_files += 1
-                    # update the database if the download path exists
-                    if download_exists:
-                        await database.execute("UPDATE torrents SET download_path = ? WHERE id = ?", (download_path, torrent_id,))
-                        log.info(f"[SCAN] Updated the download path for '{torrent_name}'")
-                    else:
-                        await database.execute("UPDATE torrents SET download_path = NULL WHERE id = ?", (torrent_id,))
-                        log.info(f"[SCAN] Removed the download path for '{torrent_name}', no file could be matched")
+                    await database.execute("UPDATE torrents SET download_path = NULL WHERE id = ?", (torrent_id,))
+                    log.info(f"[SCAN] Download data missing for '{torrent_name}', removed download path from database")
 
                 # case where media exists but the torznab category is unknown (0), try to fix it
                 if media_exists and torznab_category == 0 and media_parent_directory is not None:
@@ -459,53 +463,42 @@ async def periodic_scan_task():
                         await database.execute("UPDATE torrents SET category = ? WHERE id = ?", (category_id, torrent_id,))
                         log.info(f"[SCAN] Updated the category to '{category_id}' for '{torrent_name}'")
 
-                # case where we have a multi-file torrent tracked, but either files inside are still being seeded individually or it is no longer discovered
+                # check to make sure this torrent's category actually has data from the app
+                category_has_tracked_entries = bool(media_entry_torznab_category_map[torznab_category])
+                # check for loss of discovery from the media apps
+                if category_has_tracked_entries and any(media_file not in media_entry_path_set for media_file in media_files):
+                    removed_entries += 1
+                    # remove from torrent client
+                    await torrent_client.remove_torrent_by_hash(torrent_hash, True)
+                    # remove torrent file and from database
+                    await utils.remove_torrent_from_database(torrent_hash, torrent_file=torrent_path)
+                    log.info(f"[SCAN] '{torrent_name}' is no longer discovered, removed torrent from database and torrent client")
+
+                # case where we have a multi-file torrent tracked, but files inside are still being seeded individually
                 if len(media_files) > 1:
                     for searching_torrent in torrents:
+                        searching_id = searching_torrent["id"]
+
                         # skip identical ID matches
-                        if searching_torrent["id"] == torrent_id:
+                        if searching_id == torrent_id:
                             continue
 
-                        # organize media paths from database
-                        searched_media_files = {}
-                        if searching_torrent["media_paths"]:
-                            # loop through each media path tracked in database
-                            for entry in searching_torrent["media_paths"].split("%PATHDELIMIT%"):
-                                # split the previously concatenated string from the database query
-                                path, size = entry.rsplit("%SIZEDELIMIT%", 1)
-                                searched_media_files[path] = int(size)
+                        # pull media paths from map
+                        searched_media_files = torrent_file_map.get(searching_id, {})
 
-                        # skip empty matches
-                        if not searched_media_files:
+                        # skip empty matches and other multi-file torrents
+                        if not searched_media_files or len(searched_media_files) > 1:
                             continue
 
-                        is_discovered = True
+                        searched_media_file = next(iter(searched_media_files))
 
-                        # loop through media files for the current torrent
-                        for media_file in media_files.keys():
+                        comparison_paths = list(media_files.keys())
+                        comparison_paths.append(searched_media_file)
 
-                            # loop through the current comparison's media files to check for a common root path
-                            for searched_media_file in searched_media_files.keys():
-
-                                # if a common root path exists between the current torrent's file and the comparison, mark as duplicate
-                                if os.path.commonpath([searched_media_file, media_file]) == media_parent_directory:
-                                    duplicate_entries[searching_torrent["id"]] = searching_torrent
-                                    log.warning(f"[SCAN] Potential duplicate seed found for '{torrent_name}': {searching_torrent['name']}")
-                                    break
-
-                            # if the media is not tracked (and its category has at least 1 tracked), purge the multi-file torrent because it lost discovery
-                            if media_file not in media_entry_path_set and len(media_entry_torznab_category_map[torznab_category]) > 0:
-                                removed_entries += 1
-                                # remove from torrent client
-                                await torrent_client.remove_torrent_by_hash(torrent_hash, True)
-                                # remove torrent file and from database
-                                await utils.remove_torrent_from_database(torrent_hash, torrent_file=torrent_path)
-                                log.warning(f"[SCAN] Purged undiscovered multi-file torrent: '{torrent_name}'")
-                                is_discovered = False
-                                break
-
-                        # stop searching for a match if this torrent is confirmed to be undiscovered
-                        if not is_discovered:
+                        # if a common root path exists between the current torrent's file and the comparison, mark as duplicate
+                        if os.path.commonpath(comparison_paths) == media_parent_directory:
+                            duplicate_entries[searching_torrent["id"]] = searching_torrent
+                            log.warning(f"[SCAN] Potential duplicate seed found for '{torrent_name}': {searching_torrent['name']}")
                             break
 
             # purge duplicate seeds if the user has this option enabled
