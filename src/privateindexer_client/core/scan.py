@@ -55,8 +55,8 @@ async def scan_media_library(media_data_entries: list[MediaDataEntry], hash_exec
             """
     torrents = await database.fetch_all(query)
 
-    # ignore torrent files from hash checks which we already track in database
-    ignored_torrents = set(torrent["torrent_path"] for torrent in torrents)
+    # ignore torrent files from hash checks which we already track media for in database
+    ignored_torrents = set(torrent["torrent_path"] for torrent in torrents if torrent["media_paths"])
 
     # create a map of torrent data keyed on their database torrent IDs
     torrent_data_map = {}
