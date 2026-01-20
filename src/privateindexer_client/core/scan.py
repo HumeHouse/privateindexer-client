@@ -173,8 +173,6 @@ async def scan_media_library(media_data_entries: list[MediaDataEntry], hash_exec
                         # increment global items counter
                         SCAN_DONE_ITEMS += 1
                         continue
-
-        log.debug(f"[SCAN] Trying to locate torrent file for: {parent_directory}")
         # use the parent directory if this entry contains more than one file
         media_path = parent_directory if len(file_paths) > 1 else next(iter(file_paths))
 

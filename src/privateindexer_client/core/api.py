@@ -296,8 +296,6 @@ async def add_torrent(
             log.error(f"[API] Exception while removing torrent file '{torrent_file}': {e}")
             raise HTTPException(status_code=status.INTERNAL_SERVER_ERROR)
 
-    log.debug(f"[API] Torrent added: {torrent_file} ({request.headers.get("user-agent")})")
-
     return PlainTextResponse(result)
 
 
