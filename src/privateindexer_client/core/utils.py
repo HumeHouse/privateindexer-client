@@ -367,7 +367,7 @@ def torrent_matches_media(torrent_path: str, media_paths: list[str]) -> bool:
             cache.put_torrent_object(torrent_path, torrent_object)
 
         # create an index based on the media paths
-        path_list_index = hashlib.md5(("".join(sorted(media_paths))).encode())
+        path_list_index = hashlib.md5(("".join(sorted(media_paths))).encode()).hexdigest()
 
         # check if file hashes are cached
         file_hashes = cache.get_file_hashes(path_list_index, piece_length)
