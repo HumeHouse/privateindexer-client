@@ -395,6 +395,7 @@ def create_torrent(media_paths: list[str], torrent_name: str, app_id: int, outpu
     """
     # get the input path parent directory name, use the first media path in the list
     parent_directory = os.path.dirname(media_paths[0])
+    is_multi_file = len(media_paths) > 1
 
     # check if the torrent file supplied exists
     if output_torrent_file and os.path.exists(output_torrent_file):
@@ -415,7 +416,14 @@ def create_torrent(media_paths: list[str], torrent_name: str, app_id: int, outpu
         # add the media to the file storage
         for media_path in media_paths:
             file_size = os.path.getsize(media_path)
-            fs.add_file(os.path.join(os.path.basename(parent_directory), os.path.basename(media_path)), file_size)
+
+            # add mutli-file torrents to a parent directory
+            if is_multi_file:
+                fs.add_file(os.path.join(os.path.basename(parent_directory), os.path.basename(media_path)), file_size)
+
+            # single-file torrents get added directly to the root
+            else:
+                fs.add_file(os.path.basename(media_path), file_size)
 
         # create the torrent from the file storage object
         t = lt.create_torrent(fs)
@@ -423,7 +431,7 @@ def create_torrent(media_paths: list[str], torrent_name: str, app_id: int, outpu
         t.set_priv(True)
 
         # build peice map from parent directory
-        lt.set_piece_hashes(t, os.path.dirname(parent_directory))
+        lt.set_piece_hashes(t, os.path.dirname(parent_directory) if is_multi_file else parent_directory)
 
         with open(output_torrent_file, "wb") as f:
             f.write(lt.bencode(t.generate()))
@@ -455,7 +463,7 @@ def create_torrent(media_paths: list[str], torrent_name: str, app_id: int, outpu
     torrent_metadata.uploaded = False
     torrent_metadata.torznab_category = category_id
     torrent_metadata.infohash = torrent_infohash
-    torrent_metadata.seed_path = os.path.dirname(parent_directory)
+    torrent_metadata.seed_path = os.path.dirname(parent_directory) if is_multi_file else parent_directory
 
     return torrent_metadata, is_new_file
 
