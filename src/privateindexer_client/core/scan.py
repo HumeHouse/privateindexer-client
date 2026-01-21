@@ -199,7 +199,8 @@ async def scan_media_library(media_data_entries: list[MediaDataEntry], hash_exec
                 # get file size
                 file_size = os.path.getsize(file_path)
                 # add each file to the database
-                await database.execute("INSERT INTO media (torrent_id, size, file_path) VALUES (?, ?, ?)", (torrent_id, file_size, file_path,))
+                await database.execute("INSERT INTO media (torrent_id, size, file_path) VALUES (?, ?, ?)"
+                                       "ON CONFLICT(file_path) DO UPDATE SET torrent_id=excluded.torrent_id, size=excluded.size", (torrent_id, file_size, file_path))
             log.info(f"[SCAN] Updated the media paths for '{torrent_name}'")
             # increment global items counter
             SCAN_DONE_ITEMS += 1
