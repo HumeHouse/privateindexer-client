@@ -2,7 +2,7 @@ import asyncio
 import datetime
 import os
 
-from privateindexer_client.core import database, utils, httpx_request
+from privateindexer_client.core import database, httpx_request, server_interface
 from privateindexer_client.core.config import SYNC_INTERVAL, INDEXER_API_URL, API_KEY
 from privateindexer_client.core.logger import log
 
@@ -59,7 +59,7 @@ async def periodic_sync_task():
                 # make sure the torrent and either the media or the download files exist before uploading to the server
                 if os.path.exists(torrent_path):
                     log.debug(f"[SYNC] Attempting to resend torrent to indexer: {torrent_name}")
-                    if await utils.send_torrent_to_indexer(torrent_path, torrent_data["category"], torrent_name, torrent_data["app_id"]):
+                    if await server_interface.send_torrent_to_indexer(torrent_path, torrent_data["category"], torrent_name, torrent_data["app_id"]):
                         await database.execute("UPDATE torrents SET uploaded = TRUE WHERE id = ?", (torrent_data["id"],))
                         uploaded += 1
                     else:
