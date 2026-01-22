@@ -460,6 +460,16 @@ async def periodic_scan_task():
                         await database.execute("UPDATE torrents SET category = ? WHERE id = ?", (category_id, torrent_id,))
                         log.info(f"[SCAN] Updated the category to '{category_id}' for '{torrent_name}'")
 
+                    # otherwise, remove the torrent
+                    else:
+                        removed_entries += 1
+                        # remove from torrent client
+                        await torrent_client.remove_torrent_by_hash(torrent_hash, True)
+                        # remove torrent file and from database
+                        await torrent_helper.remove_torrent_from_database(torrent_hash, torrent_file=torrent_path)
+                        log.info(f"[SCAN] Unknown category for '{torrent_name}', removed torrent from database and torrent client")
+                        continue
+
                 # check to make sure this torrent's category actually has data from the app
                 category_has_tracked_entries = bool(media_entry_torznab_category_map[torznab_category])
                 # check for loss of discovery from the media apps
