@@ -140,7 +140,7 @@ async def scan_media_library(media_data_entries: list[MediaDataEntry], hash_exec
             if len(tracked_files) > 0 and tracked_files == file_paths:
 
                 # compare all file sizes on disk with what is tracked in database
-                sizes_match = all(torrent_file_map[torrent_id][path] == os.path.getsize(path) for path in file_paths)
+                sizes_match = all(utils.valid_file(path) and torrent_file_map[torrent_id][path] == os.path.getsize(path) for path in file_paths)
 
                 # if all sizes match, continue the skip/ignore process
                 if sizes_match:
@@ -196,6 +196,11 @@ async def scan_media_library(media_data_entries: list[MediaDataEntry], hash_exec
 
             # loop through each media entry file
             for file_path in file_paths:
+                # check if file is valid
+                if not utils.valid_file(file_path):
+                    log.warning(f"[SCAN] Skipped invalid file: {file_path}")
+                    continue
+
                 # get file size
                 file_size = os.path.getsize(file_path)
                 # add each file to the database
@@ -391,8 +396,8 @@ async def periodic_scan_task():
                 if media_files:
                     # get the media's parent directory if tracked media is found
                     media_parent_directory = os.path.dirname(list(media_files.keys())[0])
-                    # media exists if and only if all file sizes match database
-                    media_exists = all(os.path.exists(media_file) and os.path.getsize(media_file) == file_size for media_file, file_size in media_files.items())
+                    # media is valid if and only if all files exist and file size matches database
+                    media_valid = all(utils.valid_file(media_file) and os.path.getsize(media_file) == file_size for media_file, file_size in media_files.items())
 
                 # if no media files are tracked, purge torrent
                 elif len(media_entry_torznab_category_map[torznab_category]) > 0 and app_id not in media_entry_torznab_category_map:
@@ -406,7 +411,7 @@ async def periodic_scan_task():
 
                 else:
                     media_parent_directory = None
-                    media_exists = False
+                    media_valid = False
 
                 # case where the torrent file is missing, purge torrent
                 if not torrent_exists:
@@ -418,24 +423,14 @@ async def periodic_scan_task():
                     log.info(f"[SCAN] Torrent file missing for '{torrent_name}', removed torrent from database and torrent client")
                     continue
 
-                # case where the media data is missing, purge torrent
-                if media_files and not media_exists:
+                # case where the media data is missing or has mismatch sizes, purge torrent
+                if media_files and not media_valid:
                     removed_entries += 1
                     # remove from torrent client
                     await torrent_client.remove_torrent_by_hash(torrent_hash, True)
                     # remove torrent file and from database
                     await utils.remove_torrent_from_database(torrent_hash, torrent_file=torrent_path)
                     log.info(f"[SCAN] Media files missing for '{torrent_name}', removed torrent from database and torrent client")
-                    continue
-
-                # case where media does exist, but the tracked file sizes within the torrent do not match what's on disk, purge torrent
-                if media_exists and any(os.path.getsize(media_file) != size_in_database for media_file, size_in_database in media_files.items()):
-                    removed_entries += 1
-                    # remove from torrent client
-                    await torrent_client.remove_torrent_by_hash(torrent_hash, True)
-                    # remove torrent file and from database
-                    await utils.remove_torrent_from_database(torrent_hash, torrent_file=torrent_path)
-                    log.info(f"[SCAN] Media file size mismatch for '{torrent_name}', removed torrent from database and torrent client")
                     continue
 
                 # case where the app ID is missing, purge torrent
@@ -455,7 +450,7 @@ async def periodic_scan_task():
                     log.info(f"[SCAN] Download data missing for '{torrent_name}', removed download path from database")
 
                 # case where media exists but the torznab category is unknown (0), try to fix it
-                if media_exists and torznab_category == 0 and media_parent_directory is not None:
+                if media_valid and torznab_category == 0 and media_parent_directory is not None:
                     category_id = utils.detect_torznab_category(media_parent_directory)
 
                     # update the category if a match was found
