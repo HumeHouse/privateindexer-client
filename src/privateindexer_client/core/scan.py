@@ -430,7 +430,7 @@ async def periodic_scan_task():
                     await torrent_client.remove_torrent_by_hash(torrent_hash, True)
                     # remove torrent file and from database
                     await utils.remove_torrent_from_database(torrent_hash, torrent_file=torrent_path)
-                    log.info(f"[SCAN] Media files missing for '{torrent_name}', removed torrent from database and torrent client")
+                    log.info(f"[SCAN] Media files don't exist or contain size mismatches for '{torrent_name}', removed torrent from database and torrent client")
                     continue
 
                 # case where the app ID is missing, purge torrent
