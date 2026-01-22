@@ -6,7 +6,8 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
-from privateindexer_client.core import torrent_client, scan, api, gui, httpx_request, database, utils, sync, radarr, sonarr, cache, lidarr, memory, thread_executor
+from privateindexer_client.core import torrent_client, scan, api, gui, httpx_request, database, utils, sync, radarr, sonarr, cache, lidarr, memory, thread_executor, \
+    stats_manager
 from privateindexer_client.core.cache import Cache
 from privateindexer_client.core.config import TORRENTS_DIR, SCAN_INTERVAL, INDEXER_API_URL, API_KEY, TORRENTING_PORT, DOWNLOADS_DIR, FASTRESUME_DIR, APP_VERSION, \
     MAX_THREADS, FASTRESUME_INTERVAL, ANNOUNCE_IP, RADARR_URL, RADARR_API_KEY, SONARR_URL, SONARR_API_KEY, SYNC_INTERVAL, CACHE_CLEAN_INTERVAL, LEW_MEMORY_MODE, \
@@ -177,7 +178,7 @@ async def lifespan(_: FastAPI):
 
     log.info("[APP] Saving all-time stats")
     all_time_download, all_time_upload = torrent_client.get_all_time_stats()
-    utils.save_persistent_stats(all_time_download, all_time_upload)
+    stats_manager.save_persistent_stats(all_time_download, all_time_upload)
 
     log.info(f"[APP] Stopping tasks")
 
