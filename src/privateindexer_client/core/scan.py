@@ -6,11 +6,12 @@ from collections import defaultdict
 from concurrent.futures.process import ProcessPoolExecutor
 from enum import Enum
 
-from privateindexer_client.core import torrent_client, database, utils, thread_executor
+from privateindexer_client.core import torrent_client, database, utils, thread_executor, media_helper, server_interface, torrent_helper, qbit_translator
 from privateindexer_client.core.config import SCAN_INTERVAL, DOWNLOADS_DIR, TORRENTS_DIR, PURGE_UNTRACKED_TORRENTS, SCAN_BATCH_SIZE, PURGE_DUPLICATE_SEEDS, \
     PURGE_UNTRACKED_DOWNLOADS
 from privateindexer_client.core.logger import log
-from privateindexer_client.core.utils import TorrentCreationMetadata, MediaDataEntry
+from privateindexer_client.core.media_helper import MediaDataEntry
+from privateindexer_client.core.torrent_helper import TorrentCreationMetadata
 
 SCAN_PROCESS_STATE: int = 0
 SCAN_TOTAL_ITEMS: int = 0
@@ -175,7 +176,7 @@ async def scan_media_library(media_data_entries: list[MediaDataEntry], hash_exec
                         continue
 
         # ignore the media files if we can find a matching torrent file
-        torrent_data = await (loop.run_in_executor(hash_executor, utils.find_existing_torrent, torrents, list(file_paths), ignored_torrents))
+        torrent_data = await (loop.run_in_executor(hash_executor, torrent_helper.find_existing_torrent, torrents, list(file_paths), ignored_torrents))
 
         if torrent_data:
             torrent_id = torrent_data["id"]
@@ -187,7 +188,7 @@ async def scan_media_library(media_data_entries: list[MediaDataEntry], hash_exec
 
             updated_files += 1
             # detect category in case it's not matching in the database
-            category_id = utils.detect_torznab_category(parent_directory)
+            category_id = media_helper.detect_torznab_category(parent_directory)
             # update the torrent metadata
             await database.execute("UPDATE torrents SET category = ?, app_id = ? WHERE id = ?", (category_id, media_data_entry.app_id, torrent_id,))
 
@@ -254,7 +255,7 @@ async def scan_media_library(media_data_entries: list[MediaDataEntry], hash_exec
         # add each scan job to the execution queue
         for batch_job in batched_jobs:
             # dispatch the torrent creation to the pool of worker threads
-            future = loop.run_in_executor(creation_executor, utils.create_torrent_threadsafe, batch_job.file_paths, batch_job.torrent_name, batch_job.app_id,
+            future = loop.run_in_executor(creation_executor, torrent_helper.create_torrent_threadsafe, batch_job.file_paths, batch_job.torrent_name, batch_job.app_id,
                                           batch_job.torrent_file)
             futures.append(future)
 
@@ -270,11 +271,11 @@ async def scan_media_library(media_data_entries: list[MediaDataEntry], hash_exec
                 if metadata:
 
                     # attempt to send torrent file to indexer server
-                    uploaded = await utils.send_torrent_to_indexer(metadata.torrent_path, metadata.torznab_category, metadata.name, app_id=metadata.app_id)
+                    uploaded = await server_interface.send_torrent_to_indexer(metadata.torrent_path, metadata.torznab_category, metadata.name, app_id=metadata.app_id)
 
                     # add the data for the torrent to the database
-                    await utils.add_torrent_to_database(metadata.name, metadata.size, metadata.torrent_path, uploaded, metadata.torznab_category,
-                                                        file_paths=metadata.file_paths, torrent_hash=metadata.infohash, app_id=metadata.app_id)
+                    await torrent_helper.add_torrent_to_database(metadata.name, metadata.size, metadata.torrent_path, uploaded, metadata.torznab_category,
+                                                                 file_paths=metadata.file_paths, torrent_hash=metadata.infohash, app_id=metadata.app_id)
 
                     if is_new_file:
                         created_files += 1
@@ -316,10 +317,10 @@ async def periodic_scan_task():
             hash_executor = thread_executor.get_hash_executor()
 
             # fetch updated root folders from *arr apps
-            category_paths = await utils.update_torznab_category_paths()
+            category_paths = await media_helper.update_torznab_category_paths()
 
             # fetch the compiled list of tracked media from *arr apps
-            media_data_entries = await utils.get_managed_media_data()
+            media_data_entries = await media_helper.get_managed_media_data()
 
             # make sure we have at least 1 directory to scan, otherwise skip scan
             if len(category_paths) == 0:
@@ -405,7 +406,7 @@ async def periodic_scan_task():
                     # remove from torrent client
                     await torrent_client.remove_torrent_by_hash(torrent_hash, True)
                     # remove torrent file and from database
-                    await utils.remove_torrent_from_database(torrent_hash, torrent_file=torrent_path)
+                    await torrent_helper.remove_torrent_from_database(torrent_hash, torrent_file=torrent_path)
                     log.info(f"[SCAN] Media files missing for '{torrent_name}', removed torrent from database and torrent client")
                     continue
 
@@ -419,7 +420,7 @@ async def periodic_scan_task():
                     # remove from torrent client
                     await torrent_client.remove_torrent_by_hash(torrent_hash, True)
                     # remove torrent file and from database
-                    await utils.remove_torrent_from_database(torrent_hash, torrent_file=torrent_path)
+                    await torrent_helper.remove_torrent_from_database(torrent_hash, torrent_file=torrent_path)
                     log.info(f"[SCAN] Torrent file missing for '{torrent_name}', removed torrent from database and torrent client")
                     continue
 
@@ -429,7 +430,7 @@ async def periodic_scan_task():
                     # remove from torrent client
                     await torrent_client.remove_torrent_by_hash(torrent_hash, True)
                     # remove torrent file and from database
-                    await utils.remove_torrent_from_database(torrent_hash, torrent_file=torrent_path)
+                    await torrent_helper.remove_torrent_from_database(torrent_hash, torrent_file=torrent_path)
                     log.info(f"[SCAN] Media files don't exist or contain size mismatches for '{torrent_name}', removed torrent from database and torrent client")
                     continue
 
@@ -439,19 +440,19 @@ async def periodic_scan_task():
                     # remove from torrent client
                     await torrent_client.remove_torrent_by_hash(torrent_hash, True)
                     # remove torrent file and from database
-                    await utils.remove_torrent_from_database(torrent_hash, torrent_file=torrent_path)
+                    await torrent_helper.remove_torrent_from_database(torrent_hash, torrent_file=torrent_path)
                     log.info(f"[SCAN] App ID missing for '{torrent_name}', removed torrent from database and torrent client")
                     continue
 
                 # case where the download data doesn't exist or is invalid, clear the download path from database
                 if download_path is not None and (not download_exists or download_path == DOWNLOADS_DIR or download_path == os.path.join(DOWNLOADS_DIR, (
-                        utils.detect_torrent_category(download_path)))):
+                        qbit_translator.detect_torrent_category(download_path)))):
                     await database.execute("UPDATE torrents SET download_path = NULL WHERE id = ?", (torrent_id,))
                     log.info(f"[SCAN] Download data missing for '{torrent_name}', removed download path from database")
 
                 # case where media exists but the torznab category is unknown (0), try to fix it
                 if media_valid and torznab_category == 0 and media_parent_directory is not None:
-                    category_id = utils.detect_torznab_category(media_parent_directory)
+                    category_id = media_helper.detect_torznab_category(media_parent_directory)
 
                     # update the category if a match was found
                     if category_id != 0:
@@ -467,7 +468,7 @@ async def periodic_scan_task():
                     # remove from torrent client
                     await torrent_client.remove_torrent_by_hash(torrent_hash, True)
                     # remove torrent file and from database
-                    await utils.remove_torrent_from_database(torrent_hash, torrent_file=torrent_path)
+                    await torrent_helper.remove_torrent_from_database(torrent_hash, torrent_file=torrent_path)
                     log.info(f"[SCAN] '{torrent_name}' is no longer discovered, removed torrent from database and torrent client")
 
                 # case where we have a multi-file torrent tracked, but files inside are still being seeded individually
@@ -505,7 +506,7 @@ async def periodic_scan_task():
                     # remove from torrent client
                     await torrent_client.remove_torrent_by_hash(duplicate_entry["infohash"], True)
                     # remove torrent file and from database
-                    await utils.remove_torrent_from_database(duplicate_entry["infohash"], torrent_file=duplicate_torrent_path)
+                    await torrent_helper.remove_torrent_from_database(duplicate_entry["infohash"], torrent_file=duplicate_torrent_path)
                     log.info(f"[SCAN] Purged duplicate: {duplicate_entry['name']}")
 
             # only purge dangling torrents if the user has this option enabled
@@ -555,7 +556,7 @@ async def periodic_scan_task():
                                 log.error(f"[SCAN] Exception while removing untracked downloaded file '{file_path}': {e}")
 
             # delete empty download directories for each torrent category
-            deleted_dirs = utils.delete_empty_downloads_directories()
+            deleted_dirs = qbit_translator.purge_empty_categories()
             if deleted_dirs:
                 log.info(f"[SCAN] Removed {deleted_dirs} empty download directories")
 
