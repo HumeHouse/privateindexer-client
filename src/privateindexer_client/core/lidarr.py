@@ -3,7 +3,7 @@ import os
 from collections import defaultdict
 from datetime import datetime
 
-from privateindexer_client.core import httpx_request, arr_formatter
+from privateindexer_client.core import httpx_request, arr_formatter, utils
 from privateindexer_client.core.arr_formatter import AUDIO_EXTRACTORS
 from privateindexer_client.core.config import LIDARR_URL, LIDARR_API_KEY
 from privateindexer_client.core.logger import log
@@ -124,25 +124,34 @@ async def fetch_music_library(tracked_root_folders: list[str]) -> list[dict]:
                 percent_of_tracks = album_stats["percentOfTracks"]
                 missing_track_count = album_stats["totalTrackCount"] - album_stats["trackFileCount"]
 
-                # add all the track parent directories to a set to ensure none are unique
-                track_paths = {os.path.dirname(track["path"]) for track in album_tracks}
-                shared_directory = len(track_paths) == 1
+                track_paths = [track["path"] for track in album_tracks]
 
-                # skip the album if tracks do not share a single directory
+                # check for any invalid files
+                tracks_valid = all(utils.valid_file(track_path) for track_path in track_paths)
+
+                # do not build album if any tracks are invalid
+                if not tracks_valid:
+                    log.warning(f"[LIDARR] Detected invalid files for '{artist["artistName"]} - {album_metadata["title"]}', album will NOT be created")
+                    continue
+
+                # add all the track parent directories to a set to ensure none are unique
+                shared_directory = len({os.path.dirname(path) for path in album_tracks}) == 1
+
+                # do not build album if tracks do not share a single directory
                 if not shared_directory:
-                    log.warning(f"[LIDARR] Skipping album creation for '{artist["artistName"]} - {album_metadata["title"]}', must share a single parent directory")
+                    log.warning(f"[LIDARR] Inconsistent parent directory for '{artist["artistName"]} - {album_metadata["title"]}', album will NOT be created")
 
                 dt = datetime.fromisoformat(album_metadata["releaseDate"].replace("Z", "+00:00"))
                 album_year = dt.year
 
-                # build full albums which share a single directory
-                if percent_of_tracks == 100 and missing_track_count == 0 and shared_directory:
+                # build full albums which share a single directory and all files are valid
+                if percent_of_tracks == 100 and missing_track_count == 0 and shared_directory and tracks_valid:
                     aggregated_metadata = arr_formatter.aggregate_metadata(album_tracks, app_name="LIDARR", extractors=AUDIO_EXTRACTORS, )
                     metadata_tags = arr_formatter.format_tags(aggregated_metadata)
                     title = f"{artist["artistName"]} - {album_metadata["title"]} ({album_year}) {metadata_tags}"
 
                     log.debug(f"[LIDARR] Grouped album ({len(album_tracks)} tracks): {title}")
-                    final_entries.append({"id": album_id, "title": title, "path": track_paths.pop(), "album": True, })
+                    final_entries.append({"id": album_id, "title": title, "files": track_paths, "album": True, })
 
                 else:
                     # if there are missing tracks or non-shared directory, just build each track one at a time
@@ -152,6 +161,11 @@ async def fetch_music_library(tracked_root_folders: list[str]) -> list[dict]:
                         if not track_path:
                             continue
 
+                        # skip invalid files
+                        if not utils.valid_file(track_path):
+                            log.warning(f"[LIDARR] Invalid file path discovered: {track_path}")
+                            continue
+
                         track_number = album_track["trackNumber"]
                         track_title = album_track["title"]
                         aggregated_metadata = arr_formatter.aggregate_metadata([album_track], app_name="LIDARR", extractors=AUDIO_EXTRACTORS, )
@@ -159,7 +173,7 @@ async def fetch_music_library(tracked_root_folders: list[str]) -> list[dict]:
                         title = f"{artist["artistName"]} - {album_metadata["title"]} ({album_year}) - {str(track_number).zfill(2)} {track_title} {metadata_tags}"
 
                         log.debug(f"[LIDARR] Found individual track: {title}")
-                        final_entries.append({"id": album_id, "title": title, "path": track_path, "album": False, })
+                        final_entries.append({"id": album_id, "title": title, "files": [track_path], "album": False, })
 
         album_count = 0
         individual_tracks = 0
