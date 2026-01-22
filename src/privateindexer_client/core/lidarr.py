@@ -126,18 +126,26 @@ async def fetch_music_library(tracked_root_folders: list[str]) -> list[dict]:
 
                 track_paths = [track["path"] for track in album_tracks]
 
+                # check for any invalid files
+                tracks_valid = all(os.path.exists(track_path) and os.path.isfile(track_path) for track_path in track_paths)
+
+                # do not build album if any tracks are invalid
+                if not tracks_valid:
+                    log.warning(f"[LIDARR] Detected invalid files for '{artist["artistName"]} - {album_metadata["title"]}', album will NOT be created")
+                    continue
+
                 # add all the track parent directories to a set to ensure none are unique
                 shared_directory = len({os.path.dirname(path) for path in album_tracks}) == 1
 
-                # skip the album if tracks do not share a single directory
+                # do not build album if tracks do not share a single directory
                 if not shared_directory:
-                    log.warning(f"[LIDARR] Skipping album creation for '{artist["artistName"]} - {album_metadata["title"]}', must share a single parent directory")
+                    log.warning(f"[LIDARR] Inconsistent parent directory for '{artist["artistName"]} - {album_metadata["title"]}', album will NOT be created")
 
                 dt = datetime.fromisoformat(album_metadata["releaseDate"].replace("Z", "+00:00"))
                 album_year = dt.year
 
-                # build full albums which share a single directory
-                if percent_of_tracks == 100 and missing_track_count == 0 and shared_directory:
+                # build full albums which share a single directory and all files are valid
+                if percent_of_tracks == 100 and missing_track_count == 0 and shared_directory and tracks_valid:
                     aggregated_metadata = arr_formatter.aggregate_metadata(album_tracks, app_name="LIDARR", extractors=AUDIO_EXTRACTORS, )
                     metadata_tags = arr_formatter.format_tags(aggregated_metadata)
                     title = f"{artist["artistName"]} - {album_metadata["title"]} ({album_year}) {metadata_tags}"
@@ -151,6 +159,11 @@ async def fetch_music_library(tracked_root_folders: list[str]) -> list[dict]:
                         # skip if no file is tracked
                         track_path = album_track.get("path")
                         if not track_path:
+                            continue
+
+                        # skip invalid files
+                        if not os.path.exists(track_path) or not os.path.isfile(track_path):
+                            log.warning(f"[LIDARR] Invalid file path discovered: {track_path}")
                             continue
 
                         track_number = album_track["trackNumber"]

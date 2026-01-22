@@ -110,15 +110,23 @@ async def fetch_tv_library(tracked_root_folders: list[str]) -> list[dict]:
 
                 episode_paths = [episode["path"] for episode in season_episodes]
 
+                # check for any invalid files
+                episodes_valid = all(os.path.exists(episode_path) and os.path.isfile(episode_path) for episode_path in episode_paths)
+
+                # do not build season pack if any episodes are invalid
+                if not episodes_valid:
+                    log.warning(f"[SONARR] Detected invalid files for '{series["title"]}' (Season {season_number}), season pack will NOT be created")
+                    continue
+
                 # add all the episode paths to a set to ensure non are unique
                 shared_directory = len({os.path.dirname(path) for path in episode_paths}) == 1
 
-                # skip the season if episodes do not share a single directory
+                # do not build season pack if episodes do not share a single directory
                 if not shared_directory:
-                    log.warning(f"[SONARR] Skipping season pack for '{series["title"]}' (Season {season_number}), must share a single parent directory")
+                    log.warning(f"[SONARR] Inconsistent parent directory for '{series["title"]}' (Season {season_number}), season pack will NOT be created")
 
-                # build season pack for full seasons which share a single directory
-                if percent_of_episodes == 100 and missing_episode_count == 0 and shared_directory:
+                # build season pack for full seasons which share a single directory and all files are valid
+                if percent_of_episodes == 100 and missing_episode_count == 0 and shared_directory and episodes_valid:
                     aggregated_metadata = arr_formatter.aggregate_metadata(season_episodes, app_name="SONARR", extractors=VIDEO_EXTRACTORS, )
                     metadata_tags = arr_formatter.format_tags(aggregated_metadata)
                     title = f"{series["title"]} ({series["year"]}) - S{str(season_number).zfill(2)} {metadata_tags}"
@@ -132,6 +140,11 @@ async def fetch_tv_library(tracked_root_folders: list[str]) -> list[dict]:
                         # skip if no file is tracked
                         episode_path = season_episode.get("path")
                         if not episode_path:
+                            continue
+
+                        # skip invalid files
+                        if not os.path.exists(episode_path) or not os.path.isfile(episode_path):
+                            log.warning(f"[SONARR] Invalid file path discovered: {episode_path}")
                             continue
 
                         episode_number = season_episode["episodeNumber"]
