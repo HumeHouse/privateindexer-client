@@ -105,6 +105,13 @@ def format_bytes(num_bytes: int) -> str:
     return f"{num_bytes / (1024 ** 3):.2f} GiB"
 
 
+def valid_file(media_file: str) -> bool:
+    """
+    Helper to check if a media file is okay to use in a torrent
+    """
+    return os.path.exists(media_file) and os.path.isfile(media_file)
+
+
 async def fetch_indexer_user_data():
     """
     Request the current user's indexer statistics for use in the GUI
@@ -315,6 +322,10 @@ def generate_media_hash(media_paths: list[str]) -> list[bytes]:
 
         # add the media to the file storage
         for media_path in media_paths:
+            # check if file is valid
+            if not valid_file(media_path):
+                log.warning(f"[TORRENT] File invalid, it will not be hashed: {media_path}")
+                continue
             file_size = os.path.getsize(media_path)
             fs.add_file(os.path.join(os.path.basename(parent_directory), os.path.basename(media_path)), file_size)
 
@@ -415,6 +426,11 @@ def create_torrent(media_paths: list[str], torrent_name: str, app_id: int, outpu
 
         # add the media to the file storage
         for media_path in media_paths:
+            # check if file is valid
+            if not valid_file(media_path):
+                log.warning(f"[TORRENT] File invalid, it will not be added to torrent: {media_path}")
+                continue
+
             file_size = os.path.getsize(media_path)
 
             # add mutli-file torrents to a parent directory
@@ -525,7 +541,8 @@ async def add_torrent_to_database(name: str, size: int, torrent_path: str, uploa
         # loop through each file path and add to media table
         for file_path in file_paths:
             # check if file exists and is actually a file
-            if not os.path.exists(file_path) or not os.path.isfile(file_path):
+            if not valid_file(file_path):
+                log.warning(f"[TORRENT] File path invalid, not added to database: {file_path}")
                 continue
 
             # get file size and insert into media table
