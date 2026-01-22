@@ -3,7 +3,7 @@ import os
 from collections import defaultdict
 from datetime import datetime
 
-from privateindexer_client.core import httpx_request, arr_formatter
+from privateindexer_client.core import httpx_request, arr_formatter, utils
 from privateindexer_client.core.arr_formatter import AUDIO_EXTRACTORS
 from privateindexer_client.core.config import LIDARR_URL, LIDARR_API_KEY
 from privateindexer_client.core.logger import log
@@ -127,7 +127,7 @@ async def fetch_music_library(tracked_root_folders: list[str]) -> list[dict]:
                 track_paths = [track["path"] for track in album_tracks]
 
                 # check for any invalid files
-                tracks_valid = all(os.path.exists(track_path) and os.path.isfile(track_path) for track_path in track_paths)
+                tracks_valid = all(utils.valid_file(track_path) for track_path in track_paths)
 
                 # do not build album if any tracks are invalid
                 if not tracks_valid:
@@ -162,7 +162,7 @@ async def fetch_music_library(tracked_root_folders: list[str]) -> list[dict]:
                             continue
 
                         # skip invalid files
-                        if not os.path.exists(track_path) or not os.path.isfile(track_path):
+                        if not utils.valid_file(track_path):
                             log.warning(f"[LIDARR] Invalid file path discovered: {track_path}")
                             continue
 

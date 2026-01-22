@@ -1,6 +1,6 @@
 import os
 
-from privateindexer_client.core import httpx_request, arr_formatter
+from privateindexer_client.core import httpx_request, arr_formatter, utils
 from privateindexer_client.core.arr_formatter import VIDEO_EXTRACTORS
 from privateindexer_client.core.config import RADARR_URL, RADARR_API_KEY
 from privateindexer_client.core.logger import log
@@ -85,7 +85,7 @@ async def fetch_movie_library(tracked_root_folders: list[str]) -> list[dict]:
                 continue
 
             # skip invalid files
-            if not os.path.exists(movie_path) or not os.path.isfile(movie_path):
+            if not utils.valid_file(movie_path):
                 log.warning(f"[RADARR] Invalid file path discovered: {movie_path}")
                 continue
 
