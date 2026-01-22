@@ -2,7 +2,7 @@ import asyncio
 import os
 from collections import defaultdict
 
-from privateindexer_client.core import httpx_request, arr_formatter
+from privateindexer_client.core import httpx_request, arr_formatter, utils
 from privateindexer_client.core.arr_formatter import VIDEO_EXTRACTORS
 from privateindexer_client.core.config import SONARR_URL, SONARR_API_KEY
 from privateindexer_client.core.logger import log
@@ -111,7 +111,7 @@ async def fetch_tv_library(tracked_root_folders: list[str]) -> list[dict]:
                 episode_paths = [episode["path"] for episode in season_episodes]
 
                 # check for any invalid files
-                episodes_valid = all(os.path.exists(episode_path) and os.path.isfile(episode_path) for episode_path in episode_paths)
+                episodes_valid = all(utils.valid_file(episode_path) for episode_path in episode_paths)
 
                 # do not build season pack if any episodes are invalid
                 if not episodes_valid:
@@ -143,7 +143,7 @@ async def fetch_tv_library(tracked_root_folders: list[str]) -> list[dict]:
                             continue
 
                         # skip invalid files
-                        if not os.path.exists(episode_path) or not os.path.isfile(episode_path):
+                        if not utils.valid_file(episode_path):
                             log.warning(f"[SONARR] Invalid file path discovered: {episode_path}")
                             continue
 
