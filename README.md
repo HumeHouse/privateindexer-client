@@ -90,6 +90,10 @@ directories as root' as a general rule of thumb.
 | *TV series* | TV library location(s). **This should match Sonarr's configuration exactly.**                                            | `/data/media/shows:/data/media/shows`             |
 | *Music*     | Music library location(s). **This should match Lidarr's configuration exactly.**                                         | `/data/media/music:/data/media/music`             |
 
+#### Optional log file mount
+
+You can choose whether to mount `/app/logs` somewhere on the host if you would like to have persistent log files saved.
+
 ### 3. Port forwarding
 
 The Torrenting Port
