@@ -263,10 +263,15 @@ async def remove_torrent_by_hash(torrent_hash: str, remove_downloads: bool = Fal
             result = await database.fetch_one("SELECT download_path FROM torrents WHERE infohash = ?", (torrent_hash,))
             if result and result.get("download_path"):
                 download_path = result["download_path"]
-                if os.path.isfile(download_path):
-                    os.unlink(download_path)
-                else:
-                    shutil.rmtree(download_path)
+
+                # check if download path exists
+                if os.path.exists(download_path):
+
+                    # check if file or directory
+                    if os.path.isfile(download_path):
+                        os.unlink(download_path)
+                    else:
+                        shutil.rmtree(download_path)
     except Exception as e:
         log.error(f"[TORCLIENT] Exception while removing downloads when removing torrent: {e}")
         successful = False
