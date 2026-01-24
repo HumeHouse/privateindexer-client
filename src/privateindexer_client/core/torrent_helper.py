@@ -126,7 +126,7 @@ def create_torrent(media_paths: list[str], torrent_name: str, app_id: int, outpu
 
     # check if the torrent file supplied exists
     if output_torrent_file and os.path.exists(output_torrent_file):
-        is_new_file = False
+        is_new_torrent = False
         # skip generation if torrent exists
         log.info(f"[TORRENT] Torrent file for '{torrent_name}' already exists, generation will be skipped")
 
@@ -145,7 +145,7 @@ def create_torrent(media_paths: list[str], torrent_name: str, app_id: int, outpu
             return None, False
 
     else:
-        is_new_file = True
+        is_new_torrent = True
 
         log.info(f"[TORRENT] Creating torrent '{torrent_name}'")
 
@@ -205,7 +205,7 @@ def create_torrent(media_paths: list[str], torrent_name: str, app_id: int, outpu
     torrent_metadata.infohash = torrent_infohash
     torrent_metadata.seed_path = os.path.dirname(parent_directory) if is_multi_file else parent_directory
 
-    return torrent_metadata, is_new_file
+    return torrent_metadata, is_new_torrent
 
 
 def create_torrent_threadsafe(media_paths: list[str], torrent_name: str, app_id: int, output_torrent_file: str = None) -> tuple[TorrentCreationMetadata, bool]:
