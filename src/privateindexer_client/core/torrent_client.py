@@ -181,7 +181,7 @@ async def add_torrent_for_download(torrent_file: str, save_path: str) -> bool:
             return False
 
         # save torrent metadata to a torrent file in the torrents directory
-        torrent_file_out = os.path.join(TORRENTS_DIR, f"{torrent_name}.torrent")
+        torrent_file_out = os.path.join(TORRENTS_DIR, f"{torrent_hash}.torrent")
         try:
             shutil.move(torrent_file, torrent_file_out)
             log.debug(f"[TORCLIENT] Saved torrent file for {torrent_name}")
