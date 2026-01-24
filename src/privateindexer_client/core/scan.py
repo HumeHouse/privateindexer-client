@@ -34,7 +34,7 @@ class ScanTorrentJob:
         self.torrent_file: str = None
 
 
-async def scan_media_library(media_data_entries: list[MediaDataEntry], hash_executor: ProcessPoolExecutor) -> tuple[int, int, int, int]:
+async def scan_media_library(media_data_entries: list[MediaDataEntry], hash_executor: ProcessPoolExecutor) -> tuple[int, int, set[int]]:
     """
     Main loop for scanning media libraries defined by user
     Will walk over all defined category paths, each single file gets turned into a single torrent file
@@ -86,10 +86,8 @@ async def scan_media_library(media_data_entries: list[MediaDataEntry], hash_exec
         for path in files:
             file_path_id_map[path].add(torrent_id)
 
-    total_files = 0
-    ignored_files = 0
-    created_files = 0
-    updated_files = 0
+    total_entries, created_entries = 0, 0
+    updated_entries = set()
 
     loop = asyncio.get_running_loop()
 
@@ -115,7 +113,7 @@ async def scan_media_library(media_data_entries: list[MediaDataEntry], hash_exec
             SCAN_DONE_ITEMS += 1
             continue
 
-        total_files += 1
+        total_entries += 1
 
         # loop through all the files in this media entry and compare to database files
         torrent_id_matches = None
@@ -149,28 +147,22 @@ async def scan_media_library(media_data_entries: list[MediaDataEntry], hash_exec
                     torrent_name = torrent_data["name"]
                     torrent_file = torrent_data["torrent_path"]
 
-                    has_updates = False
-
                     # check if the app_id is correct in the database
                     if torrent_data["app_id"] != media_data_entry.app_id:
-                        has_updates = True
+                        updated_entries.add(torrent_id)
                         # trigger a re-upload to make sure the app metadata gets synced to the server again
                         await database.execute("UPDATE torrents SET app_id = ?, uploaded = FALSE WHERE id = ?", (media_data_entry.app_id, torrent_id,))
                         log.info(f"[SCAN] Updated app ID for torrent '{torrent_name}', will re-upload to server during next sync")
 
                     # check if the torrent name is correct in the database
                     if torrent_name != media_data_entry.title:
-                        has_updates = True
+                        updated_entries.add(torrent_id)
                         new_name = media_data_entry.title
                         await database.execute("UPDATE torrents SET name = ? WHERE id = ?", (new_name, torrent_id,))
                         log.info(f"[SCAN] Updated local torrent name from '{torrent_name}' to '{new_name}'")
 
-                    if has_updates:
-                        updated_files += 1
-
                     # only ignore the creation process if the torrent file exists
                     if os.path.exists(torrent_file):
-                        ignored_files += 1
                         # increment global items counter
                         SCAN_DONE_ITEMS += 1
                         continue
@@ -186,7 +178,7 @@ async def scan_media_library(media_data_entries: list[MediaDataEntry], hash_exec
             # ignore this torrent file on subsequent loops
             ignored_torrents.add(torrent_file)
 
-            updated_files += 1
+            updated_entries.add(torrent_id)
             # detect category in case it's not matching in the database
             category_id = media_helper.detect_torznab_category(parent_directory)
             # update the torrent metadata
@@ -227,7 +219,7 @@ async def scan_media_library(media_data_entries: list[MediaDataEntry], hash_exec
 
     # stop here if we don't have any new items to process
     if not scan_jobs:
-        return total_files, ignored_files, updated_files, created_files
+        return total_entries, created_entries, updated_entries
 
     # set scan state to processing and update global variables to track the processing files now
     SCAN_TOTAL_ITEMS = len(scan_jobs)
@@ -267,7 +259,7 @@ async def scan_media_library(media_data_entries: list[MediaDataEntry], hash_exec
             SCAN_DONE_ITEMS += 1
             try:
                 future_result: tuple[TorrentCreationMetadata, bool] = await future
-                metadata, is_new_file = future_result
+                metadata, is_new_torrent = future_result
                 if metadata:
 
                     # attempt to send torrent file to indexer server
@@ -277,8 +269,8 @@ async def scan_media_library(media_data_entries: list[MediaDataEntry], hash_exec
                     await torrent_helper.add_torrent_to_database(metadata.name, metadata.size, metadata.torrent_path, uploaded, metadata.torznab_category,
                                                                  file_paths=metadata.file_paths, torrent_hash=metadata.infohash, app_id=metadata.app_id)
 
-                    if is_new_file:
-                        created_files += 1
+                    if is_new_torrent:
+                        created_entries += 1
                         # attempt to add the torrent to the libtorrent session right away for immediate seeding
                         if await torrent_client.add_torrent_for_seeding(metadata.torrent_path, metadata.seed_path, replace=True):
                             log.info(f"[SCAN] Created and started seeding new torrent: {metadata.name}")
@@ -295,7 +287,7 @@ async def scan_media_library(media_data_entries: list[MediaDataEntry], hash_exec
     creation_executor.shutdown()
     log.debug(f"[SCAN] Creation executor workers closed")
 
-    return total_files, ignored_files, updated_files, created_files
+    return total_entries, created_entries, updated_entries
 
 
 async def periodic_scan_task():
@@ -322,15 +314,15 @@ async def periodic_scan_task():
             # fetch the compiled list of tracked media from *arr apps
             media_data_entries = await media_helper.get_managed_media_data()
 
+            total_entries, created_entries, updated_entries = 0, 0, set()
+
             # make sure we have at least 1 directory to scan, otherwise skip scan
             if len(category_paths) == 0:
                 log.warning(f"[SCAN] No root folders accessible for scanning")
-                total_files, ignored_files, updated_files, created_files = 0, 0, 0, 0
             else:
                 try:
-                    total_files, ignored_files, updated_files, created_files = await scan_media_library(media_data_entries, hash_executor)
+                    total_entries, created_entries, updated_entries = await scan_media_library(media_data_entries, hash_executor)
                 except Exception as e:
-                    total_files, ignored_files, updated_files, created_files = 0, 0, 0, 0
                     log.error(f"[SCAN] Exception during periodic scan task (scan/processing): {e}")
 
             log.debug("[SCAN] Scan complete, running post-scan checks")
@@ -447,6 +439,8 @@ async def periodic_scan_task():
                 # case where the download data doesn't exist or is invalid, clear the download path from database
                 if download_path is not None and (not download_exists or download_path == DOWNLOADS_DIR or download_path == os.path.join(DOWNLOADS_DIR, (
                         qbit_translator.detect_torrent_category(download_path)))):
+                    updated_entries.add(torrent_id)
+                    # remove the download path from database
                     await database.execute("UPDATE torrents SET download_path = NULL WHERE id = ?", (torrent_id,))
                     log.info(f"[SCAN] Download data missing for '{torrent_name}', removed download path from database")
 
@@ -456,7 +450,7 @@ async def periodic_scan_task():
 
                     # update the category if a match was found
                     if category_id != 0:
-                        updated_files += 1
+                        updated_entries.add(torrent_id)
                         await database.execute("UPDATE torrents SET category = ? WHERE id = ?", (category_id, torrent_id,))
                         log.info(f"[SCAN] Updated the category to '{category_id}' for '{torrent_name}'")
 
@@ -480,6 +474,7 @@ async def periodic_scan_task():
                     # remove torrent file and from database
                     await torrent_helper.remove_torrent_from_database(torrent_hash, torrent_file=torrent_path)
                     log.info(f"[SCAN] '{torrent_name}' is no longer discovered, removed torrent from database and torrent client")
+                    continue
 
                 # case where we have a multi-file torrent tracked, but files inside are still being seeded individually
                 if len(media_files) > 1:
@@ -570,15 +565,17 @@ async def periodic_scan_task():
             if deleted_dirs:
                 log.info(f"[SCAN] Removed {deleted_dirs} empty download directories")
 
-            duplicate_entries = len(duplicate_entries.keys())
-
             # close the hash executor
             hash_executor.shutdown()
             log.debug(f"[SCAN] Hash executor workers closed")
 
+            updated = len(updated_entries)
+            stats = [("total", total_entries), ("created", created_entries), ("removed", removed_entries), ("updated", updated), ]
+
+            stats_list = ", ".join(f"{count} {name}" for name, count in stats if count > 0)
             delta = datetime.datetime.now() - before
-            log.info(f"[SCAN] Media library scan completed ({delta}): "
-                     f"total {total_files} files, {ignored_files} ignored, {updated_files} updated, {created_files} created, {removed_entries} removed, {duplicate_entries} duplicates")
+
+            log.info(f"[SCAN] Media library scan completed ({delta}): {stats_list}")
 
         except Exception as e:
             log.error(f"[SCAN] Exception during periodic scan task (pre/post-processing): {e}")
