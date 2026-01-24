@@ -493,7 +493,7 @@ async def periodic_torrent_status_task():
                 if is_downloading:
                     # pull the download path from the database
                     result = await database.fetch_one("SELECT download_path, torrent_path FROM torrents WHERE infohash = ?", (torrent_hash,))
-                    if result and not result.get("download_path"):
+                    if result and result.get("download_path") is None:
                         log.warning(f"[STATUS] Removing download-frozen torrent: {torrent_hash}")
 
                         # remove from client and database
