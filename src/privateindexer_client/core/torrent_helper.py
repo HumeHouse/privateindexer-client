@@ -128,14 +128,26 @@ def create_torrent(media_paths: list[str], torrent_name: str, app_id: int, outpu
     if output_torrent_file and os.path.exists(output_torrent_file):
         is_new_file = False
         # skip generation if torrent exists
-        log.info(f"[TORRENT] Torrent file '{output_torrent_file}' already exists, generation will be skipped")
+        log.info(f"[TORRENT] Torrent file for '{torrent_name}' already exists, generation will be skipped")
+
+        # attempt to pull the file size and hash information from the torrent file, otherwise fail and remove torrent file from disk
+        try:
+            info = lt.torrent_info(output_torrent_file)
+            hashes = info.info_hashes()
+            torrent_infohash = str(hashes.v2)
+            total_media_size = info.files().total_size()
+        except Exception as e:
+            log.error(f"[TORRENT] Exception while reading hash for '{output_torrent_file}', it has been removed: {e}")
+            try:
+                os.unlink(output_torrent_file)
+            except Exception as e:
+                log.error(f"[TORRENT] Exception while removing torrent file '{output_torrent_file}': {e}")
+            return None, False
 
     else:
         is_new_file = True
 
         log.info(f"[TORRENT] Creating torrent '{torrent_name}'")
-
-        output_torrent_file = os.path.join(TORRENTS_DIR, f"{torrent_name}.torrent")
 
         # create the file storage object
         fs = lt.file_storage()
@@ -165,24 +177,20 @@ def create_torrent(media_paths: list[str], torrent_name: str, app_id: int, outpu
         # build peice map from parent directory
         lt.set_piece_hashes(t, os.path.dirname(parent_directory) if is_multi_file else parent_directory)
 
-        with open(output_torrent_file, "wb") as f:
-            f.write(lt.bencode(t.generate()))
+        # generate and bencode the torrent files
+        torrent_content = lt.bencode(t.generate())
 
-    # attempt to pull the hash information from the torrent file, otherwise fail and remove torrent file from disk
-    try:
-        info = lt.torrent_info(output_torrent_file)
+        # pull the torrent info from the newly generated content
+        info = lt.torrent_info(torrent_content)
         hashes = info.info_hashes()
         torrent_infohash = str(hashes.v2)
-
-        # get size of media
         total_media_size = info.files().total_size()
-    except Exception as e:
-        log.error(f"[TORRENT] Exception while reading hash for '{output_torrent_file}', it has been removed: {e}")
-        try:
-            os.unlink(output_torrent_file)
-        except Exception as e:
-            log.error(f"[TORRENT] Exception while removing torrent file '{output_torrent_file}': {e}")
-        return None, False
+
+        output_torrent_file = os.path.join(TORRENTS_DIR, f"{torrent_infohash}.torrent")
+
+        # write the new content to the torrent file
+        with open(output_torrent_file, "wb") as f:
+            f.write(torrent_content)
 
     category_id = media_helper.detect_torznab_category(parent_directory)
 
