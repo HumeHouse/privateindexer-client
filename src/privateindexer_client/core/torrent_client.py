@@ -344,8 +344,13 @@ async def load_fastresume_data():
             save_path = os.path.dirname(download_path)
             if await add_torrent_for_seeding(torrent_path, save_path):
                 log.info(f"[FASTRESUME] Re-added '{torrent["name"]}' for seeding from download path")
+                continue
             else:
                 log.warning(f"[FASTRESUME] Unable to re-add '{torrent["name"]}' for seeding from download path")
+
+        # remove torrent file and from database
+        await torrent_helper.remove_torrent_from_database(torrent_hash, torrent_file=torrent_path)
+        log.warning(f"[FASTRESUME] Purged missing torrent from database: {torrent["name"]}")
 
     log.info(f"[FASTRESUME] Queued {len(futures)} fastresume data files for processing")
 
