@@ -470,8 +470,9 @@ async def periodic_torrent_status_task():
                 # get the infohash stored as raw bytes
                 torrent_hash = status.info_hashes.v2.to_bytes().hex()
 
-                if status.errc and status.errc.value() != 0:
-                    log.critical(f"[STATUS] Torrent in error state: {torrent_hash}")
+                error_code = status.errc
+                if error_code and error_code.value() != 0:
+                    log.critical(f"[STATUS] Torrent in error state, code {error_code.value()} - {error_code.message()}: {torrent_hash}")
 
                 is_downloading = status.state == lt.torrent_status.downloading
                 is_seeding = status.state == lt.torrent_status.seeding
