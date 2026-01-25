@@ -4,7 +4,7 @@ from privateindexer_client.core import database_migrations
 from privateindexer_client.core.config import DATABASE_FILE
 from privateindexer_client.core.logger import log
 
-LATEST_SCHEMA_VERSION = 5
+LATEST_SCHEMA_VERSION = 6
 
 TORRENTS_TABLE_SQL = """
                      CREATE TABLE IF NOT EXISTS "torrents"
@@ -32,7 +32,7 @@ MEDIA_TABLE_SQL = """
                   """
 
 MIGRATIONS = {0: database_migrations.v0_to_v1, 1: database_migrations.v1_to_v2, 2: database_migrations.v2_to_v3, 3: database_migrations.v3_to_v4,
-              4: database_migrations.v4_to_v5, }
+              4: database_migrations.v4_to_v5, 5: database_migrations.v5_to_v6, }
 
 
 async def initialize():
