@@ -460,6 +460,10 @@ async def periodic_torrent_status_task():
             # request session stats async
             libtorrent_session.post_session_stats()
 
+            query = "SELECT t.infohash FROM torrents t WHERE NOT EXISTS (SELECT 1 FROM media m WHERE m.torrent_id = t.id)"
+            torrents = await database.fetch_all(query)
+            torrents_missing_media = [torrent["infohash"] for torrent in torrents]
+
             # loop through torrents and check their status
             torrents = get_all_torrents()
             for torrent in torrents:
@@ -482,6 +486,14 @@ async def periodic_torrent_status_task():
                             os.unlink(ignore_file)
                         except Exception as e:
                             log.error(f"[STATUS] Exception while removing fastresume-ignore file '{ignore_file}': {e}")
+
+                # if torrent is in seed status, check if torrent is stale and has no media, then purge if both conditions are true
+                elif torrent_hash in torrents_missing_media and added_delta.total_seconds() > STALE_TORRENT_THRESHOLD:
+                    log.warning(f"[STATUS] Removing stale seeding torrent due to no tracked media: {torrent_hash}")
+                    # remove from client and database
+                    await remove_torrent_by_hash(torrent_hash, True)
+                    await torrent_helper.remove_torrent_from_database(torrent_hash)
+                    continue
 
                 # check if torrent is downloading and has been downloading for more than the threshold with no progress OR 2x the threshold with >0 progress
                 if is_downloading and ((added_delta.total_seconds() > STALE_TORRENT_THRESHOLD and status.progress == 0) or (
