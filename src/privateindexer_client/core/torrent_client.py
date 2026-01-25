@@ -181,7 +181,7 @@ async def add_torrent_for_download(torrent_file: str, save_path: str) -> bool:
             return False
 
         # save torrent metadata to a torrent file in the torrents directory
-        torrent_file_out = os.path.join(TORRENTS_DIR, f"{torrent_name}.torrent")
+        torrent_file_out = os.path.join(TORRENTS_DIR, f"{torrent_hash}.torrent")
         try:
             shutil.move(torrent_file, torrent_file_out)
             log.debug(f"[TORCLIENT] Saved torrent file for {torrent_name}")
@@ -263,10 +263,15 @@ async def remove_torrent_by_hash(torrent_hash: str, remove_downloads: bool = Fal
             result = await database.fetch_one("SELECT download_path FROM torrents WHERE infohash = ?", (torrent_hash,))
             if result and result.get("download_path"):
                 download_path = result["download_path"]
-                if os.path.isfile(download_path):
-                    os.unlink(download_path)
-                else:
-                    shutil.rmtree(download_path)
+
+                # check if download path exists
+                if os.path.exists(download_path):
+
+                    # check if file or directory
+                    if os.path.isfile(download_path):
+                        os.unlink(download_path)
+                    else:
+                        shutil.rmtree(download_path)
     except Exception as e:
         log.error(f"[TORCLIENT] Exception while removing downloads when removing torrent: {e}")
         successful = False
@@ -339,8 +344,13 @@ async def load_fastresume_data():
             save_path = os.path.dirname(download_path)
             if await add_torrent_for_seeding(torrent_path, save_path):
                 log.info(f"[FASTRESUME] Re-added '{torrent["name"]}' for seeding from download path")
+                continue
             else:
                 log.warning(f"[FASTRESUME] Unable to re-add '{torrent["name"]}' for seeding from download path")
+
+        # remove torrent file and from database
+        await torrent_helper.remove_torrent_from_database(torrent_hash, torrent_file=torrent_path)
+        log.warning(f"[FASTRESUME] Purged missing torrent from database: {torrent["name"]}")
 
     log.info(f"[FASTRESUME] Queued {len(futures)} fastresume data files for processing")
 
@@ -488,7 +498,7 @@ async def periodic_torrent_status_task():
                 if is_downloading:
                     # pull the download path from the database
                     result = await database.fetch_one("SELECT download_path, torrent_path FROM torrents WHERE infohash = ?", (torrent_hash,))
-                    if result and not result.get("download_path"):
+                    if result and result.get("download_path") is None:
                         log.warning(f"[STATUS] Removing download-frozen torrent: {torrent_hash}")
 
                         # remove from client and database

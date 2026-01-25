@@ -43,6 +43,10 @@ COPY --chown=${UID}:${GID} logging.yml /app
 RUN mkdir -m 777 /app/data \
  && chown -R ${UID}:${GID} /app/data
 
+# create log directories with open permissions
+RUN mkdir -m 777 /app/logs \
+ && chown -R ${UID}:${GID} /app/logs
+
 # add the healthcheck to hit the app's health endpoint
 HEALTHCHECK --start-period=30s --interval=30s --timeout=5s --retries=3 \
     CMD python -c "import urllib.request, sys; \
