@@ -64,7 +64,6 @@ def create_libtorrent_session(app_version: str):
             "connections_limit": -1,  # unlimited connections
             "unchoke_slots_limit": -1,  # unlimited number of unchoked peers
             "max_out_request_queue": 1500,  # increase number of outstanding requests to send to a peer 3x (default 500)
-            "file_pool_size": 250,  # increase file pool size (default 40)
             "connection_speed": 500,  # bump connection rate to 500/s (default 30)
             "send_buffer_low_watermark": 1048576,  # bump low buffer 10x (default 10*1024)
             "send_buffer_watermark": 3145728,  # bump buffer 6x (default 500*1024)
