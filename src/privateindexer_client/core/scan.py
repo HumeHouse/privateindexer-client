@@ -388,7 +388,7 @@ async def periodic_scan_task():
 
                 if media_files:
                     # get the media's parent directory if tracked media is found
-                    media_parent_directory = os.path.dirname(list(media_files.keys())[0])
+                    media_parent_directory = os.path.dirname(next(iter(media_files)))
                     # media is valid if and only if all files exist and file size matches database
                     media_valid = all(utils.valid_file(media_file) and os.path.getsize(media_file) == file_size for media_file, file_size in media_files.items())
 
@@ -492,16 +492,13 @@ async def periodic_scan_task():
                         if not searched_media_files or len(searched_media_files) > 1:
                             continue
 
-                        searched_media_file = next(iter(searched_media_files))
+                        # get the parent directory of the searched torrent
+                        searched_parent_directory = os.path.dirname(next(iter(searched_media_files)))
 
-                        comparison_paths = list(media_files.keys())
-                        comparison_paths.append(searched_media_file)
-
-                        # if a common root path exists between the current torrent's file and the comparison, mark as duplicate
-                        if os.path.commonpath(comparison_paths) == media_parent_directory:
+                        # if a common parent directory is shared between the current torrent's file and the comparison, mark as duplicate
+                        if searched_parent_directory == media_parent_directory:
                             duplicate_entries[searching_torrent["id"]] = searching_torrent
                             log.warning(f"[SCAN] Potential duplicate seed found for '{torrent_name}': {searching_torrent['name']}")
-                            break
 
             # purge duplicate seeds if the user has this option enabled
             if PURGE_DUPLICATE_SEEDS:
