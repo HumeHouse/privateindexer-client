@@ -467,7 +467,7 @@ function populateInfoPanel(torrent) {
     // show delete button if torrent is not seeding
     $("#delete-button").toggleClass("d-none", ["uploading", "stalledUP"].includes(torrent["state"]));
 
-    let trackerData = torrent["trackers"][0];
+    let trackerData = torrent["tracker"];
     let trackerWorking = !!trackerData["verified"];
     let nextAnnounce = "N/A";
     if (trackerData["next_announce"]) {
