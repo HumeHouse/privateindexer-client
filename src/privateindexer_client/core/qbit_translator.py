@@ -160,30 +160,3 @@ def detect_torrent_category(file_path: str) -> str:
         if file_path.startswith(category_data.get("savePath")):
             return category_data.get("name")
     return ""
-
-
-def purge_empty_categories() -> int:
-    """
-    Helper function to recursively delete empty download directories in the tracked torrent category paths
-    """
-    deleted = set()
-
-    for category_data in get_torrent_categories().values():
-        root = category_data.get("savePath")
-
-        for current_dir, subdirs, files in os.walk(root, topdown=False):
-
-            still_has_subdirs = False
-            for subdir in subdirs:
-                if os.path.join(current_dir, subdir) not in deleted:
-                    still_has_subdirs = True
-                    break
-
-            if not any(files) and not still_has_subdirs:
-                try:
-                    os.rmdir(current_dir)
-                    deleted.add(current_dir)
-                except Exception as e:
-                    log.error(f"[SCAN] Exception while removing empty download directory: {e}")
-
-    return len(deleted)
