@@ -92,12 +92,12 @@ function fetchMainData() {
 
             // update selected torrent info panel
             if (selectedTorrentId) {
-                const updatedTorrent = data["torrents"].find(t => t["hash"] === selectedTorrentId);
+                const updatedTorrent = data["torrents"].find(t => t["infohash"] === selectedTorrentId);
                 if (updatedTorrent) populateInfoPanel(updatedTorrent);
             }
 
             // update client-visible stats
-            updateClientStats(data["torrents"], data["server_state"]);
+            updateClientStats(data["torrents"], data["client_stats"]);
 
             // update the scanner progress
             updateScannerStats(data["scanner_status"]);
@@ -258,29 +258,18 @@ function updateScannerStats(scanner_status) {
 }
 
 function updateClientStats(torrents, stats) {
-    let seeding = 0, leeching = 0, totalPeers = 0;
-
-    torrents.forEach(torrent => {
-        let t_state = torrent["state"];
-        if (["uploading", "stalledUP"].includes(t_state)) seeding++;
-        if (["downloading", "stalledDL", "metaDL"].includes(t_state)) leeching++;
-        totalPeers += (torrent["num_seeds"] || 0) + (torrent["num_leechs"] || 0);
-    });
-
     // update torrent counts
-    $("#client-seeding").text(seeding);
-    $("#client-leeching").text(leeching);
+    $("#client-seeding").text(stats["seeding_torrents"]);
+    $("#client-leeching").text(stats["downloading_torrents"]);
     $("#client-total").text(torrents.length);
-    $("#client-peers").text(totalPeers);
+    $("#client-peers").text(stats["peers_connected"]);
 
     // update session stats
-    $("#session-dl").text(formatBytes(stats["dl_info_data"]));
-    $("#total-dl").text(formatBytes(stats["alltime_dl"]));
-    $("#dl-rate").text(formatSpeed(stats["dl_info_speed"]));
-    $("#session-ul").text(formatBytes(stats["up_info_data"]));
-    $("#total-ul").text(formatBytes(stats["alltime_ul"]));
-    $("#ul-rate").text(formatSpeed(stats["up_info_speed"]));
-    $("#global-ratio").text(formatRatio(stats["global_ratio"]));
+    $("#total-dl").text(formatBytes(stats["total_download"]));
+    $("#dl-rate").text(formatSpeed(stats["download_speed"]));
+    $("#total-ul").text(formatBytes(stats["total_upload"]));
+    $("#ul-rate").text(formatSpeed(stats["upload_speed"]));
+    $("#global-ratio").text(formatRatio(stats["client_ratio"]));
 }
 
 function applySortingAndRender() {
@@ -292,10 +281,10 @@ function applySortingAndRender() {
         size: row => row["size"],
         progress: row => row["progress"],
         state: row => row["state"],
-        num_seeds: row => row["num_seeds"] + row["num_complete"],
-        peers: row => row["num_leechs"] + row["num_incomplete"],
-        dlspeed: row => row["dlspeed"],
-        upspeed: row => row["upspeed"],
+        seeds: row => row["connected_seeds"] + row["total_seeds"],
+        peers: row => row["connected_peers"] + row["total_peers"],
+        download_speed: row => row["download_speed"],
+        upload_speed: row => row["upload_speed"],
         eta: row => row["eta"],
         added_on: row => row["added_on"]
     };
@@ -353,13 +342,13 @@ function formatSpeed(bytesPerSec) {
 }
 
 function formatTime(seconds) {
-    if (seconds < 0 || seconds === 8640000) return "∞";
+    if (seconds < 0 || seconds === -1) return "∞";
     const h = Math.floor(seconds / 3600), m = Math.floor((seconds % 3600) / 60), s = Math.floor(seconds % 60);
     return [h, m, s].map(v => String(v).padStart(2, '0')).join(":");
 }
 
 function formatRatio(ratio) {
-    return ratio === 8640000 ? "∞" : ratio.toFixed(2);
+    return ratio === -1 ? "∞" : ratio.toFixed(2);
 }
 
 function renderTable(torrents) {
@@ -385,9 +374,9 @@ function renderTable(torrents) {
         const rowClass = "state-" + torrent["state"];
         const progress = (torrent["progress"] * 100).toFixed(1);
 
-        const selectedClass = torrent["hash"] === selectedTorrentId ? "selected-row" : "";
+        const selectedClass = torrent["infohash"] === selectedTorrentId ? "selected-row" : "";
 
-        const row = $(`<tr class="${selectedClass}" data-infohash="${torrent["hash"]}"></tr>`);
+        const row = $(`<tr class="${selectedClass}" data-infohash="${torrent["infohash"]}"></tr>`);
 
         row.toggleClass("d-none", !torrent["name"].toLowerCase().includes(filter));
 
@@ -405,10 +394,10 @@ function renderTable(torrents) {
                     </div>
                 </td>
                 <td class="${rowClass}">${formatState(torrent["state"])}</td>
-                <td>${torrent["num_seeds"]} (${torrent["num_complete"]})</td>
-                <td>${torrent["num_leechs"]} (${torrent["num_incomplete"]})</td>
-                <td>${formatSpeed(torrent["dlspeed"])}</td>
-                <td>${formatSpeed(torrent["upspeed"])}</td>
+                <td>${torrent["connected_seeds"]} (${torrent["total_seeds"]})</td>
+                <td>${torrent["connected_peers"]} (${torrent["total_peers"]})</td>
+                <td>${formatSpeed(torrent["download_speed"])}</td>
+                <td>${formatSpeed(torrent["upload_speed"])}</td>
                 <td>${formatTime(torrent["eta"])}</td>
                 <td>${new Date(torrent["added_on"] * 1000).toLocaleString()}</td>
             `);
@@ -417,7 +406,7 @@ function renderTable(torrents) {
 
         // click handler
         $tbody.find("tr").last().click(() => {
-            selectedTorrentId = torrent["hash"];
+            selectedTorrentId = torrent["infohash"];
             $tbody.find("tr").removeClass("selected-row");
             $tbody.find(`tr[data-infohash='${selectedTorrentId}']`).addClass("selected-row");
             populateInfoPanel(torrent);
@@ -481,18 +470,18 @@ function populateInfoPanel(torrent) {
         <div class="row g-0 mb-0">
             <div class="col-md-4">
                 <dl class="row g-0 mb-0">
-                    <dt class="col-4 text-end">Downloaded:</dt><dd class="ms-2 col-7">${formatBytes(torrent["downloaded"])} (${formatBytes(torrent["downloaded_session"])} this session)</dd>
-                    <dt class="col-4 text-end">Download Speed:</dt><dd class="ms-2 col-7">${formatSpeed(torrent["dlspeed"])}</dd>
+                    <dt class="col-4 text-end">Session Download:</dt><dd class="ms-2 col-7">${formatBytes(torrent["session_download"])}</dd>
+                    <dt class="col-4 text-end">Download Speed:</dt><dd class="ms-2 col-7">${formatSpeed(torrent["download_speed"])}</dd>
                     <dt class="col-4 text-end">Progress:</dt><dd class="ms-2 col-7">${(torrent["progress"] * 100).toFixed(1)}%</dd>
-                    <dt class="col-4 text-end">Info Hash:</dt><dd class="ms-2 col-7 text-wrap text-break">${torrent["hash"] || "N/A"}</dd>
+                    <dt class="col-4 text-end">Info Hash:</dt><dd class="ms-2 col-7 text-wrap text-break">${torrent["infohash"] || "N/A"}</dd>
                 </dl>
             </div>
             <div class="col-md-4">
                 <dl class="row g-0 mb-0">
-                    <dt class="col-4 text-end">Uploaded:</dt><dd class="ms-2 col-7">${formatBytes(torrent["uploaded"])} (${formatBytes(torrent["uploaded_session"])} this session)</dd>
-                    <dt class="col-4 text-end">Upload Speed:</dt><dd class="ms-2 col-7">${formatSpeed(torrent["upspeed"])}</dd>
-                    <dt class="col-4 text-end">Seeds:</dt><dd class="ms-2 col-7">${torrent["num_seeds"]} / ${torrent["num_complete"]}</dd>
-                    <dt class="col-4 text-end">Peers:</dt><dd class="ms-2 col-7">${torrent["num_leechs"]} / ${torrent["num_incomplete"]}</dd>
+                    <dt class="col-4 text-end">Session Upload:</dt><dd class="ms-2 col-7">${formatBytes(torrent["session_upload"])}</dd>
+                    <dt class="col-4 text-end">Upload Speed:</dt><dd class="ms-2 col-7">${formatSpeed(torrent["upload_speed"])}</dd>
+                    <dt class="col-4 text-end">Seeds (Total):</dt><dd class="ms-2 col-7">${torrent["connected_seeds"]} (${torrent["total_seeds"]})</dd>
+                    <dt class="col-4 text-end">Peers (Total):</dt><dd class="ms-2 col-7">${torrent["connected_peers"]} (${torrent["total_peers"]})</dd>
                 </dl>
             </div>
             <div class="col-md-4">
@@ -559,8 +548,8 @@ function populateInfoPanel(torrent) {
                 <td>${peer["port"]}</td>
                 <td>${peer["client"]}</td>
                 <td>${flagsList}</td>
-                <td>${formatSpeed(peer["down_speed"])}</td>
-                <td>${formatSpeed(peer["up_speed"])}</td>
+                <td>${formatSpeed(peer["download_speed"])}</td>
+                <td>${formatSpeed(peer["upload_speed"])}</td>
                 <td>
                     <div class="progress" style="height:1.5rem;">
                     <div class="progress-bar ${barClass} overflow-visible" role="progressbar" style="width: ${progress}%">${progress}%</div>
