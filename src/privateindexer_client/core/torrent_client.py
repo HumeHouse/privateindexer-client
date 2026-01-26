@@ -574,11 +574,11 @@ async def periodic_alerts_task():
                     _session_stats_time_now = time.monotonic()
 
                     # update all-time totals
-                    total_download = _session_stats_now["net.recv_bytes"]
-                    total_upload = _session_stats_now["net.sent_bytes"]
+                    total_download = _session_stats_now["net.recv_payload_bytes"]
+                    total_upload = _session_stats_now["net.sent_payload_bytes"]
 
-                    _all_time_download += total_download - (_session_stats_prev["net.recv_bytes"]) if _session_stats_prev else 0
-                    _all_time_upload += total_upload - (_session_stats_prev["net.sent_bytes"]) if _session_stats_prev else 0
+                    _all_time_download += total_download - (_session_stats_prev["net.recv_payload_bytes"]) if _session_stats_prev else 0
+                    _all_time_upload += total_upload - (_session_stats_prev["net.sent_payload_bytes"]) if _session_stats_prev else 0
 
                     # persist the stats to disk every 60 seconds
                     if int(time.monotonic()) % 60 == 0:
