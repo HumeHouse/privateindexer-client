@@ -557,10 +557,29 @@ async def periodic_scan_task():
                             except Exception as e:
                                 log.error(f"[SCAN] Exception while removing untracked downloaded file '{file_path}': {e}")
 
+            deleted_dirs = set()
+
             # delete empty download directories for each torrent category
-            deleted_dirs = qbit_translator.purge_empty_categories()
+            for category_data in qbit_translator.get_torrent_categories().values():
+                root = category_data.get("savePath")
+
+                for current_dir, subdirs, files in os.walk(root, topdown=False):
+
+                    still_has_subdirs = False
+                    for subdir in subdirs:
+                        if os.path.join(current_dir, subdir) not in deleted_dirs:
+                            still_has_subdirs = True
+                            break
+
+                    if not any(files) and not still_has_subdirs:
+                        try:
+                            os.rmdir(current_dir)
+                            deleted_dirs.add(current_dir)
+                        except Exception as e:
+                            log.error(f"[SCAN] Exception while removing empty download directory: {e}")
+
             if deleted_dirs:
-                log.info(f"[SCAN] Removed {deleted_dirs} empty download directories")
+                log.info(f"[SCAN] Removed {len(deleted_dirs)} empty download directories")
 
             # close the hash executor
             hash_executor.shutdown()
