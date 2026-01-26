@@ -132,18 +132,13 @@ async def map_torrents_to_qbit(client_torrents: list, category_filter: str = Non
         # we want to show the name in the database, not the internal torrent name - it's usually ugly (we use the internal one as a fallback)
         torrent_name = name_hash_map.get(torrent_hash, status.name)
 
-        mapped = {"added_on": int(status.added_time or 0), "amount_left": int(status.total_wanted - status.total_wanted_done), "availability": status.distributed_copies,
-                  "completed": int(status.total_done), "completion_on": int(status.completed_time or -1), "content_path": os.path.join(status.save_path, status.name),
-                  "dlspeed": status.download_rate, "download_path": status.save_path, "downloaded": status.all_time_download,
-                  "downloaded_session": status.total_payload_download, "eta": calc_eta(status), "has_metadata": status.has_metadata, "hash": torrent_hash,
-                  "infohash_v1": infohash_v1 or "", "infohash_v2": torrent_hash or "", "name": torrent_name, "num_complete": status.num_complete,
-                  "num_incomplete": status.num_incomplete, "num_leechs": max(0, status.num_peers - status.num_seeds), "num_seeds": status.num_seeds,
-                  "progress": round(status.progress, 3), "ratio": safe_ratio(status), "ratio_limit": -1, "reannounce": int(status.next_announce.total_seconds()),
-                  "save_path": status.save_path, "seeding_time": int(status.seeding_duration.total_seconds()), "seeding_time_limit": -1,
-                  "seen_complete": int(status.last_seen_complete or -1), "seq_dl": bool(status.flags & lt.torrent_flags.sequential_download), "size": status.total_wanted,
-                  "state": map_state(status), "time_active": int(status.active_duration.total_seconds()), "total_size": status.total, "tracker": status.current_tracker,
-                  "trackers_count": 1 if status.current_tracker else 0, "uploaded": status.all_time_upload, "uploaded_session": status.total_payload_upload,
-                  "upspeed": status.upload_rate, "category": category, }
+        mapped = {"added_on": int(status.added_time or 0), "content_path": os.path.join(status.save_path, status.name), "dlspeed": status.download_payload_rate,
+                  "download_path": status.save_path, "downloaded": status.all_time_download, "downloaded_session": status.total_payload_download, "eta": calc_eta(status),
+                  "hash": torrent_hash, "name": torrent_name, "num_complete": status.num_complete, "num_incomplete": status.num_incomplete,
+                  "num_leechs": max(0, status.num_peers - status.num_seeds), "num_seeds": status.num_seeds, "progress": round(status.progress, 3),
+                  "ratio": safe_ratio(status), "ratio_limit": -1, "save_path": status.save_path, "seeding_time": int(status.seeding_duration.total_seconds()),
+                  "seeding_time_limit": -1, "size": status.total_wanted, "state": map_state(status), "uploaded": status.all_time_upload,
+                  "uploaded_session": status.total_payload_upload, "upspeed": status.upload_payload_rate, "category": category, }
 
         peers_list = []
         for p in torrent.get_peer_info():
