@@ -101,7 +101,7 @@ def format_peer_flags(peer: lt.peer_info) -> list[tuple[str, str]]:
     return flags
 
 
-async def map_torrents_to_qbit(client_torrents: list) -> dict:
+async def map_torrents_to_qbit(client_torrents: list, category_filter: str = None) -> dict:
     """
     Convert a libtorrent.torrent_status object into a qBittorrent-compatible dict
     Most of this is default or general taken from the qBittorrent API docs
@@ -119,12 +119,15 @@ async def map_torrents_to_qbit(client_torrents: list) -> dict:
 
         status = torrent.status()
 
-        # here we have to normalize the infohashes because they are raw bytes out of the status
-        infohash_v1 = status.info_hashes.v1.to_bytes().hex() if status.info_hashes.has_v1() else None
-        torrent_hash = status.info_hashes.v2.to_bytes().hex()
-
         # try to match the save_path with the configured category paths
         category = detect_torrent_category(status.save_path)
+
+        # skip if this torrent is not wanted by the category filter
+        if category_filter and category != category_filter:
+            continue
+
+        # normalize the infohash due to raw bytes out of the status
+        torrent_hash = status.info_hashes.v2.to_bytes().hex()
 
         # we want to show the name in the database, not the internal torrent name - it's usually ugly (we use the internal one as a fallback)
         torrent_name = name_hash_map.get(torrent_hash, status.name)
