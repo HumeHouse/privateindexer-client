@@ -23,25 +23,19 @@
 
         <!-- Client-visible stats -->
         <div id="client-stats" class="d-flex gap-3 align-items-center my-2">
-            <div class="text-center text-info">
+            <div class="text-center text-primary">
                 <span class="fw-bold" id="client-leeching">0</span><br><small>Downloading</small>
             </div>
-            <div class="text-center text-info">
-                <span class="fw-bold" id="session-dl">0</span> (<span class="fw-bold" id="dl-rate">0 B/s</span>)
-                <br><small>Session DL (Rate)</small>
-            </div>
-            <div class="text-center text-info">
-                <span class="fw-bold" id="total-dl">0</span><br><small>Total DL</small>
+            <div class="text-center text-primary">
+                <span class="fw-bold" id="total-dl">0</span> (<span class="fw-bold" id="dl-rate">0 B/s</span>)
+                <br><small>DL (Rate)</small>
             </div>
             <div class="text-center text-success">
                 <span class="fw-bold" id="client-seeding">0</span><br><small>Seeding</small>
             </div>
             <div class="text-center text-success">
-                <span class="fw-bold" id="session-ul">0</span> (<span class="fw-bold" id="ul-rate">0 B/s</span>)
-                <br><small>Session UL (Rate)</small>
-            </div>
-            <div class="text-center text-success">
-                <span class="fw-bold" id="total-ul">0</span><br><small>Total UL</small>
+                <span class="fw-bold" id="total-ul">0</span> (<span class="fw-bold" id="ul-rate">0 B/s</span>)
+                <br><small>UL (Rate)</small>
             </div>
             <div class="text-center">
                 <span class="fw-bold" id="global-ratio">0.00</span><br><small>Ratio</small>
@@ -57,12 +51,12 @@
         <!-- Global user stats -->
         <div id="user-stats" class="d-flex gap-3 align-items-center me-2">
             <div class="text-center">
-                <small class="text-muted d-block">PrivateIndexer Server Stats</small>
+                <small class="text-muted d-block">Server Stats</small>
             </div>
             <div class="text-center text-info">
                 <span class="fw-bold" id="torrents-added">0</span><br><small>Uploads</small>
             </div>
-            <div class="text-center text-danger">
+            <div class="text-center text-primary">
                 <span class="fw-bold" id="total-download">0</span> (<span class="fw-bold"
                                                                           id="currently-leeching">0</span>)
                 <br><small>DL</small> (<small>L</small>)
@@ -99,16 +93,16 @@
                 <th data-column="state" class="sortable">
                     <span class="sort-label flex-grow-1">State</span>
                 </th>
-                <th data-column="num_seeds" class="sortable">
+                <th data-column="seeds" class="sortable">
                     <span class="sort-label flex-grow-1">Seeds</span>
                 </th>
                 <th data-column="peers" class="sortable">
                     <span class="sort-label flex-grow-1">Peers</span>
                 </th>
-                <th data-column="dlspeed" class="sortable">
+                <th data-column="download_speed" class="sortable">
                     <span class="sort-label flex-grow-1">DL Speed</span>
                 </th>
-                <th data-column="upspeed" class="sortable">
+                <th data-column="upload_speed" class="sortable">
                     <span class="sort-label flex-grow-1">UL Speed</span>
                 </th>
                 <th data-column="eta" class="sortable">
