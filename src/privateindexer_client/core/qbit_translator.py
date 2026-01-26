@@ -5,14 +5,16 @@ import libtorrent as lt
 from privateindexer_client.core import database, config
 
 
-def calc_eta(status: lt.torrent_status) -> int:
+def calculate_eta(status: lt.torrent_status) -> int:
     """
-    Calculate an eta based on torrent status (partially matched to how qBittorrent source does it)
+    Calculate an ETA based on torrent status (partially matched to how qBittorrent source does it)
     """
-    if status.download_rate > 0 and status.total_wanted > 0:
+    if status.download_rate > 0 and 0 < status.total_wanted != status.total_wanted_done:
         remaining = status.total_wanted - status.total_wanted_done
         return int(remaining / status.download_rate)
-    return 8640000  # qBittorrent uses 100 days as "infinite ETA"
+
+    # qBittorrent uses 100 days as "infinite ETA"
+    return 8640000
 
 
 def safe_ratio(status: lt.torrent_status) -> float:
