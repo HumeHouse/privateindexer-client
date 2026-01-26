@@ -143,7 +143,7 @@ async def map_torrents_to_qbit(client_torrents: list, category_filter: str = Non
         peers_list = []
         for p in torrent.get_peer_info():
             peers_list.append({"ip": p.ip[0], "port": p.ip[1], "client": p.client.decode("utf-8", errors="ignore") if isinstance(p.client, bytes) else str(p.client),
-                               "flags": format_peer_flags(p), "up_speed": p.up_speed, "down_speed": p.down_speed, "progress": p.progress, })
+                               "flags": format_peer_flags(p), "up_speed": p.payload_up_speed, "down_speed": p.payload_down_speed, "progress": p.progress, })
         mapped["peers"] = peers_list
 
         # we only ever have one tracker, ours, so process the first in the list
@@ -163,8 +163,8 @@ def map_stats_to_qbit(stats_now: dict[str, int] | None, time_now: float | None, 
     mapped = {}
 
     # session totals
-    total_download = stats_now["net.recv_bytes"] if stats_now else 0
-    total_upload = stats_now["net.sent_bytes"] if stats_now else 0
+    total_download = stats_now["net.recv_payload_bytes"] if stats_now else 0
+    total_upload = stats_now["net.sent_payload_bytes"] if stats_now else 0
     mapped["dl_info_data"] = total_download
     mapped["up_info_data"] = total_upload
 
@@ -183,8 +183,8 @@ def map_stats_to_qbit(stats_now: dict[str, int] | None, time_now: float | None, 
         # offset the interval based on the previous timestamp
         interval = max(time_now - time_prev, 1e-6)
 
-        prev_download = stats_prev.get("net.recv_bytes", 0)
-        prev_upload = stats_prev.get("net.sent_bytes", 0)
+        prev_download = stats_prev.get("net.recv_payload_bytes", 0)
+        prev_upload = stats_prev.get("net.sent_payload_bytes", 0)
 
         mapped["dl_info_speed"] = int((total_download - prev_download) / interval)
         mapped["up_info_speed"] = int((total_upload - prev_upload) / interval)
