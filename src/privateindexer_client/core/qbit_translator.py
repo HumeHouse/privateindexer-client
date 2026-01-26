@@ -148,10 +148,9 @@ async def map_torrents_to_qbit(client_torrents: list) -> dict:
                                "flags": format_peer_flags(p), "up_speed": p.up_speed, "down_speed": p.down_speed, "progress": p.progress, })
         mapped["peers"] = peers_list
 
-        trackers_list = []
-        for t in torrent.trackers():
-            trackers_list.append({"url": t["url"], "verified": t["verified"], "next_announce": t.get("next_announce"), "min_announce": t.get("min_announce")})
-        mapped["trackers"] = trackers_list
+        # we only ever have one tracker, ours, so process the first in the list
+        tracker_data = next(iter(torrent.trackers()))
+        mapped["tracker"] = {"verified": tracker_data["verified"], "next_announce": tracker_data.get("next_announce")}
 
         all_mapped_torrents.append(mapped)
 
