@@ -75,6 +75,7 @@ body {
     color: #50af66 !important;
 }
 
+.state-metaDL,
 .state-checkingDL,
 .state-checkingResumeData {
     background-color: rgba(23, 162, 184, 0.1) !important;
@@ -84,11 +85,6 @@ body {
 .state-error {
     background-color: rgba(220, 53, 69, 0.1) !important;
     color: #dc3545 !important;
-}
-
-.state-metaDL {
-    background-color: rgba(108, 117, 125, 0.1) !important;
-    color: #6c757d !important;
 }
 
 .state-unknown {
