@@ -3,17 +3,18 @@ import os
 import libtorrent as lt
 
 from privateindexer_client.core import database, config
-from privateindexer_client.core.logger import log
 
 
-def calc_eta(status: lt.torrent_status) -> int:
+def calculate_eta(status: lt.torrent_status) -> int:
     """
-    Calculate an eta based on torrent status (partially matched to how qBittorrent source does it)
+    Calculate an ETA based on torrent status (partially matched to how qBittorrent source does it)
     """
-    if status.download_rate > 0 and status.total_wanted > 0:
+    if status.download_rate > 0 and 0 < status.total_wanted != status.total_wanted_done:
         remaining = status.total_wanted - status.total_wanted_done
         return int(remaining / status.download_rate)
-    return 8640000  # qBittorrent uses 100 days as "infinite ETA"
+
+    # qBittorrent uses 100 days as "infinite ETA"
+    return 8640000
 
 
 def safe_ratio(status: lt.torrent_status) -> float:
@@ -49,59 +50,7 @@ def map_state(status: lt.torrent_status) -> str:
     return torrent_state
 
 
-def format_peer_flags(peer: lt.peer_info) -> list[tuple[str, str]]:
-    """
-    Convert a libtorrent peer_info.flags into a qBittorrent-style string
-    https://web.archive.org/web/20141111072948/http://www.utorrent.com/help/faq/misc#faq13
-    """
-    flags = []
-
-    # downloading states
-    if peer.flags & peer.interesting:
-        if peer.flags & peer.remote_choked:
-            flags.append(("d", "Trying to download - Interested (local) & Choked (peer)"))
-        else:
-            flags.append(("D", "Downloading - Interested (local) & Unchoked (peer)"))
-
-    # uploading states
-    if peer.flags & peer.remote_interested:
-        if peer.flags & peer.choked:
-            flags.append(("u", "Not uploading - Interested (peer) & Choked (local)"))
-        else:
-            flags.append(("U", "Uploading - Interested (peer) & Unchoked (local)"))
-
-    if peer.flags & peer.optimistic_unchoke:
-        flags.append(("O", "Optimistic unchoke"))
-
-    if peer.flags & peer.snubbed:
-        flags.append(("S", "Peer is snubbed"))
-
-    if not (peer.flags & peer.outgoing_connection):
-        flags.append(("I", "Incoming connection"))
-
-    # unchoked by peer but we're not interested
-    if not (peer.flags & peer.interesting) and not (peer.flags & peer.remote_choked):
-        flags.append(("K", "Not downloading - Not interested (local) & Unchoked (peer)"))
-
-    # we unchoked them but they’re not interested
-    if not (peer.flags & peer.remote_interested) and not (peer.flags & peer.choked):
-        flags.append(("?", "Not uploading - Not interested (peer) & Unchoked (local)"))
-
-    # encrypted
-    if peer.flags & peer.rc4_encrypted:
-        flags.append(("E", "Encrypted traffic"))
-    elif peer.flags & peer.plaintext_encrypted:
-        flags.append(("e", "Encrypted handshake"))
-
-    # uTP
-    # the enum is missing for some reason in libtorrent python bindings
-    if peer.flags & (1 << 17):
-        flags.append(("P", "Peer using uTP"))
-
-    return flags
-
-
-async def map_torrents_to_qbit(client_torrents: list) -> dict:
+async def map_torrents_to_qbit(client_torrents: list, category_filter: str = None) -> dict:
     """
     Convert a libtorrent.torrent_status object into a qBittorrent-compatible dict
     Most of this is default or general taken from the qBittorrent API docs
@@ -119,39 +68,23 @@ async def map_torrents_to_qbit(client_torrents: list) -> dict:
 
         status = torrent.status()
 
-        # here we have to normalize the infohashes because they are raw bytes out of the status
-        infohash_v1 = status.info_hashes.v1.to_bytes().hex() if status.info_hashes.has_v1() else None
-        torrent_hash = status.info_hashes.v2.to_bytes().hex()
-
         # try to match the save_path with the configured category paths
         category = detect_torrent_category(status.save_path)
+
+        # skip if this torrent is not wanted by the category filter
+        if category_filter and category != category_filter:
+            continue
+
+        # normalize the infohash due to raw bytes out of the status
+        torrent_hash = status.info_hashes.v2.to_bytes().hex()
 
         # we want to show the name in the database, not the internal torrent name - it's usually ugly (we use the internal one as a fallback)
         torrent_name = name_hash_map.get(torrent_hash, status.name)
 
-        mapped = {"added_on": int(status.added_time or 0), "amount_left": int(status.total_wanted - status.total_wanted_done), "availability": status.distributed_copies,
-                  "completed": int(status.total_done), "completion_on": int(status.completed_time or -1), "content_path": os.path.join(status.save_path, status.name),
-                  "dlspeed": status.download_rate, "download_path": status.save_path, "downloaded": status.all_time_download,
-                  "downloaded_session": status.total_payload_download, "eta": calc_eta(status), "has_metadata": status.has_metadata, "hash": torrent_hash,
-                  "infohash_v1": infohash_v1 or "", "infohash_v2": torrent_hash or "", "name": torrent_name, "num_complete": status.num_complete,
-                  "num_incomplete": status.num_incomplete, "num_leechs": max(0, status.num_peers - status.num_seeds), "num_seeds": status.num_seeds,
-                  "progress": round(status.progress, 3), "ratio": safe_ratio(status), "ratio_limit": -1, "reannounce": int(status.next_announce.total_seconds()),
-                  "save_path": status.save_path, "seeding_time": int(status.seeding_duration.total_seconds()), "seeding_time_limit": -1,
-                  "seen_complete": int(status.last_seen_complete or -1), "seq_dl": bool(status.flags & lt.torrent_flags.sequential_download), "size": status.total_wanted,
-                  "state": map_state(status), "time_active": int(status.active_duration.total_seconds()), "total_size": status.total, "tracker": status.current_tracker,
-                  "trackers_count": 1 if status.current_tracker else 0, "uploaded": status.all_time_upload, "uploaded_session": status.total_payload_upload,
-                  "upspeed": status.upload_rate, "category": category, }
-
-        peers_list = []
-        for p in torrent.get_peer_info():
-            peers_list.append({"ip": p.ip[0], "port": p.ip[1], "client": p.client.decode("utf-8", errors="ignore") if isinstance(p.client, bytes) else str(p.client),
-                               "flags": format_peer_flags(p), "up_speed": p.up_speed, "down_speed": p.down_speed, "progress": p.progress, })
-        mapped["peers"] = peers_list
-
-        trackers_list = []
-        for t in torrent.trackers():
-            trackers_list.append({"url": t["url"], "verified": t["verified"], "next_announce": t.get("next_announce"), "min_announce": t.get("min_announce")})
-        mapped["trackers"] = trackers_list
+        mapped = {"content_path": os.path.join(status.save_path, status.name), "eta": calculate_eta(status), "hash": torrent_hash, "name": torrent_name,
+                  "progress": round(status.progress, 3), "ratio": safe_ratio(status), "ratio_limit": -1, "save_path": status.save_path,
+                  "seeding_time": int(status.seeding_duration.total_seconds()), "seeding_time_limit": -1, "size": status.total_wanted, "state": map_state(status),
+                  "category": category, }
 
         all_mapped_torrents.append(mapped)
 
@@ -163,17 +96,8 @@ def map_stats_to_qbit(stats_now: dict[str, int] | None, time_now: float | None, 
     """
     Converts the raw data from a current and previous update of libtorrent stats to match what qbit would normally return in an API request
     """
-    mapped = {}
-
-    # session totals
-    total_download = stats_now["net.recv_bytes"] if stats_now else 0
-    total_upload = stats_now["net.sent_bytes"] if stats_now else 0
-    mapped["dl_info_data"] = total_download
-    mapped["up_info_data"] = total_upload
-
     # all-time totals
-    mapped["alltime_dl"] = all_time_download
-    mapped["alltime_ul"] = all_time_upload
+    mapped = {"alltime_dl": all_time_download, "alltime_ul": all_time_upload}
 
     # global ratio is UL/DL if UL>0
     if all_time_upload > 0:
@@ -186,8 +110,11 @@ def map_stats_to_qbit(stats_now: dict[str, int] | None, time_now: float | None, 
         # offset the interval based on the previous timestamp
         interval = max(time_now - time_prev, 1e-6)
 
-        prev_download = stats_prev.get("net.recv_bytes", 0)
-        prev_upload = stats_prev.get("net.sent_bytes", 0)
+        total_download = stats_now["net.recv_payload_bytes"] if stats_now else 0
+        total_upload = stats_now["net.sent_payload_bytes"] if stats_now else 0
+
+        prev_download = stats_prev.get("net.recv_payload_bytes", 0)
+        prev_upload = stats_prev.get("net.sent_payload_bytes", 0)
 
         mapped["dl_info_speed"] = int((total_download - prev_download) / interval)
         mapped["up_info_speed"] = int((total_upload - prev_upload) / interval)
@@ -195,8 +122,8 @@ def map_stats_to_qbit(stats_now: dict[str, int] | None, time_now: float | None, 
         mapped["dl_info_speed"] = 0
         mapped["up_info_speed"] = 0
 
-    # base the connection status on the number of connections or if there is incoming traffic
-    if (stats_now and stats_now.get("net.has_incoming_connections", 0)) or mapped["up_info_speed"] > 0:
+    # base the connection status on the number of connections
+    if stats_now and stats_now.get("net.has_incoming_connections", 0):
         mapped["connection_status"] = "connected"
     else:
         mapped["connection_status"] = "disconnected"
@@ -233,30 +160,3 @@ def detect_torrent_category(file_path: str) -> str:
         if file_path.startswith(category_data.get("savePath")):
             return category_data.get("name")
     return ""
-
-
-def purge_empty_categories() -> int:
-    """
-    Helper function to recursively delete empty download directories in the tracked torrent category paths
-    """
-    deleted = set()
-
-    for category_data in get_torrent_categories().values():
-        root = category_data.get("savePath")
-
-        for current_dir, subdirs, files in os.walk(root, topdown=False):
-
-            still_has_subdirs = False
-            for subdir in subdirs:
-                if os.path.join(current_dir, subdir) not in deleted:
-                    still_has_subdirs = True
-                    break
-
-            if not any(files) and not still_has_subdirs:
-                try:
-                    os.rmdir(current_dir)
-                    deleted.add(current_dir)
-                except Exception as e:
-                    log.error(f"[SCAN] Exception while removing empty download directory: {e}")
-
-    return len(deleted)
