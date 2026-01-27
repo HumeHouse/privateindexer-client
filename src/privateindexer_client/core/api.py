@@ -110,10 +110,7 @@ async def get_torrent_info(request: Request, category: str = Query(None)):
     log.debug(f"[API] Torrent list requested{f" (category: {category})" if category else ""} ({request.headers.get("user-agent")})")
 
     try:
-        mapped = await qbit_translator.map_torrents_to_qbit(torrent_client.get_all_torrents())
-
-        if category:
-            mapped = [t for t in mapped if t.get("category") == category]
+        mapped = await qbit_translator.map_torrents_to_qbit(torrent_client.get_all_torrents(), category_filter=category)
 
         return JSONResponse(mapped)
     except Exception as e:

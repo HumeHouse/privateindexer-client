@@ -4,7 +4,7 @@ from fastapi.templating import Jinja2Templates
 from starlette.responses import PlainTextResponse
 from starlette.status import HTTP_404_NOT_FOUND, HTTP_500_INTERNAL_SERVER_ERROR
 
-from privateindexer_client.core import torrent_client, scan, database, qbit_translator, server_interface, torrent_helper
+from privateindexer_client.core import torrent_client, scan, database, server_interface, torrent_helper, gui_helper
 from privateindexer_client.core.config import APP_VERSION
 from privateindexer_client.core.logger import log
 
@@ -29,7 +29,7 @@ async def dashboard_maindata():
     main_data = {}
 
     try:
-        mapped = await qbit_translator.map_torrents_to_qbit(torrent_client.get_all_torrents())
+        mapped = await gui_helper.format_torrents(torrent_client.get_all_torrents())
 
         main_data["torrents"] = mapped
     except Exception as e:
@@ -40,7 +40,7 @@ async def dashboard_maindata():
         stats_now, time_now, stats_prev, time_prev = torrent_client.get_session_stats()
         all_time_download, all_time_upload = torrent_client.get_all_time_stats()
 
-        main_data["server_state"] = qbit_translator.map_stats_to_qbit(stats_now, time_now, stats_prev, time_prev, all_time_download, all_time_upload)
+        main_data["client_stats"] = gui_helper.format_client_stats(stats_now, time_now, stats_prev, time_prev, all_time_download, all_time_upload)
     except Exception as e:
         log.error(f"[GUI] Exception while getting session info: {e}")
         raise HTTPException(status_code=HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to get session info")
