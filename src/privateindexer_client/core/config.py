@@ -64,6 +64,9 @@ LEW_MEMORY_MODE = os.getenv("LEW_MEMORY_MODE", "false").lower() == "true"
 
 ALLOW_UTP_CONNECTIONS = os.getenv("ALLOW_UTP_CONNECTIONS", "false").lower() == "true"
 
+MAX_UNCHOKE_SLOTS = int(os.getenv("MAX_UNCHOKE_SLOTS", -1))
+MAX_DOWNLOAD_SLOTS = int(os.getenv("MAX_DOWNLOAD_SLOTS", -1))
+
 config_lock = threading.Lock()
 _config_cache = None
 
