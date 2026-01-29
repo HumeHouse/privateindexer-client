@@ -12,11 +12,12 @@ TORRENTS_TABLE_SQL = """
                          id            INTEGER primary key,
                          name          TEXT    not null,
                          size          INTEGER not null,
+                         torrent_path TEXT not null unique,
                          download_path TEXT,
                          uploaded      BOOLEAN not null,
                          category      INTEGER not null,
-                         infohash TEXT not null,
-                         app_id   INTEGER
+                         infohash     TEXT not null,
+                         app_id       INTEGER
                      )
                      """
 
