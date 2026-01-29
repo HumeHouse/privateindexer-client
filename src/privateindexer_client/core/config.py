@@ -4,7 +4,7 @@ import threading
 
 from privateindexer_client.core.logger import log
 
-APP_VERSION = "1.9.4"
+APP_VERSION = "1.9.5"
 
 DATA_DIR = "/app/data"
 
@@ -63,6 +63,9 @@ PURGE_DUPLICATE_SEEDS = os.getenv("PURGE_DUPLICATE_SEEDS", "true").lower() == "t
 LEW_MEMORY_MODE = os.getenv("LEW_MEMORY_MODE", "false").lower() == "true"
 
 ALLOW_UTP_CONNECTIONS = os.getenv("ALLOW_UTP_CONNECTIONS", "false").lower() == "true"
+
+MAX_UNCHOKE_SLOTS = int(os.getenv("MAX_UNCHOKE_SLOTS", -1))
+MAX_DOWNLOAD_SLOTS = int(os.getenv("MAX_DOWNLOAD_SLOTS", -1))
 
 config_lock = threading.Lock()
 _config_cache = None

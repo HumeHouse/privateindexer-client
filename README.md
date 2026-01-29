@@ -73,8 +73,10 @@ below
 | `MEMORY_LOG_INTERVAL`       | `0`               | `INTEGER` (seconds) | Set this to something >0 to display thread memory utilization in the console at a desired interval. Most commonly used for debugging at ~5 seconds.                          |
 | `TAG_SEARCH_RESULTS`        | `True`            | `BOOLEAN`           | Disable this to prevent server from tagging search results which contain your uploads with your user label. This is a privacy option to anonymize your uploads if preferred. |
 | `TZ`                        | `America/Chicago` | `TEXT` (ISO 8601)   | Change this to your desired time zone. Check online for a list of ISO 8601 time zones.                                                                                       |
-| `UID`                       | `1000`            | `INTEGER` (user)    | This is the user ID on the system to run the app as. Make sure this user can read and write to the `app data` and `DOWNLOADS_DIR` directories.                               |
-| `GID`                       | `1000`            | `INTEGER` (group)   | This is the group ID on the system to run the app as. Make sure this group can read and write to the `app data` and `DOWNLOADS_DIR` directories.                             |
+| `UID`                       | `1000`            | `INTEGER` (user)    | User ID on the system to run the app as. Make sure this user can read and write to the `app data` and `DOWNLOADS_DIR` directories.                                           |
+| `GID`                       | `1000`            | `INTEGER` (group)   | Group ID on the system to run the app as. Make sure this group can read and write to the `app data` and `DOWNLOADS_DIR` directories.                                         |
+| `MAX_UNCHOKE_SLOTS`         | `-1` (Unlimited)  | `INTEGER`           | Number of simultaneous seeding (uploading) torrents which are allowed to be active at any given time. Set to -1 for unlimited slots.                                         |
+| `MAX_DOWNLOAD_SLOTS`        | `-1` (Unlimited)  | `INTEGER`           | Number of simultaneous leeching (downloading) torrents which are allowed to be active at any given time. Set to -1 for unlimited slots.                                      |
 
 ### 2. Configure Volumes
 
