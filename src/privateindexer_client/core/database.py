@@ -52,6 +52,11 @@ async def initialize():
         row = await version_result.fetchone()
         current_version = row[0]
 
+        # if version is 0, this is new install - set the database to most recent version
+        if current_version == 0:
+            await db.execute(f"PRAGMA user_version = {LATEST_SCHEMA_VERSION}")
+            return
+
         # check if outdated
         if current_version > LATEST_SCHEMA_VERSION:
             log.critical(
