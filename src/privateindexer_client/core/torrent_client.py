@@ -8,7 +8,7 @@ import libtorrent as lt
 
 from privateindexer_client.core import database, thread_executor, fastresume_helper, torrent_helper, stats_manager
 from privateindexer_client.core.config import TORRENTING_PORT, TORRENTS_DIR, ANNOUNCE_TRACKER_URL, FASTRESUME_DIR, FASTRESUME_INTERVAL, ANNOUNCE_IP, \
-    STALE_TORRENT_THRESHOLD, LEW_MEMORY_MODE, ALLOW_UTP_CONNECTIONS
+    STALE_TORRENT_THRESHOLD, LEW_MEMORY_MODE, ALLOW_UTP_CONNECTIONS, MAX_UNCHOKE_SLOTS, MAX_DOWNLOAD_SLOTS
 from privateindexer_client.core.logger import log
 
 libtorrent_session: lt.session
@@ -38,7 +38,7 @@ def create_libtorrent_session(app_version: str):
                      "seed_time_limit": -1,  # no seed limit for torrents
                      "active_tracker_limit": -1,  # unlimited trackers
                      "active_limit": -1,  # unlimited number of torrents
-                     "active_downloads": -1,  # allow unlimited downloads
+                     "active_downloads": MAX_DOWNLOAD_SLOTS,  # set number of allowed simultaneous downloads
                      "active_seeds": -1,  # allow unlimited seeds
                      "seed_choking_algorithm": lt.seed_choking_algorithm_t.fastest_upload,  # choke based on upload speed
                      "mixed_mode_algorithm": 0,  # disable TCP/uTP load balancer algorithm
@@ -62,7 +62,7 @@ def create_libtorrent_session(app_version: str):
         settings.update({
             "max_queued_disk_bytes": -1,  # unlimited queued disk bytes
             "connections_limit": -1,  # unlimited connections
-            "unchoke_slots_limit": -1,  # unlimited number of unchoked peers
+            "unchoke_slots_limit": MAX_UNCHOKE_SLOTS,  # set number of unchoked peers
             "max_out_request_queue": 1500,  # increase number of outstanding requests to send to a peer 3x (default 500)
             "connection_speed": 500,  # bump connection rate to 500/s (default 30)
             "send_buffer_low_watermark": 1048576,  # bump low buffer 10x (default 10*1024)
