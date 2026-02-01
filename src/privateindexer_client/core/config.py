@@ -21,7 +21,7 @@ CONFIG_FILE = f"{DATA_DIR}/config.json"
 
 CACHE_DIR = f"{DATA_DIR}/cache"
 
-INDEXER_API_URL = "https://indexer.humehouse.com"
+INDEXER_API_URL = (os.getenv("INDEXER_API_URL", "")).strip("/")
 
 MAX_THREADS = int(os.getenv("MAX_THREADS", 8))
 
@@ -48,7 +48,9 @@ LIDARR_URL = (os.getenv("LIDARR_URL", "")).strip("/")
 LIDARR_API_KEY = os.getenv("LIDARR_API_KEY")
 
 API_KEY = os.getenv("API_KEY")
-ANNOUNCE_TRACKER_URL = f"https://tracker.humehouse.com/announce?apikey={API_KEY}"
+
+TRACKER_API_URL = (os.getenv("TRACKER_API_URL", "")).strip("/")
+ANNOUNCE_TRACKER_URL = f"{TRACKER_API_URL}/announce?apikey={API_KEY}"
 
 ANNOUNCE_IP = os.getenv("ANNOUNCE_IP")
 TORRENTING_PORT = int(os.getenv("TORRENTING_PORT", 6881))
