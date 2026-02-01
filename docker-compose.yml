@@ -12,6 +12,8 @@ services:
     environment:
       DOWNLOADS_DIR: /data/privateindexer/downloads
       MAX_THREADS: 16 # 16 threads
+      INDEXER_API_URL: https://indexer.humehouse.com
+      TRACKER_API_URL: https://tracker.humehouse.com
       API_KEY: keyhere
       TORRENTING_PORT: 6881
       RADARR_URL: https://radarr.humehouse.com
@@ -20,6 +22,10 @@ services:
       SONARR_API_KEY: keyhere
     volumes:
       - /humehouse/privateindexer/client_data:/app/data # mount the persistent data storage location to the host somewhere
+
+      # uncomment this line if you wish to store persistent log files on your host
+      # - /humehouse/privateindexer/log_files:/app/logs
+
       - /data/privateindexer/downloads:/data/privateindexer/downloads # mount the downloads location on the host to the DOWNLOADS_DIR in the container
       - /data/media/movies:/data/media/movies # mount the movies directory - this should match what Radarr sees
       - /data/media/shows:/data/media/shows # mount the tv series directory - this should match what Sonarr sees
