@@ -9,17 +9,17 @@ APP_VERSION = "1.9.6"
 DATA_DIR = "/app/data"
 
 # gather/set environment variables for usage later
-DATABASE_FILE = f"{DATA_DIR}/torrents.db"
-TORRENTS_DIR = f"{DATA_DIR}/torrents"
+DATABASE_FILE = os.path.join(DATA_DIR, "torrents.db")
+TORRENTS_DIR = os.path.join(DATA_DIR, "torrents")
 FASTRESUME_DIR = os.path.join(TORRENTS_DIR, "fastresume")
 
 DOWNLOADS_DIR = os.getenv("DOWNLOADS_DIR")
 
-STATS_FILE = f"{DATA_DIR}/stats.json"
+STATS_FILE = os.path.join(DATA_DIR, "stats.json")
 
-CONFIG_FILE = f"{DATA_DIR}/config.json"
+CONFIG_FILE = os.path.join(DATA_DIR, "config.json")
 
-CACHE_DIR = f"{DATA_DIR}/cache"
+CACHE_DIR = os.path.join(DATA_DIR, "cache")
 
 INDEXER_API_URL = (os.getenv("INDEXER_API_URL", "")).strip("/")
 
