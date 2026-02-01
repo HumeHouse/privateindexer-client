@@ -27,6 +27,10 @@ ENV UID=1000 \
     PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1
 
+# create user/group inside container
+RUN groupadd -g ${GID} privateindexer \
+ && useradd  -u ${UID} -g ${GID} -m -s /bin/bash privateindexer
+
 # copy installed python packages from the builder image
 COPY --from=builder /usr/local/lib/python3.13/site-packages /usr/local/lib/python3.13/site-packages
 
@@ -34,18 +38,18 @@ COPY --from=builder /usr/local/lib/python3.13/site-packages /usr/local/lib/pytho
 COPY --from=builder /usr/local/bin /usr/local/bin
 
 # copy all source code
-COPY --chown=${UID}:${GID} src/ /app/src
+COPY --chown=privateindexer:privateindexer src/ /app/src
 
 # copy logging config
-COPY --chown=${UID}:${GID} logging.yml /app
+COPY --chown=privateindexer:privateindexer logging.yml /app
 
 # create data directories with open permissions
 RUN mkdir -m 777 /app/data \
- && chown -R ${UID}:${GID} /app/data
+ && chown -R privateindexer:privateindexer /app/data
 
 # create log directories with open permissions
 RUN mkdir -m 777 /app/logs \
- && chown -R ${UID}:${GID} /app/logs
+ && chown -R privateindexer:privateindexer /app/logs
 
 # add the healthcheck to hit the app's health endpoint
 HEALTHCHECK --start-period=30s --interval=30s --timeout=5s --retries=3 \
@@ -53,7 +57,7 @@ HEALTHCHECK --start-period=30s --interval=30s --timeout=5s --retries=3 \
     sys.exit(0) if urllib.request.urlopen('http://localhost:8080/api/v2/health').getcode() == 200 else sys.exit(1)"
 
 # run app as container user/group
-USER ${UID}:${GID}
+USER privateindexer:privateindexer
 
 # open default webserver port
 EXPOSE 8080
