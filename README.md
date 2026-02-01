@@ -1,11 +1,11 @@
 # PrivateIndexer Client
 
-This is the client container for the HumeHouse PrivateIndexer swarm.
+This is the client container for the HumeHouse PrivateIndexer swarm system.
 It pulls data from Radarr/Sonarr/Lidarr, creates torrents for media, and communicates with the PrivateIndexer server.
-There is also a built-in torrent client that will automatically start seeding all your media for you.
+A built-in torrent client will automatically seed your media for you.
 The built-in torrent client also provides qBittorrent-compatible API endpoints for usage with the *arr suite apps.
-You can view a basic dashboard by visiting `http://hostname:8080/dashboard` from a browser if you use the example at the
-bottom of the README.
+You can view a basic dashboard by visiting `http://hostname:8080/dashboard` from a browser to view status and other
+statistics about your torrent client.
 
 **NOTE:** This is a `non-root`/`rootless` container, make sure the permissions on your system match your configuration.
 
@@ -26,18 +26,35 @@ below
 
 ---
 
-## Quick Start (using Docker)
+## Tips
 
-### Use the provided `docker-compose.yml` and adjust paths and environment variables to match your setup.
+- Ask your swarm operator for your API key before starting, the client will not start without validation.
+- If you get an error during startup that your client is UNREACHABLE, this means you need to fix your port forwarding.
+- Console logs are your friend. If you suspect an issue, check out the logs for errors and warnings.
+
+---
+
+## Quick Start Example (using Docker)
+
+### Use the [example docker-compose.yml](docker-compose.yml) and adjust paths and environment variables to match your setup.
+
+Here’s an example setup:
+
+- My movie files are stored in `/data/media/movies` on the host
+- My TV show files are stored in `/data/media/shows` on the host
+- My downloads are stored in `/data/privateindexer/downloads` on the host
+- My persistent data (torrents and database) for client is stored in `/humehouse/privateindexer` on the host
 
 ### 1. Configure Environment Variables
 
 #### REQURIED VARIABLES
 
-| Variable        | Description                                                                                                        | Example           |
-|-----------------|--------------------------------------------------------------------------------------------------------------------|-------------------|
-| `DOWNLOADS_DIR` | Path **inside the container** that downloads are saved to. (Make sure to mount it to the host somewhere - step 2.) | `/data/downloads` |
-| `API_KEY`       | Your assigned API key (contact David if you don’t have one).                                                       | `abcdef123456`    |
+| Variable          | Description                                                                                                                       | Example                         |
+|-------------------|-----------------------------------------------------------------------------------------------------------------------------------|---------------------------------|
+| `DOWNLOADS_DIR`   | Path **inside the container** that downloads are saved to. (Make sure to mount it to the host somewhere - step 2.)                | `/data/downloads`               |
+| `API_KEY`         | Your assigned API key (contact your server operator if you don’t have one).                                                       | `abcdef123456`                  |
+| `INDEXER_API_URL` | URL pointing to your server operator's PrivateIndexer **Server** instance to respond to API requests and track uploaded torrents. | `https://indexer.humehouse.com` |
+| `TRACKER_API_URL` | URL pointing to your server operator's PrivateIndexer **Tracker** instance to receive announcement requests.                      | `https://tracker.humehouse.com` |
 
 #### *ARR APP VARIABLES (OPTIONAL, AT LEAST 1 REQUIRED)
 
@@ -100,19 +117,19 @@ You can choose whether to mount `/app/logs` somewhere on the host if you would l
 
 The Torrenting Port
 
-- You should bind **and port forward** the `TORRENTING_PORT` to your Docker host to allow incoming connections for
-  seeding.
-- When you forward the port at your router, you only need to forward TCP traffic unless you enable
-  `ALLOW_UTP_CONNECTIONS`.
+- You should bind **and port forward** the `TORRENTING_PORT` (default is 6881) to your Docker host to allow incoming
+  connections for seeding.
+- When you forward the port at your router, you only need to forward TCP traffic unless you enable the
+  `ALLOW_UTP_CONNECTIONS` environment variable.
 - NOTE: Map the same port you're using **INSIDE** the container to the port **OUTSIDE** the container on the
   host. Otherwise the client will start advertising a different port than it's actually reachable on.
 
 The Webserver Port
 
-- The built-in torrent client runs a web server on port 8080 inside the container for RESTful API control of the
-  client.
+- The built-in torrent client runs a web server on port 8080 inside the container to run the dashboard and for RESTful
+  API control of the client.
 - You can map the web server port to any port on the host or none at all if you connect from within the Docker
-  network like if using nginx reverse proxy.
+  network, such as using a reverse proxy like NGINX.
 
 ### 4. Start Client
 
@@ -139,7 +156,7 @@ automatically based on indexer status and type.
 2. Click `+ Add Indexer` to add new indexer.
 3. Find `Generic Torznab` in the list.
 4. Change the name to something you can identify it with like `PrivateIndexer`.
-5. Set the `URL` to `https://indexer.humehouse.com`
+5. Set the `URL` to your server operator's URL (e.g. David's server is located at `https://indexer.humehouse.com`)
 6. Enter your assigned API key in the `API Key` section. This is the same as `API_KEY` in your environment variables.
 7. Click the gear at the bottom to show advanced settings and set the `Indexer Priority` to something `lower`
    (such as 1) than your other indexers so your apps will generally prefer torrents from PrivateIndexer **before** using
@@ -163,14 +180,15 @@ The API was derived from the qBittorrent API and mocks all of the endpoints used
 8. Give the app a unique category like `radarr`/`sonarr` etc.
 9. You may want to click the gear at the bottom to show advanced settings and set the `Client Priority` to something
    `higher` than your default download client so it doesn't try to download random torrents
-10. **Uncheck** both `Remove Completed` and `Remove Failed` - the client has no sense of either of these options and
-    will only cause errors if you leave these on.
+10. **Uncheck** the `Remove Completed` option - the client will re-create the torrent anyway, so you'd only be causing
+    more processing load later when the scan picks up the media.
 11. Click `Test` to make sure the connection is working
 12. Click `Save` to add the client
 
 Now you are ready to configure your indexer to use your PrivateIndexer torrent client.
 Make sure to use **ONLY** this client **ONLY** for PrivateIndexer downloads.
-Downloads from any other source will be rejected by the PrivateIndexer download client.
+Downloads from any other source will be rejected by the PrivateIndexer download client and the tracker will reject
+download requests and tracker announcements from any other type of download client.
 
 1. Navigate to the `Indexers` section of the settings in your app.
 2. Find your `PrivateIndexer (Prowlarr)` indexer entry or whatever you named it
@@ -181,22 +199,23 @@ Downloads from any other source will be rejected by the PrivateIndexer download 
 
 ### 7. Visit the web interface
 
-With the provided `docker-compose.yml` the container listens on port 8080 on all interfaces
+With the provided example `docker-compose.yml` the container listens on port 8080 on all interfaces
 
-Navigate to `https://your-hostname:8080/dashboard` to view the dashboard
+Browse to `http://hostname:8080/dashboard` to view the dashboard
 
 - Click on torrents to view their status
-- Switch tabs using the menu docked to the bottom of the page to view general info, tracker info, and peer info
+- Switch tabs using the menu docked to the bottom of the page to view general torrent info and peer info
 - Filter through torrents by name using the `Filter` search box at the top of the 'Name' column
 - Sort torrents by clicking any of the column headers
 
 Your client stats are displayed at the top center
 
-- Uploading: number of torrents you are actively uploading (seeding) from **this local client**
 - Downloading: number of torrents you are actively downloading (leeching) to  **this local client**
+- Seeding: number of torrents you are actively uploading (seeding) from **this local client**
+- Ratio: your total downloaded data vs. your total uploaded data (most trackers want this to be at least 1, but we don't
+  care)
 - Torrents: number of torrents added to **this local client**
-- Ratio: your total downloaded data vs. your total uploaded data (most trackers want this to be at least 1)
-- Peers: number of external clients connected to **this local client** (can be seeds or leeches)
+- Peers: number of external clients connected to **this local client** (can be seeds or leeches, or neither)
 
 Your server stats are displayed in the top right corner
 
@@ -207,61 +226,3 @@ Your server stats are displayed in the top right corner
 - S: number of torrents you are actively seeding to the swarm (all locations)
 - Ratio: same as the client ratio above, except this value is tracked by the server, not the client
 - Grabs: number of times **other users** have downloaded files that you have uploaded
-
----
-
-## Tips
-
-- Ask David for your API key before starting.
-- Console logs are your friend. If you suspect an issue, check out the logs for errors and warnings.
-
----
-
-## Example
-
-Here’s an example setup:
-
-- My movie files are stored in `/data/media/movies` on the host
-- My TV show files are stored in `/data/media/shows` on the host
-- My downloads are stored in `/data/privateindexer/downloads` on the host
-- My persistent data (torrents and database) for client is stored in `/humehouse/privateindexer` on the host
-
-```yaml
-networks:
-  privateindexer-net:
-    name: privateindexer-net
-    driver: bridge
-services:
-  client:
-    image: ghcr.io/humehouse/privateindexer-client:latest
-    container_name: privateindexer-client
-    restart: unless-stopped
-    # careful not to let Docker kill the container, it could prevent fastresume data from being saved during shutdown
-    # stop_grace_period: 5m
-    environment:
-      DOWNLOADS_DIR: /data/privateindexer/downloads
-      MAX_THREADS: 16 # 16 threads
-      API_KEY: keyhere
-      TORRENTING_PORT: 6881
-      RADARR_URL: https://radarr.humehouse.com
-      RADARR_API_KEY: keyhere
-      SONARR_URL: https://sonarr.humehouse.com
-      SONARR_API_KEY: keyhere
-    volumes:
-      - /humehouse/privateindexer/client_data:/app/data # mount the persistent data storage location to the host somewhere
-      - /data/privateindexer/downloads:/data/privateindexer/downloads # mount the downloads location on the host to the DOWNLOADS_DIR in the container
-      - /data/media/movies:/data/media/movies # mount the movies directory - this should match what Radarr sees
-      - /data/media/shows:/data/media/shows # mount the tv series directory - this should match what Sonarr sees
-    networks:
-      - privateindexer-net
-    ports:
-      - "6881:6881"
-      - "8080:8080"
-    logging:
-      options:
-        max-size: 10m
-        max-file: 5
-    build:
-      context: .
-      network: host
-```
