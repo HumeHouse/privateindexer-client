@@ -11,7 +11,7 @@ from privateindexer_client.core import torrent_client, scan, api, gui, httpx_req
 from privateindexer_client.core.cache import Cache
 from privateindexer_client.core.config import TORRENTS_DIR, SCAN_INTERVAL, INDEXER_API_URL, API_KEY, TORRENTING_PORT, DOWNLOADS_DIR, FASTRESUME_DIR, APP_VERSION, \
     MAX_THREADS, FASTRESUME_INTERVAL, ANNOUNCE_IP, RADARR_URL, RADARR_API_KEY, SONARR_URL, SONARR_API_KEY, SYNC_INTERVAL, CACHE_CLEAN_INTERVAL, LEW_MEMORY_MODE, \
-    LIDARR_URL, LIDARR_API_KEY, MEMORY_LOG_INTERVAL, CACHE_DIR, TAG_SEARCH_RESULTS, DATA_DIR
+    LIDARR_URL, LIDARR_API_KEY, MEMORY_LOG_INTERVAL, CACHE_DIR, TAG_SEARCH_RESULTS, DATA_DIR, TRACKER_API_URL
 from privateindexer_client.core.logger import log
 
 APP_TASKS: list[Task] = []
@@ -61,6 +61,16 @@ async def lifespan(_: FastAPI):
     if MEMORY_LOG_INTERVAL > 0:
         log.info(f"[APP] Started memory logging every {MEMORY_LOG_INTERVAL} seconds")
         APP_TASKS.append(asyncio.create_task(memory.periodic_memory_task(), name="memory"))
+
+    # ensure indexer URL is set
+    if not INDEXER_API_URL:
+        log.critical(f"[APP] Indexer URL not set: {INDEXER_API_URL}")
+        exit(1)
+
+    # ensure tracker URL is set
+    if not TRACKER_API_URL:
+        log.critical(f"[APP] Tracker URL not set: {TRACKER_API_URL}")
+        exit(1)
 
     # initialize the database
     await database.initialize()
