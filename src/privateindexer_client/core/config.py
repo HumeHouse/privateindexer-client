@@ -4,24 +4,24 @@ import threading
 
 from privateindexer_client.core.logger import log
 
-APP_VERSION = "1.9.5"
+APP_VERSION = "1.9.6"
 
 DATA_DIR = "/app/data"
 
 # gather/set environment variables for usage later
-DATABASE_FILE = f"{DATA_DIR}/torrents.db"
-TORRENTS_DIR = f"{DATA_DIR}/torrents"
+DATABASE_FILE = os.path.join(DATA_DIR, "torrents.db")
+TORRENTS_DIR = os.path.join(DATA_DIR, "torrents")
 FASTRESUME_DIR = os.path.join(TORRENTS_DIR, "fastresume")
 
 DOWNLOADS_DIR = os.getenv("DOWNLOADS_DIR")
 
-STATS_FILE = f"{DATA_DIR}/stats.json"
+STATS_FILE = os.path.join(DATA_DIR, "stats.json")
 
-CONFIG_FILE = f"{DATA_DIR}/config.json"
+CONFIG_FILE = os.path.join(DATA_DIR, "config.json")
 
-CACHE_DIR = f"{DATA_DIR}/cache"
+CACHE_DIR = os.path.join(DATA_DIR, "cache")
 
-INDEXER_API_URL = "https://indexer.humehouse.com"
+INDEXER_API_URL = (os.getenv("INDEXER_API_URL", "")).strip("/")
 
 MAX_THREADS = int(os.getenv("MAX_THREADS", 8))
 
@@ -48,7 +48,9 @@ LIDARR_URL = (os.getenv("LIDARR_URL", "")).strip("/")
 LIDARR_API_KEY = os.getenv("LIDARR_API_KEY")
 
 API_KEY = os.getenv("API_KEY")
-ANNOUNCE_TRACKER_URL = f"https://tracker.humehouse.com/announce?apikey={API_KEY}"
+
+TRACKER_API_URL = (os.getenv("TRACKER_API_URL", "")).strip("/")
+ANNOUNCE_TRACKER_URL = f"{TRACKER_API_URL}/announce?apikey={API_KEY}"
 
 ANNOUNCE_IP = os.getenv("ANNOUNCE_IP")
 TORRENTING_PORT = int(os.getenv("TORRENTING_PORT", 6881))
