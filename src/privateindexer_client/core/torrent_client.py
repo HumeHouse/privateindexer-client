@@ -536,8 +536,12 @@ async def periodic_fastresume_task():
 
             completed, total = save_all_fastresume_data()
 
+            stats = [("total", total), ("saved", completed), ]
+            stats_list = ", ".join(f"{count} {name}" for name, count in stats if count > 0)
+
             delta = datetime.datetime.now() - before
-            log.info(f"[FASTRESUME] Fastresume task completed, {completed} saved, {total} total torrents ({delta})")
+
+            log.info(f"[FASTRESUME] Fastresume task completed ({delta}): {stats_list}")
         except Exception as e:
             log.error(f"[FASTRESUME] Exception during torrent fastresume loop: {e}")
 
