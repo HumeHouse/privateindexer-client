@@ -39,8 +39,12 @@ async def periodic_cache_clean_task():
                     amount_dead += 1
                     cache.delete_torrent_object(torrent_path)
 
+            stats = [("expired", amount_expired), ("deads purged", amount_dead), ]
+            stats_list = ", ".join(f"{count} {name}" for name, count in stats if count > 0)
+
             delta = datetime.datetime.now() - before
-            log.info(f"[CACHE] Cache clean completed ({delta}): {amount_expired} expired, {amount_dead} deads purged")
+
+            log.info(f"[CACHE] Cache clean completed ({delta}): {stats_list}")
         except Exception as e:
             log.error(f"[CACHE] Exception during cache clean task: {e}")
 

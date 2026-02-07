@@ -161,6 +161,7 @@ async def add_torrent_for_download(torrent_file: str, save_path: str) -> bool:
     # attempt to add the torrent to the client
     try:
         info = lt.torrent_info(torrent_file)
+
         torrent_name = os.path.splitext(os.path.basename(torrent_file))[0]
 
         # get the number of files in the torrent
@@ -188,6 +189,13 @@ async def add_torrent_for_download(torrent_file: str, save_path: str) -> bool:
             log.error(f"[TORCLIENT] Exception while saving torrent file for {torrent_name}: {e}")
 
         save_path = os.path.join(save_path, torrent_hash)
+
+        # clear trackers sent from server
+        if len(list(info.trackers())) > 0:
+            info.clear_trackers()
+
+        # add the tracker URL
+        info.add_tracker(ANNOUNCE_TRACKER_URL)
 
         params = {"ti": info, "save_path": save_path}
 
@@ -375,8 +383,14 @@ async def load_fastresume_data():
                 log.warning(f"[FASTRESUME] Removed invalid fastresume data with hash: {torrent_hash}")
                 continue
 
+            # replace previous trackers with current
+            atp.trackers = [ANNOUNCE_TRACKER_URL]
+
+            # pull torrent info from torrent file
+            info = lt.torrent_info(torrent_path)
+
             # attach the torrent info to the params
-            atp.ti = lt.torrent_info(torrent_path)
+            atp.ti = info
             # add the torrent to the session
             libtorrent_session.async_add_torrent(atp)
         except Exception as e:
@@ -536,8 +550,12 @@ async def periodic_fastresume_task():
 
             completed, total = save_all_fastresume_data()
 
+            stats = [("total", total), ("saved", completed), ]
+            stats_list = ", ".join(f"{count} {name}" for name, count in stats if count > 0)
+
             delta = datetime.datetime.now() - before
-            log.info(f"[FASTRESUME] Fastresume task completed, {completed} saved, {total} total torrents ({delta})")
+
+            log.info(f"[FASTRESUME] Fastresume task completed ({delta}): {stats_list}")
         except Exception as e:
             log.error(f"[FASTRESUME] Exception during torrent fastresume loop: {e}")
 
