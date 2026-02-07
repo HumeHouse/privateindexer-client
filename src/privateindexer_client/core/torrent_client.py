@@ -162,9 +162,6 @@ async def add_torrent_for_download(torrent_file: str, save_path: str) -> bool:
     try:
         info = lt.torrent_info(torrent_file)
 
-        for tracker in info.trackers():
-            log.info(tracker)
-
         torrent_name = os.path.splitext(os.path.basename(torrent_file))[0]
 
         # get the number of files in the torrent
@@ -192,6 +189,10 @@ async def add_torrent_for_download(torrent_file: str, save_path: str) -> bool:
             log.error(f"[TORCLIENT] Exception while saving torrent file for {torrent_name}: {e}")
 
         save_path = os.path.join(save_path, torrent_hash)
+
+        # clear trackers sent from server
+        if len(list(info.trackers())) > 0:
+            info.clear_trackers()
 
         # add the tracker URL
         info.add_tracker(ANNOUNCE_TRACKER_URL)
