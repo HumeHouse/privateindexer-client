@@ -445,7 +445,18 @@ async def periodic_scan_task():
                     log.info(f"[SCAN] Download data missing for '{torrent_name}', removed download path from database")
 
                 # case where media exists but the torznab category is unknown (0), try to fix it
-                if media_valid and torznab_category == 0 and media_parent_directory is not None:
+                if media_valid and torznab_category == 0:
+
+                    # if no parent directory exists, purge torrent
+                    if media_parent_directory is None:
+                        removed_entries += 1
+                        # remove from torrent client
+                        await torrent_client.remove_torrent_by_hash(torrent_hash, True)
+                        # remove torrent file and from database
+                        await torrent_helper.remove_torrent_from_database(torrent_hash, torrent_file=torrent_path)
+                        log.info(f"[SCAN] Unknown category for '{torrent_name}', removed torrent from database and torrent client")
+                        continue
+
                     category_id = media_helper.detect_torznab_category(media_parent_directory)
 
                     # update the category if a match was found
