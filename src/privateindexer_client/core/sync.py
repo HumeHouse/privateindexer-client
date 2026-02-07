@@ -14,7 +14,6 @@ async def periodic_sync_task():
     """
     log.debug("[SYNC] Task loop started")
     while True:
-        await asyncio.sleep(SYNC_INTERVAL)
         try:
             before = datetime.datetime.now()
 
@@ -77,3 +76,5 @@ async def periodic_sync_task():
 
         except Exception as e:
             log.error(f"[SYNC] Exception during sync task: {e}")
+
+        await asyncio.sleep(SYNC_INTERVAL)
