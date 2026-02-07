@@ -29,6 +29,7 @@ async def periodic_sync_task():
                 # make sure the sync was successful on the server
                 if response.status_code != 200:
                     log.warning(f"[SYNC] Failed to sync torrents with server, will retry later: {response.status_code} - {response.text}")
+                    await asyncio.sleep(SYNC_INTERVAL)
                     continue
 
             synced_torrents = response.json()
