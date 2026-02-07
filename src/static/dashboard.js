@@ -343,8 +343,16 @@ function formatSpeed(bytesPerSec) {
 
 function formatTime(seconds) {
     if (seconds < 0 || seconds === -1) return "∞";
-    const h = Math.floor(seconds / 3600), m = Math.floor((seconds % 3600) / 60), s = Math.floor(seconds % 60);
-    return [h, m, s].map(v => String(v).padStart(2, '0')).join(":");
+
+    const d = Math.floor(seconds / 86400);
+    seconds %= 86400;
+
+    const h = Math.floor(seconds / 3600);
+    const m = Math.floor((seconds % 3600) / 60);
+    const s = Math.floor(seconds % 60);
+
+    const time = [h, m, s].map(v => String(v).padStart(2, '0')).join(":");
+    return d > 0 ? `${d}d ${time}` : time;
 }
 
 function formatRatio(ratio) {
