@@ -161,6 +161,10 @@ async def add_torrent_for_download(torrent_file: str, save_path: str) -> bool:
     # attempt to add the torrent to the client
     try:
         info = lt.torrent_info(torrent_file)
+
+        for tracker in info.trackers():
+            log.info(tracker)
+
         torrent_name = os.path.splitext(os.path.basename(torrent_file))[0]
 
         # get the number of files in the torrent
@@ -188,6 +192,9 @@ async def add_torrent_for_download(torrent_file: str, save_path: str) -> bool:
             log.error(f"[TORCLIENT] Exception while saving torrent file for {torrent_name}: {e}")
 
         save_path = os.path.join(save_path, torrent_hash)
+
+        # add the tracker URL
+        info.add_tracker(ANNOUNCE_TRACKER_URL)
 
         params = {"ti": info, "save_path": save_path}
 
@@ -375,8 +382,14 @@ async def load_fastresume_data():
                 log.warning(f"[FASTRESUME] Removed invalid fastresume data with hash: {torrent_hash}")
                 continue
 
+            # replace previous trackers with current
+            atp.trackers = [ANNOUNCE_TRACKER_URL]
+
+            # pull torrent info from torrent file
+            info = lt.torrent_info(torrent_path)
+
             # attach the torrent info to the params
-            atp.ti = lt.torrent_info(torrent_path)
+            atp.ti = info
             # add the torrent to the session
             libtorrent_session.async_add_torrent(atp)
         except Exception as e:
