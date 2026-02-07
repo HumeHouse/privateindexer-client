@@ -21,7 +21,8 @@ CONFIG_FILE = os.path.join(DATA_DIR, "config.json")
 
 CACHE_DIR = os.path.join(DATA_DIR, "cache")
 
-INDEXER_API_URL = (os.getenv("INDEXER_API_URL", "")).strip("/")
+api_url = (os.getenv("INDEXER_API_URL", "")).strip("/")
+INDEXER_API_URL = f"{api_url}/api/v2"
 
 MAX_THREADS = int(os.getenv("MAX_THREADS", 8))
 
