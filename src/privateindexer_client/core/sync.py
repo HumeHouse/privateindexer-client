@@ -68,9 +68,12 @@ async def periodic_sync_task():
                     log.debug(f"[SYNC] Aborting upload for '{torrent_name}' due to missing files")
                     failed += 1
 
+            stats = [("existing", existing), ("missing", len(missing_ids)), ("uploaded", uploaded), ("failed", failed)]
+            stats_list = ", ".join(f"{count} {name}" for name, count in stats if count > 0)
+
             delta = datetime.datetime.now() - before
-            log.info(
-                f"[SYNC] Server sync task completed ({delta}): {existing} existing, {len(missing_ids)} missing, {uploaded} uploaded, {failed} failed")
+
+            log.info(f"[FASTRESUME] Server sync task completed ({delta}): {stats_list}")
 
         except Exception as e:
             log.error(f"[SYNC] Exception during sync task: {e}")
