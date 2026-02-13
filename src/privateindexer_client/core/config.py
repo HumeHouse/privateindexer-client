@@ -107,3 +107,85 @@ def save_config(config):
                 json.dump(config, f, indent=2)
         except Exception as e:
             log.error(f"[CONFIG] Exception while writing config.json: {e}")
+
+
+def validate_environment():
+    """
+    Check environment variables for validity and exit on errors
+    """
+    log.info("[CONFIG] Validating environment")
+
+    # check if data directory exists
+    if not os.path.isdir(DATA_DIR):
+        log.critical(f"[CONFIG] Data directory does not exist: {DATA_DIR}")
+        exit(1)
+
+    # check if data directory has correct permissions
+    try:
+        test_file = os.path.join(DATA_DIR, ".write_test")
+        with open(test_file, "w"):
+            pass
+        os.unlink(test_file)
+    except OSError:
+        log.critical(f"[CONFIG] Data directory is not writable: {DATA_DIR}")
+        exit(1)
+
+    # ensure indexer URL is set
+    if not INDEXER_API_URL:
+        log.critical(f"[CONFIG] Indexer URL not set: {INDEXER_API_URL}")
+        exit(1)
+
+    # ensure tracker URL is set
+    if not TRACKER_API_URL:
+        log.critical(f"[CONFIG] Tracker URL not set: {TRACKER_API_URL}")
+        exit(1)
+
+    # try to create torrents and fastresume directories
+    try:
+        os.makedirs(TORRENTS_DIR, exist_ok=True)
+        os.makedirs(FASTRESUME_DIR, exist_ok=True)
+    except Exception as e:
+        log.error(f"[CONFIG] Exception while creating torrent data directory: {e}")
+        exit(1)
+
+    # try to create cache directory
+    try:
+        os.makedirs(CACHE_DIR, exist_ok=True)
+    except Exception as e:
+        log.error(f"[CONFIG] Exception while creating torrent data directory: {e}")
+        exit(1)
+
+    # check if downloads directory exists
+    if not os.path.isdir(DOWNLOADS_DIR):
+        log.critical(f"[CONFIG] Downloads directory does not exist: {DOWNLOADS_DIR}")
+        exit(1)
+
+    # check if downloads directory has correct permissions
+    try:
+        test_file = os.path.join(DOWNLOADS_DIR, ".write_test")
+        with open(test_file, "w"):
+            pass
+        os.unlink(test_file)
+    except OSError:
+        log.critical(f"[CONFIG] Downloads directory is not writable: {DOWNLOADS_DIR}")
+        exit(1)
+
+    # check if Radarr key exists if enabled
+    if RADARR_URL:
+        if not RADARR_API_KEY:
+            log.critical(f"[CONFIG] No API key provided for Radarr")
+            exit(1)
+
+    # check if Sonarr key exists if enabled
+    if SONARR_URL:
+        if not SONARR_API_KEY:
+            log.critical(f"[CONFIG] No API key provided for Sonarr")
+            exit(1)
+
+    # check if Lidarr key exists if enabled
+    if LIDARR_URL:
+        if not LIDARR_API_KEY:
+            log.critical(f"[CONFIG] No API key provided for Lidarr")
+            exit(1)
+
+    log.info("[CONFIG] Environment is valid")
