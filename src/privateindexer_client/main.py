@@ -1,17 +1,15 @@
 import asyncio
-import os
 from asyncio import Task
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
-from privateindexer_client.core import torrent_client, scan, api, gui, httpx_request, database, utils, sync, radarr, sonarr, cache, lidarr, memory, thread_executor, \
-    stats_manager
+from privateindexer_client.core import torrent_client, scan, api, gui, database, utils, sync, radarr, sonarr, cache, lidarr, memory, thread_executor, stats_manager, \
+    httpx_request, config
 from privateindexer_client.core.cache import Cache
-from privateindexer_client.core.config import TORRENTS_DIR, SCAN_INTERVAL, INDEXER_API_URL, API_KEY, TORRENTING_PORT, DOWNLOADS_DIR, FASTRESUME_DIR, APP_VERSION, \
-    MAX_THREADS, FASTRESUME_INTERVAL, ANNOUNCE_IP, RADARR_URL, RADARR_API_KEY, SONARR_URL, SONARR_API_KEY, SYNC_INTERVAL, CACHE_CLEAN_INTERVAL, LEW_MEMORY_MODE, \
-    LIDARR_URL, LIDARR_API_KEY, MEMORY_LOG_INTERVAL, CACHE_DIR, TAG_SEARCH_RESULTS, DATA_DIR, TRACKER_API_URL
+from privateindexer_client.core.config import SCAN_INTERVAL, TORRENTING_PORT, APP_VERSION, MAX_THREADS, FASTRESUME_INTERVAL, RADARR_URL, SONARR_URL, SYNC_INTERVAL, \
+    CACHE_CLEAN_INTERVAL, LEW_MEMORY_MODE, LIDARR_URL, MEMORY_LOG_INTERVAL, ANNOUNCE_IP, TAG_SEARCH_RESULTS, INDEXER_API_URL, API_KEY
 from privateindexer_client.core.logger import log
 
 APP_TASKS: list[Task] = []
@@ -43,59 +41,17 @@ async def lifespan(_: FastAPI):
     global APP_TASKS
     log.info(f"[APP] Starting PrivateIndexer client v{APP_VERSION}")
 
-    # check if data directory exists
-    if not os.path.isdir(DATA_DIR):
-        log.critical(f"[APP] Data directory does not exist: {DATA_DIR}")
-        exit(1)
-
-    # check if data directory has correct permissions
-    try:
-        test_file = os.path.join(DATA_DIR, ".write_test")
-        with open(test_file, "w"):
-            pass
-        os.unlink(test_file)
-    except OSError:
-        log.critical(f"[APP] Data directory is not writable: {DATA_DIR}")
-        exit(1)
-
+    # activate memory logging if user has enabled
     if MEMORY_LOG_INTERVAL > 0:
         log.info(f"[APP] Started memory logging every {MEMORY_LOG_INTERVAL} seconds")
         APP_TASKS.append(asyncio.create_task(memory.periodic_memory_task(), name="memory"))
 
-    # ensure indexer URL is set
-    if not INDEXER_API_URL:
-        log.critical(f"[APP] Indexer URL not set: {INDEXER_API_URL}")
-        exit(1)
-
-    # ensure tracker URL is set
-    if not TRACKER_API_URL:
-        log.critical(f"[APP] Tracker URL not set: {TRACKER_API_URL}")
-        exit(1)
-
     # initialize the database
-    await database.initialize()
-
-    # try to create torrents and fastresume directories
-    log.info(f"[APP] Torrent data directory: {TORRENTS_DIR}")
-    os.makedirs(TORRENTS_DIR, exist_ok=True)
-    os.makedirs(FASTRESUME_DIR, exist_ok=True)
-
-    log.info(f"[APP] Cache directory: {CACHE_DIR}")
-    os.makedirs(CACHE_DIR, exist_ok=True)
-
-    # check if downloads directory exists
-    if not os.path.isdir(DOWNLOADS_DIR):
-        log.critical(f"[APP] Downloads directory does not exist: {DOWNLOADS_DIR}")
-        exit(1)
-
-    # check if downloads directory has correct permissions
     try:
-        test_file = os.path.join(DOWNLOADS_DIR, ".write_test")
-        with open(test_file, "w"):
-            pass
-        os.unlink(test_file)
-    except OSError:
-        log.critical(f"[APP] Downloads directory is not writable: {DOWNLOADS_DIR}")
+        await database.initialize()
+        log.info("[APP] Database initialized")
+    except Exception as e:
+        log.error(f"[APP] Exception while setting up database: {e}")
         exit(1)
 
     log.info(f"[APP] Scan interval: {SCAN_INTERVAL} seconds")
@@ -107,26 +63,14 @@ async def lifespan(_: FastAPI):
 
     # test Radarr connection if user has it configured
     if RADARR_URL:
-        if not RADARR_API_KEY:
-            log.critical(f"[APP] No API key provided for Radarr")
-            exit(1)
-
         await radarr.test_connection()
 
     # test Sonarr if user has it configured
     if SONARR_URL:
-        if not SONARR_API_KEY:
-            log.critical(f"[APP] No API key provided for Sonarr")
-            exit(1)
-
         await sonarr.test_connection()
 
     # test Lidarr connection if user has it configured
     if LIDARR_URL:
-        if not LIDARR_API_KEY:
-            log.critical(f"[APP] No API key provided for Lidarr")
-            exit(1)
-
         await lidarr.test_connection()
 
     log.debug(f"[APP] Opening libtorrent session")
@@ -228,6 +172,9 @@ async def lifespan(_: FastAPI):
 
     log.info("[APP] Shutdown complete, closing libtorrent session")
 
+
+# validate Python environment
+config.validate_environment()
 
 app = FastAPI(lifespan=lifespan)
 # mount the static files directory to fastapi
