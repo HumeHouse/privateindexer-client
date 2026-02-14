@@ -73,7 +73,7 @@ async def auth_login(request: Request, username: str = Form(), password: str = F
         log.warning(f"[API] API login failed, invalid key: {password} ({request.headers.get("user-agent")})")
         return PlainTextResponse("Fails.")
 
-    sid = utils.generate_sid(API_KEY)
+    sid = utils.generate_sid()
     SESSIONS[sid] = time.time() + SESSION_TTL
 
     log.debug(f"[API] API login successful ({request.headers.get("user-agent")})")

@@ -24,10 +24,10 @@ def valid_file(media_file: str) -> bool:
     return os.path.exists(media_file) and os.path.isfile(media_file)
 
 
-def generate_sid(api_key: str) -> str:
+def generate_sid() -> str:
     """
-    Generate a simple session ID based on the user's API key
+    Generate a simple session ID
     """
     nonce = secrets.token_hex(16)
-    raw = f"{api_key}:{nonce}:{time.time()}"
+    raw = f"{nonce}:{time.time()}"
     return hashlib.sha256(raw.encode()).hexdigest()
