@@ -26,7 +26,7 @@ async def cookie_required(request: Request) -> Request:
 
     # check session ID validity
     if not sid or sid not in SESSIONS:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED)
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN)
 
     # check expiration of session
     if time.time() > SESSIONS[sid]:
