@@ -74,11 +74,8 @@ async def auth_login(request: Request, username: str = Form(), password: str = F
     if not username or not password:
         log.warning(f"[API] API login failed, missing username or password ({request.headers.get("user-agent")})")
         return PlainTextResponse("Fails.")
-    if username != API_USERNAME:
-        log.warning(f"[API] API login failed, invalid username: {username} ({request.headers.get("user-agent")})")
-        return PlainTextResponse("Fails.")
-    if password != API_PASSWORD:
-        log.warning(f"[API] API login failed, invalid key: {password} ({request.headers.get("user-agent")})")
+    if username != API_USERNAME or password != API_PASSWORD:
+        log.warning(f"[API] API login failed, wrong username or password: {username} ({request.headers.get("user-agent")})")
         return PlainTextResponse("Fails.")
 
     sid = utils.generate_sid()
