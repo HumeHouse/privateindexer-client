@@ -175,6 +175,12 @@ async def create_category(request: Request, category: str = Form()):
     """
     log.debug(f"[API] New category requested ({request.headers.get("user-agent")})")
 
+    category = qbit_translator.validate_category_name(category)
+    # validate category name before proceeding
+    if category is None:
+        log.warning(f"[API] Refusing to create category due to invalid name: {category}")
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT)
+
     # don't store duplicate categories
     if category in qbit_translator.get_torrent_categories().keys():
         log.warning(f"[API] Refusing to create duplicate category: {category}")
