@@ -17,7 +17,7 @@ async def test_connection():
             if response.status_code == 200:
                 log.info(f"[RADARR] Connected to Radarr")
             else:
-                log.critical(f"[RADARR] Failed to connect to Radarr: {response.status_code}")
+                log.critical(f"[RADARR] Failed to connect to Radarr: {response.status_code} - {response.text}")
     except Exception as e:
         log.error(f"[RADARR] Exception while testing Radarr connection: {e}")
 
@@ -32,7 +32,7 @@ async def fetch_root_folders() -> list[str]:
             response = await client.get(f"{RADARR_URL}/api/v3/rootfolder", headers={"X-API-Key": RADARR_API_KEY}, timeout=30)
 
             if response.status_code != 200:
-                log.critical(f"[RADARR] Failed to fetch root folders: {response.status_code}")
+                log.critical(f"[RADARR] Failed to fetch root folders: {response.status_code} - {response.text}")
                 return []
 
             root_folders = response.json()
@@ -65,7 +65,7 @@ async def fetch_movie_library(tracked_root_folders: list[str]) -> list[dict]:
             response = await client.get(f"{RADARR_URL}/api/v3/movie", headers={"X-API-Key": RADARR_API_KEY}, timeout=30)
 
         if response.status_code != 200:
-            log.critical(f"[RADARR] Failed to fetch movie library: {response.status_code}")
+            log.critical(f"[RADARR] Failed to fetch movie library: {response.status_code} - {response.text}")
             return []
 
         movie_response = response.json()
@@ -113,12 +113,12 @@ async def fetch_movie_metadata(movie_id: str) -> dict:
             response = await client.get(f"{RADARR_URL}/api/v3/movie/{movie_id}", headers={"X-API-Key": RADARR_API_KEY}, timeout=30)
 
             if response.status_code != 200:
-                log.critical(f"[RADARR] Failed to fetch movie metadata: {response.status_code}")
+                log.critical(f"[RADARR] Failed to fetch movie metadata for movie ID {movie_id}: {response.status_code} - {response.text}")
                 return []
 
             movie_response = response.json()
             log.debug(f"[RADARR] Fetched metadata for movie ID {movie_id}")
             return movie_response
     except Exception as e:
-        log.error(f"[RADARR] Exception while fetching movie metadata: {e}")
+        log.error(f"[RADARR] Exception while fetching movie metadata for movie ID {movie_id}: {e}")
         return []
