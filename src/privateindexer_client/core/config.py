@@ -50,6 +50,9 @@ LIDARR_API_KEY = os.getenv("LIDARR_API_KEY")
 
 API_KEY = os.getenv("API_KEY")
 
+API_USERNAME = os.getenv("API_USERNAME", "privateindexer")
+API_PASSWORD = os.getenv("API_PASSWORD", "privateindexer")
+
 TRACKER_API_URL = (os.getenv("TRACKER_API_URL", "")).strip("/")
 ANNOUNCE_TRACKER_URL = f"{TRACKER_API_URL}/announce?apikey={API_KEY}"
 
