@@ -13,21 +13,29 @@ from privateindexer_client.core.logger import log
 router = APIRouter(prefix="/api/v2")
 
 SESSIONS = {}
-SESSION_TTL = 3600  # 1 hour sessions
+# 30-day session lifetime
+SESSION_TTL = 60 * 60 * 24 * 30
 
 
 async def cookie_required(request: Request) -> Request:
     """
     Dependency for checking the cookie's value against the user's API key
     """
+    # get the SID cookie
     sid = request.cookies.get("SID")
+
+    # check session ID validity
     if not sid or sid not in SESSIONS:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN)
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED)
 
     # check expiration of session
     if time.time() > SESSIONS[sid]:
+        # remove expired sessions
         del SESSIONS[sid]
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN)
+
+    # refresh session lifetime
+    SESSIONS[sid] = time.time() + SESSION_TTL
 
     return request
 
@@ -73,7 +81,7 @@ async def auth_login(request: Request, username: str = Form(), password: str = F
         log.warning(f"[API] API login failed, invalid key: {password} ({request.headers.get("user-agent")})")
         return PlainTextResponse("Fails.")
 
-    sid = utils.generate_sid(API_KEY)
+    sid = utils.generate_sid()
     SESSIONS[sid] = time.time() + SESSION_TTL
 
     log.debug(f"[API] API login successful ({request.headers.get("user-agent")})")
