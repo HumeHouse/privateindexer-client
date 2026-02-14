@@ -7,7 +7,7 @@ from fastapi import Depends, HTTPException, Query, File, Request, Form, APIRoute
 from fastapi.responses import PlainTextResponse, JSONResponse
 
 from privateindexer_client.core import torrent_client, utils, httpx_request, database, qbit_translator, torrent_helper
-from privateindexer_client.core.config import API_KEY, DOWNLOADS_DIR, INDEXER_API_URL
+from privateindexer_client.core.config import API_KEY, DOWNLOADS_DIR, INDEXER_API_URL, API_USERNAME, API_PASSWORD
 from privateindexer_client.core.logger import log
 
 router = APIRouter(prefix="/api/v2")
@@ -74,10 +74,10 @@ async def auth_login(request: Request, username: str = Form(), password: str = F
     if not username or not password:
         log.warning(f"[API] API login failed, missing username or password ({request.headers.get("user-agent")})")
         return PlainTextResponse("Fails.")
-    if username != "privateindexer":
+    if username != API_USERNAME:
         log.warning(f"[API] API login failed, invalid username: {username} ({request.headers.get("user-agent")})")
         return PlainTextResponse("Fails.")
-    if password != API_KEY:
+    if password != API_PASSWORD:
         log.warning(f"[API] API login failed, invalid key: {password} ({request.headers.get("user-agent")})")
         return PlainTextResponse("Fails.")
 
