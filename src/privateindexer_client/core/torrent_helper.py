@@ -307,26 +307,26 @@ async def remove_torrent_from_database(torrent_hash: str, remove_torrent_file: b
     return False
 
 
-def validate_torrent_url(raw_url: str) -> bool:
+def validate_torrent_url(raw_url: str) -> str | None:
     """
     Validate a user-supplied torrent URL to reduce SSRF risk
     Only HTTP/HTTPS URLs pointing to the same host as INDEXER_API_URL are allowed
     """
     if not raw_url:
-        return False
+        return None
 
     parsed = urlparse(raw_url)
     if not parsed.scheme or not parsed.netloc:
-        return False
+        return None
 
     if parsed.scheme not in ("http", "https"):
-        return False
+        return None
 
     host = parsed.hostname or ""
 
     indexer_parsed = urlparse(INDEXER_API_URL)
     allowed_host = indexer_parsed.hostname
     if allowed_host and host != allowed_host:
-        return False
+        return None
 
-    return True
+    return raw_url

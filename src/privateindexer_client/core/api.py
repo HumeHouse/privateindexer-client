@@ -250,8 +250,9 @@ async def add_torrent(
         # we only allow a single URL to be added at a time
         torrent_url = urls.split(",")[0] if "," in urls else urls
 
-        # validate torrent
-        if not torrent_helper.validate_torrent_url(torrent_url):
+        # validate torrent URL
+        torrent_url = torrent_helper.validate_torrent_url(torrent_url)
+        if torrent_url is None:
             log.critical(f"[API] URL is invalid, refusing to download: {torrent_url}")
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST)
 
