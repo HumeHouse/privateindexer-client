@@ -132,6 +132,7 @@ function fetchUserStats() {
             $("#total-download").text(formatBytes(data["total_download"]));
             $("#server-ratio").text(formatRatio(data["server_ratio"]));
             $("#grabs-total").text(data["grabs_total"]);
+            $("#popularity").text(data["popularity"]);
 
             // 30 second interval
             setTimeout(fetchUserStats, 30000);
@@ -141,7 +142,7 @@ function fetchUserStats() {
             toast("Error fetching user stats from server", "danger");
 
             // reset all displayed values to "?"
-            $("#torrents-added, #currently-seeding, #total-upload, #currently-leeching, #total-download, #server-ratio, #grabs-total")
+            $("#torrents-added, #currently-seeding, #total-upload, #currently-leeching, #total-download, #server-ratio, #grabs-total, #popularity")
                 .text("?");
 
             // delay next interval 60 seconds

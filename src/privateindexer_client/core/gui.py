@@ -1,8 +1,6 @@
-from fastapi import Request, APIRouter, HTTPException, Query
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi import Request, APIRouter, HTTPException, Query, status
+from fastapi.responses import HTMLResponse, RedirectResponse, PlainTextResponse
 from fastapi.templating import Jinja2Templates
-from starlette.responses import PlainTextResponse
-from starlette.status import HTTP_404_NOT_FOUND, HTTP_500_INTERNAL_SERVER_ERROR
 
 from privateindexer_client.core import torrent_client, scan, database, server_interface, torrent_helper, gui_helper
 from privateindexer_client.core.config import APP_VERSION
@@ -34,7 +32,7 @@ async def dashboard_maindata():
         main_data["torrents"] = mapped
     except Exception as e:
         log.error(f"[GUI] Exception while getting torrent list: {e}")
-        raise HTTPException(status_code=HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to get torrent list")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to get torrent list")
 
     try:
         stats_now, time_now, stats_prev, time_prev = torrent_client.get_session_stats()
@@ -43,13 +41,13 @@ async def dashboard_maindata():
         main_data["client_stats"] = gui_helper.format_client_stats(stats_now, time_now, stats_prev, time_prev, all_time_download, all_time_upload)
     except Exception as e:
         log.error(f"[GUI] Exception while getting session info: {e}")
-        raise HTTPException(status_code=HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to get session info")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to get session info")
 
     try:
         main_data["scanner_status"] = {"state": scan.SCAN_PROCESS_STATE, "total_items": scan.SCAN_TOTAL_ITEMS, "done_items": scan.SCAN_DONE_ITEMS}
     except Exception as e:
         log.error(f"[GUI] Exception while getting scanner info: {e}")
-        raise HTTPException(status_code=HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to get scanner info")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to get scanner info")
 
     return main_data
 
@@ -60,7 +58,7 @@ async def dashboard_user_stats():
     user_data = await server_interface.fetch_indexer_user_data()
     if not user_data:
         # we don't log the error to console here because fetch_indexer_user_data() does for us
-        raise HTTPException(status_code=HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to fetch user stats")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to fetch user stats")
     return user_data
 
 
@@ -73,7 +71,7 @@ async def delete_torrent(torrent_hash: str = Query(), remove_downloads: bool = Q
 
     if not result:
         log.warning(f"[GUI] Torrent hash not found: {torrent_hash}")
-        raise HTTPException(status_code=HTTP_404_NOT_FOUND, detail="Torrent hash not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Torrent hash not found")
 
     torrent_path = result["torrent_path"]
     infohash = result["infohash"]
@@ -87,6 +85,6 @@ async def delete_torrent(torrent_hash: str = Query(), remove_downloads: bool = Q
         await torrent_helper.remove_torrent_from_database(infohash, torrent_file=torrent_path)
     except Exception as e:
         log.error(f"[GUI] Exception while deleting torrent file: {e}")
-        raise HTTPException(status_code=HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to delete torrent file from disk")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to delete torrent file from disk")
 
-    raise HTTPException(status_code=HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to remove torrent from client")
+    raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to remove torrent from client")
