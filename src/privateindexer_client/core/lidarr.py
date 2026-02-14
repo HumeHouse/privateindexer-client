@@ -202,7 +202,7 @@ async def fetch_artist_tracks(artist_id: str) -> list[dict]:
             track_file_response = await client.get(f"{LIDARR_URL}/api/v1/trackfile", headers={"X-API-Key": LIDARR_API_KEY}, params=params, timeout=30)
 
             if track_file_response.status_code != 200:
-                log.critical(f"[LIDARR] Failed to fetch track files: {track_file_response.status_code} - {track_file_response.text}")
+                log.critical(f"[LIDARR] Failed to fetch track files for artist ID {artist_id}: {track_file_response.status_code} - {track_file_response.text}")
                 return []
 
             track_files = track_file_response.json()
@@ -210,7 +210,7 @@ async def fetch_artist_tracks(artist_id: str) -> list[dict]:
             track_response = await client.get(f"{LIDARR_URL}/api/v1/track", headers={"X-API-Key": LIDARR_API_KEY}, params=params, timeout=30)
 
             if track_response.status_code != 200:
-                log.critical(f"[LIDARR] Failed to fetch tracks data: {track_response.status_code} - {track_response.text}")
+                log.critical(f"[LIDARR] Failed to fetch tracks data for artist ID {artist_id}: {track_response.status_code} - {track_response.text}")
                 return []
 
             tracks = track_response.json()
@@ -229,7 +229,7 @@ async def fetch_artist_tracks(artist_id: str) -> list[dict]:
         log.debug(f"[LIDARR] Fetched track files for artist ID {artist_id} ({len(merged_response)} tracks)")
         return merged_response
     except Exception as e:
-        log.error(f"[LIDARR] Exception while fetching track files: {e}")
+        log.error(f"[LIDARR] Exception while fetching track files for artist ID {artist_id}: {e}")
         return []
 
 
@@ -242,12 +242,12 @@ async def fetch_album_metadata(album_id: str) -> dict:
             response = await client.get(f"{LIDARR_URL}/api/v1/album/{album_id}", headers={"X-API-Key": LIDARR_API_KEY}, timeout=30)
 
             if response.status_code != 200:
-                log.critical(f"[LIDARR] Failed to fetch album metadata: {response.status_code} - {response.text}")
+                log.critical(f"[LIDARR] Failed to fetch album metadata for album ID {album_id}: {response.status_code} - {response.text}")
                 return []
 
             album_response = response.json()
             log.debug(f"[LIDARR] Fetched metadata for album ID {album_id}")
             return album_response
     except Exception as e:
-        log.error(f"[LIDARR] Exception while fetching album metadata: {e}")
+        log.error(f"[LIDARR] Exception while fetching album metadata for album ID {album_id}: {e}")
         return []
