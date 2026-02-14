@@ -247,18 +247,27 @@ async def add_torrent(
             log.error(f"[API] Exception while saving torrent '{filename}': {e}")
             raise HTTPException(status_code=status.INTERNAL_SERVER_ERROR)
     else:
+        # we only allow a single URL to be added at a time
+        torrent_url = urls.split(",")[0] if "," in urls else urls
+
+        # validate torrent URL
+        torrent_url = torrent_helper.validate_torrent_url(torrent_url)
+        if torrent_url is None:
+            log.critical(f"[API] URL is invalid, refusing to download: {torrent_url}")
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST)
+
         # download torrent from URL
         try:
             async with httpx_request.get_client() as client:
-                response = await client.get(urls)
+                response = await client.get(torrent_url)
                 if response.status_code != 200:
-                    log.critical(f"[API] Failed to download new torrent file ({urls}): {response.status_code} - {response.text}")
+                    log.critical(f"[API] Failed to download new torrent file ({torrent_url}): {response.status_code} - {response.text}")
                     raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST)
-                torrent_file = os.path.join(tempfile.gettempdir(), os.path.basename(urls))
+                torrent_file = os.path.join(tempfile.gettempdir(), os.path.basename(torrent_url))
                 with open(torrent_file, "wb") as f:
                     f.write(response.content)
         except Exception as e:
-            log.error(f"[API] Exception while downloading URL '{urls}': {e}")
+            log.error(f"[API] Exception while downloading URL '{torrent_url}': {e}")
             raise HTTPException(status_code=status.INTERNAL_SERVER_ERROR)
 
     log.debug(f"[API] Validating torrent: {torrent_file}")

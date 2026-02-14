@@ -2,12 +2,13 @@ import datetime
 import hashlib
 import os
 from typing import Any
+from urllib.parse import urlparse
 
 import libtorrent as lt
 
 from privateindexer_client.core import media_helper, database, utils
 from privateindexer_client.core.cache import Cache
-from privateindexer_client.core.config import TORRENTS_DIR, APP_VERSION
+from privateindexer_client.core.config import TORRENTS_DIR, APP_VERSION, INDEXER_API_URL
 from privateindexer_client.core.logger import log
 
 
@@ -304,3 +305,28 @@ async def remove_torrent_from_database(torrent_hash: str, remove_torrent_file: b
         return True
 
     return False
+
+
+def validate_torrent_url(raw_url: str) -> str | None:
+    """
+    Validate a user-supplied torrent URL to reduce SSRF risk
+    Only HTTP/HTTPS URLs pointing to the same host as INDEXER_API_URL are allowed
+    """
+    if not raw_url:
+        return None
+
+    parsed = urlparse(raw_url)
+    if not parsed.scheme or not parsed.netloc:
+        return None
+
+    if parsed.scheme not in ("http", "https"):
+        return None
+
+    host = parsed.hostname or ""
+
+    indexer_parsed = urlparse(INDEXER_API_URL)
+    allowed_host = indexer_parsed.hostname
+    if allowed_host and host != allowed_host:
+        return None
+
+    return raw_url
