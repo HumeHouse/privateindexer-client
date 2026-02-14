@@ -1,8 +1,11 @@
 import os
+import re
 
 import libtorrent as lt
 
 from privateindexer_client.core import database, config
+
+_CATEGORY_RE = re.compile(r'^(?![\\/])(?!.*\\)(?!.*//).*(?<![\\/])$')
 
 
 def calculate_eta(status: lt.torrent_status) -> int:
@@ -133,6 +136,20 @@ def map_stats_to_qbit(stats_now: dict[str, int] | None, time_now: float | None, 
 
 def get_torrent_categories() -> dict[str, dict[str, str]]:
     return config.load_config().get("categories", {})
+
+
+def validate_category_name(category_name: str) -> str | None:
+    """
+    Runs simple validation on proposed category name
+    """
+    # check length
+    if not (1 <= len(category_name) <= 16):
+        return None
+
+    if not _CATEGORY_RE.match(category_name):
+        return None
+
+    return category_name
 
 
 def add_torrent_category(name: str, save_dir: str):
