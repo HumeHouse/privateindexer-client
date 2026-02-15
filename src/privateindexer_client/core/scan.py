@@ -113,6 +113,16 @@ async def scan_media_library(media_data_entries: list[MediaDataEntry], hash_exec
             SCAN_DONE_ITEMS += 1
             continue
 
+        # detect category from parent directory
+        category_id = media_helper.detect_torznab_category(parent_directory)
+
+        # ensure the category is valid
+        if category_id == 0:
+            log.warning(f"[SCAN] Category is not valid, skipped: {parent_directory}")
+            # increment global items counter
+            SCAN_DONE_ITEMS += 1
+            continue
+
         total_entries += 1
 
         # loop through all the files in this media entry and compare to database files
@@ -179,8 +189,7 @@ async def scan_media_library(media_data_entries: list[MediaDataEntry], hash_exec
             ignored_torrents.add(torrent_file)
 
             updated_entries.add(torrent_id)
-            # detect category in case it's not matching in the database
-            category_id = media_helper.detect_torznab_category(parent_directory)
+
             # update the torrent metadata
             await database.execute("UPDATE torrents SET category = ?, app_id = ? WHERE id = ?", (category_id, media_data_entry.app_id, torrent_id,))
 
@@ -444,36 +453,15 @@ async def periodic_scan_task():
                     await database.execute("UPDATE torrents SET download_path = NULL WHERE id = ?", (torrent_id,))
                     log.info(f"[SCAN] Download data missing for '{torrent_name}', removed download path from database")
 
-                # case where media exists but the torznab category is unknown (0), try to fix it
+                # case where media exists but the torznab category is unknown (0), purge torrent
                 if media_valid and torznab_category == 0:
-
-                    # if no parent directory exists, purge torrent
-                    if media_parent_directory is None:
-                        removed_entries += 1
-                        # remove from torrent client
-                        await torrent_client.remove_torrent_by_hash(torrent_hash, True)
-                        # remove torrent file and from database
-                        await torrent_helper.remove_torrent_from_database(torrent_hash, torrent_file=torrent_path)
-                        log.info(f"[SCAN] Unknown category for '{torrent_name}', removed torrent from database and torrent client")
-                        continue
-
-                    category_id = media_helper.detect_torznab_category(media_parent_directory)
-
-                    # update the category if a match was found
-                    if category_id != 0:
-                        updated_entries.add(torrent_id)
-                        await database.execute("UPDATE torrents SET category = ? WHERE id = ?", (category_id, torrent_id,))
-                        log.info(f"[SCAN] Updated the category to '{category_id}' for '{torrent_name}'")
-
-                    # otherwise, remove the torrent
-                    else:
-                        removed_entries += 1
-                        # remove from torrent client
-                        await torrent_client.remove_torrent_by_hash(torrent_hash, True)
-                        # remove torrent file and from database
-                        await torrent_helper.remove_torrent_from_database(torrent_hash, torrent_file=torrent_path)
-                        log.info(f"[SCAN] Unknown category for '{torrent_name}', removed torrent from database and torrent client")
-                        continue
+                    removed_entries += 1
+                    # remove from torrent client
+                    await torrent_client.remove_torrent_by_hash(torrent_hash, True)
+                    # remove torrent file and from database
+                    await torrent_helper.remove_torrent_from_database(torrent_hash, torrent_file=torrent_path)
+                    log.info(f"[SCAN] Unknown category for '{torrent_name}', removed torrent from database and torrent client")
+                    continue
 
                 # check to make sure this torrent's category actually has data from the app
                 category_has_tracked_entries = bool(media_entry_torznab_category_map[torznab_category])
