@@ -189,8 +189,7 @@ async def scan_media_library(media_data_entries: list[MediaDataEntry], hash_exec
             ignored_torrents.add(torrent_file)
 
             updated_entries.add(torrent_id)
-            # detect category in case it's not matching in the database
-            category_id = media_helper.detect_torznab_category(parent_directory)
+
             # update the torrent metadata
             await database.execute("UPDATE torrents SET category = ?, app_id = ? WHERE id = ?", (category_id, media_data_entry.app_id, torrent_id,))
 
