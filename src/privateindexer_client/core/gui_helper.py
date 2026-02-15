@@ -121,9 +121,13 @@ def format_client_stats(stats_now: dict[str, int] | None, time_now: float | None
     # all-time totals
     mapped = {"total_download": all_time_download, "total_upload": all_time_upload}
 
-    # ratio is UL/DL if UL>0
+    # ratio is UL/DL if UL>0 and DL>0
     if all_time_upload > 0:
-        mapped["client_ratio"] = round(all_time_upload / all_time_download, 2)
+        # return infinite ratio if user has no download data
+        if all_time_download == 0:
+            mapped["client_ratio"] = -1
+        else:
+            mapped["client_ratio"] = round(all_time_upload / all_time_download, 2)
     else:
         mapped["client_ratio"] = 0.0
 
