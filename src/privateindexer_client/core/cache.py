@@ -4,19 +4,19 @@ import os
 
 from diskcache import Cache as DiskCache
 
+from privateindexer_client.core import logger
 from privateindexer_client.core.config import CACHE_CLEAN_INTERVAL, CACHE_DIR, CACHE_EXPIRATION
-from privateindexer_client.core.logger import log
 
 
 async def periodic_cache_clean_task():
     """
     Periodically checks cache for stale hashes
     """
-    log.debug("[CACHE] Task loop started")
+    logger.channel("cache").debug("Task loop started")
     while True:
         await asyncio.sleep(CACHE_CLEAN_INTERVAL)
         try:
-            log.info(f"[CACHE] Starting cache clean operation")
+            logger.channel("cache").info(f"Starting cache clean operation")
             before = datetime.datetime.now()
 
             cache = Cache().get_instance()
@@ -44,9 +44,9 @@ async def periodic_cache_clean_task():
 
             delta = datetime.datetime.now() - before
 
-            log.info(f"[CACHE] Cache clean completed ({delta}): {stats_list}")
+            logger.channel("cache").info(f"Cache clean completed ({delta}): {stats_list}")
         except Exception as e:
-            log.error(f"[CACHE] Exception during cache clean task: {e}")
+            logger.channel("cache").exception(f"Exception during cache clean task: {e}")
 
 
 class Cache:
@@ -73,7 +73,7 @@ class Cache:
         hashes = self.file_hash_cache.get(key)
 
         if hashes is None:
-            log.debug(f"[CACHE] Hash cache miss for file: {file_path}")
+            logger.channel("cache").debug(f"Hash cache miss for file: {file_path}")
         return hashes
 
     def put_file_hashes(self, file_path: str, piece_length: int, hashes: list[bytes]):
@@ -121,7 +121,7 @@ class Cache:
         torrent_object = self.torrent_info_cache.get(torrent_path)
 
         if torrent_object is None:
-            log.debug(f"[CACHE] Info cache miss for torrent file: {torrent_path}")
+            logger.channel("cache").debug(f"Info cache miss for torrent file: {torrent_path}")
         return torrent_object
 
     def put_torrent_object(self, torrent_path: str, obj: dict):

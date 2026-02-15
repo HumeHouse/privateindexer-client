@@ -1,8 +1,7 @@
 import aiosqlite
 
-from privateindexer_client.core import database_migrations
+from privateindexer_client.core import database_migrations, logger
 from privateindexer_client.core.config import DATABASE_FILE
-from privateindexer_client.core.logger import log
 
 # TODO: next migration, match the semantic version string with this schema version as an integer
 LATEST_SCHEMA_VERSION = 6
@@ -59,11 +58,10 @@ async def initialize():
 
         # check if outdated
         if current_version > LATEST_SCHEMA_VERSION:
-            log.critical(
-                f"[DATABASE] Current database version ({current_version}) is higher than max supported version ({LATEST_SCHEMA_VERSION}) - application was most likely rolled back.")
+            logger.channel("database").critical(f"Database version ({current_version}) higher than max supported version ({LATEST_SCHEMA_VERSION})")
             exit(1)
 
-        log.info(f"[DATABASE] Current schema version: {current_version}")
+        logger.channel("database").info(f"Current schema version: {current_version}")
 
         # check if outdated
         if current_version == LATEST_SCHEMA_VERSION:
@@ -72,11 +70,11 @@ async def initialize():
         # migrate database one version at a time
         while current_version < LATEST_SCHEMA_VERSION:
             next_version = current_version + 1
-            log.info(f"[DATABASE] Migrating from {current_version} to {next_version}...")
+            logger.channel("database").info(f"Migrating from {current_version} to {next_version}...")
 
             migration_script = MIGRATIONS.get(current_version)
             if not migration_script:
-                log.critical(f"[DATABASE] No migration script found for {current_version} to {next_version}")
+                logger.channel("database").critical(f"No migration script found for {current_version} to {next_version}")
                 exit(1)
 
             await migration_script(db)
@@ -86,7 +84,7 @@ async def initialize():
             current_version = next_version
 
         await db.commit()
-        log.info(f"[DATABASE] Schema upgraded to version {LATEST_SCHEMA_VERSION}")
+        logger.channel("database").info(f"Schema upgraded to version {LATEST_SCHEMA_VERSION}")
 
 
 async def fetch_all(query: str, params: tuple = ()):

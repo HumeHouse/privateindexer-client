@@ -1,8 +1,8 @@
 import os
 
 from privateindexer_client.core import httpx_request, database, radarr, sonarr, lidarr
+from privateindexer_client.core import logger
 from privateindexer_client.core.config import INDEXER_API_URL, API_KEY, RADARR_URL, SONARR_URL, LIDARR_URL
-from privateindexer_client.core.logger import log
 from privateindexer_client.core.media_helper import RADARR_ROOT_CATEGORY, SONARR_ROOT_CATEGORY, LIDARR_ROOT_CATEGORY
 
 
@@ -15,12 +15,12 @@ async def fetch_indexer_user_data():
             response = await client.get(f"{INDEXER_API_URL}/user/stats", headers={"X-API-Key": API_KEY}, timeout=30)
 
             if response.status_code != 200:
-                log.warning(f"[INDEXER] Failed to fetch user stats: {response.status_code} - {response.text}")
+                logger.channel("indexer").warning(f"Failed to fetch user stats: {response.status_code} - {response.text}")
                 return {}
 
             return response.json()
     except Exception as e:
-        log.error(f"[INDEXER] Exception when fetching user stats: {e}")
+        logger.channel("indexer").exception(f"Exception when fetching user stats: {e}")
         return None
 
 
@@ -82,14 +82,14 @@ async def send_torrent_to_indexer(torrent_path: str, category: int, torrent_name
 
                 # based on the response from API, we will know status of upload
                 if response.status_code == 200:
-                    log.info(f"[INDEXER] Successfully sent '{torrent_name}' to indexer")
+                    logger.channel("indexer").info(f"Successfully sent '{torrent_name}' to indexer")
                     return True
                 elif response.status_code == 409:
-                    log.info(f"[INDEXER] Torrent '{torrent_name}' already exists on indexer, marking as uploaded")
+                    logger.channel("indexer").info(f"Torrent '{torrent_name}' already exists on indexer, marking as uploaded")
                     return True
                 else:
-                    log.warning(f"[INDEXER] Failed to send '{torrent_name}' to indexer, will retry later: {response.status_code} - {response.text}")
+                    logger.channel("indexer").warning(f"Failed to send '{torrent_name}' to indexer, will retry later: {response.status_code} - {response.text}")
                     return False
     except Exception as e:
-        log.error(f"[INDEXER] Exception while sending '{torrent_name}' to indexer, will retry later: {e}")
+        logger.channel("indexer").exception(f"Exception while sending '{torrent_name}' to indexer, will retry later: {e}")
         return False

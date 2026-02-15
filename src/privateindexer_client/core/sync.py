@@ -3,8 +3,8 @@ import datetime
 import os
 
 from privateindexer_client.core import database, httpx_request, server_interface
+from privateindexer_client.core import logger
 from privateindexer_client.core.config import SYNC_INTERVAL, INDEXER_API_URL, API_KEY
-from privateindexer_client.core.logger import log
 
 
 async def periodic_sync_task():
@@ -12,7 +12,7 @@ async def periodic_sync_task():
     Periodically syncronizes torrent database with the indexer server
     Will ignore existing and correctly uploaded torrent files
     """
-    log.debug("[SYNC] Task loop started")
+    logger.channel("sync").debug("Task loop started")
     while True:
         try:
             before = datetime.datetime.now()
@@ -20,7 +20,7 @@ async def periodic_sync_task():
             # gather minimal data from database for each torrent from database for sync
             local_torrents = await database.fetch_all("SELECT id, name, infohash FROM torrents")
             total = len(local_torrents)
-            log.info(f"[SYNC] Syncing {total} torrents with indexer")
+            logger.channel("sync").info(f"Syncing {total} torrents with indexer")
 
             # call the sync endpoint to get the list of existing and missing torrents on the server
             async with httpx_request.get_client() as client:
@@ -28,7 +28,7 @@ async def periodic_sync_task():
 
                 # make sure the sync was successful on the server
                 if response.status_code != 200:
-                    log.warning(f"[SYNC] Failed to sync torrents with server, will retry later: {response.status_code} - {response.text}")
+                    logger.channel("sync").warning(f"Failed to sync torrents with server, will retry later: {response.status_code} - {response.text}")
                     await asyncio.sleep(SYNC_INTERVAL)
                     continue
 
@@ -58,14 +58,14 @@ async def periodic_sync_task():
 
                 # make sure the torrent and either the media or the download files exist before uploading to the server
                 if os.path.exists(torrent_path):
-                    log.debug(f"[SYNC] Attempting to resend torrent to indexer: {torrent_name}")
+                    logger.channel("sync").debug(f"Attempting to resend torrent to indexer: {torrent_name}")
                     if await server_interface.send_torrent_to_indexer(torrent_path, torrent_data["category"], torrent_name, torrent_data["app_id"]):
                         await database.execute("UPDATE torrents SET uploaded = TRUE WHERE id = ?", (torrent_data["id"],))
                         uploaded += 1
                     else:
                         failed += 1
                 else:
-                    log.debug(f"[SYNC] Aborting upload for '{torrent_name}' due to missing files")
+                    logger.channel("sync").debug(f"Aborting upload for '{torrent_name}' due to missing files")
                     failed += 1
 
             stats = [("existing", existing), ("missing", len(missing_ids)), ("uploaded", uploaded), ("failed", failed)]
@@ -73,9 +73,9 @@ async def periodic_sync_task():
 
             delta = datetime.datetime.now() - before
 
-            log.info(f"[FASTRESUME] Server sync task completed ({delta}): {stats_list}")
+            logger.channel("sync").info(f"Server sync task completed ({delta}): {stats_list}")
 
         except Exception as e:
-            log.error(f"[SYNC] Exception during sync task: {e}")
+            logger.channel("sync").exception(f"Exception during sync task: {e}")
 
         await asyncio.sleep(SYNC_INTERVAL)
