@@ -3,8 +3,8 @@ import shutil
 
 import aiosqlite
 
+from privateindexer_client.core import logger
 from privateindexer_client.core.config import TORRENTS_DIR
-from privateindexer_client.core.logger import log
 
 
 async def v4_to_v5(db: aiosqlite.Connection):
@@ -16,7 +16,7 @@ async def v4_to_v5(db: aiosqlite.Connection):
 
     if "files" in cols:
         await db.execute("ALTER TABLE torrents DROP COLUMN files")
-        log.info("[DATABASE] Removed files column from torrents table")
+        logger.channel("database").info("Removed files column from torrents table")
 
 
 async def v5_to_v6(db: aiosqlite.Connection):
@@ -38,7 +38,7 @@ async def v5_to_v6(db: aiosqlite.Connection):
     for torrent in torrents:
         torrent_path = torrent["torrent_path"]
         if not os.path.exists(torrent_path):
-            log.warning(f"[DATABASE] Torrent file not found during migration: {torrent_path}")
+            logger.channel("database").warning(f"Torrent file not found during migration: {torrent_path}")
             continue
 
         torrent_infohash = torrent["infohash"]
@@ -48,7 +48,7 @@ async def v5_to_v6(db: aiosqlite.Connection):
             continue
 
         if os.path.exists(new_torrent_path):
-            log.critical(f"[DATABASE] New torrent path already exists: {new_torrent_path}")
+            logger.channel("database").critical(f"New torrent path already exists: {new_torrent_path}")
             continue
 
         try:
@@ -59,6 +59,6 @@ async def v5_to_v6(db: aiosqlite.Connection):
 
             renamed += 1
         except Exception as e:
-            log.error(f"[DATABASE] Exception while renaming torrent file: {torrent_path}: {e}")
+            logger.channel("database").exception(f"Exception while renaming torrent file: {torrent_path}: {e}")
 
-    log.info(f"[DATABASE] Renamed {renamed} of {len(torrents)} torrent files")
+    logger.channel("database").info(f"Renamed {renamed} of {len(torrents)} torrent files")

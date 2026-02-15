@@ -3,7 +3,7 @@ import os
 import libtorrent as lt
 
 from privateindexer_client.core import database, config, qbit_translator
-from privateindexer_client.core.logger import log
+from privateindexer_client.core import logger
 
 
 def calculate_eta(status: lt.torrent_status) -> int:
@@ -211,6 +211,6 @@ def purge_empty_categories() -> int:
                     os.rmdir(current_dir)
                     deleted.add(current_dir)
                 except Exception as e:
-                    log.error(f"[SCAN] Exception while removing empty download directory: {e}")
+                    logger.channel("scan").exception(f"Exception while removing empty download directory: {e}")
 
     return len(deleted)

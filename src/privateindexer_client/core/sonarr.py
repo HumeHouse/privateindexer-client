@@ -3,9 +3,9 @@ import os
 from collections import defaultdict
 
 from privateindexer_client.core import httpx_request, arr_formatter, utils
+from privateindexer_client.core import logger
 from privateindexer_client.core.arr_formatter import VIDEO_EXTRACTORS
 from privateindexer_client.core.config import SONARR_URL, SONARR_API_KEY
-from privateindexer_client.core.logger import log
 
 
 async def test_connection():
@@ -17,11 +17,11 @@ async def test_connection():
             response = await client.get(f"{SONARR_URL}/api", headers={"X-API-Key": SONARR_API_KEY}, timeout=30)
 
             if response.status_code == 200:
-                log.info(f"[SONARR] Connected to Sonarr")
+                logger.channel("sonarr").info(f"Connected to Sonarr")
             else:
-                log.critical(f"[SONARR] Failed to connect to Sonarr: {response.status_code} - {response.text}")
+                logger.channel("sonarr").critical(f"Failed to connect to Sonarr: {response.status_code} - {response.text}")
     except Exception as e:
-        log.error(f"[SONARR] Exception while testing Sonarr connection: {e}")
+        logger.channel("sonarr").exception(f"Exception while testing Sonarr connection: {e}")
 
 
 async def fetch_root_folders() -> list[str]:
@@ -34,11 +34,11 @@ async def fetch_root_folders() -> list[str]:
             response = await client.get(f"{SONARR_URL}/api/v3/rootfolder", headers={"X-API-Key": SONARR_API_KEY}, timeout=30)
 
             if response.status_code != 200:
-                log.critical(f"[SONARR] Failed to fetch root folders: {response.status_code} - {response.text}")
+                logger.channel("sonarr").critical(f"Failed to fetch root folders: {response.status_code} - {response.text}")
                 return []
 
             root_folders = response.json()
-            log.debug(f"[SONARR] Fetched root folders ({len(root_folders)} directories)")
+            logger.channel("sonarr").debug(f"Fetched root folders ({len(root_folders)} directories)")
 
             tracked_root_folders = []
             # check each root folder for access and add to tracked paths
@@ -46,15 +46,15 @@ async def fetch_root_folders() -> list[str]:
                 root_folder_path = root_folder_entry["path"]
                 # skip if we can't access this directory
                 if not os.path.exists(root_folder_path):
-                    log.warning(f"[SONARR] Unable to access root folder: {root_folder_path}")
+                    logger.channel("sonarr").warning(f"Unable to access root folder: {root_folder_path}")
                     continue
 
                 tracked_root_folders.append(root_folder_path)
-                log.debug(f"[SONARR] Tracking Sonarr path: {root_folder_path}")
+                logger.channel("sonarr").debug(f"Tracking Sonarr path: {root_folder_path}")
 
             return tracked_root_folders
     except Exception as e:
-        log.error(f"[SONARR] Exception while fetching root folders: {e}")
+        logger.channel("sonarr").exception(f"Exception while fetching root folders: {e}")
         return []
 
 
@@ -68,7 +68,7 @@ async def fetch_tv_library(tracked_root_folders: list[str]) -> list[dict]:
             response = await client.get(f"{SONARR_URL}/api/v3/series", headers={"X-API-Key": SONARR_API_KEY}, timeout=30)
 
             if response.status_code != 200:
-                log.critical(f"[SONARR] Failed to fetch TV library: {response.status_code} - {response.text}")
+                logger.channel("sonarr").critical(f"Failed to fetch TV library: {response.status_code} - {response.text}")
                 return []
 
             series_list = response.json()
@@ -115,7 +115,7 @@ async def fetch_tv_library(tracked_root_folders: list[str]) -> list[dict]:
 
                 # do not build season pack if any episodes are invalid
                 if not episodes_valid:
-                    log.warning(f"[SONARR] Detected invalid files for '{series["title"]}' (Season {season_number}), season pack will NOT be created")
+                    logger.channel("sonarr").warning(f"Detected invalid files for '{series["title"]}' (Season {season_number}), season pack will NOT be created")
                     continue
 
                 # add all the episode paths to a set to ensure non are unique
@@ -123,14 +123,14 @@ async def fetch_tv_library(tracked_root_folders: list[str]) -> list[dict]:
 
                 # do not build season pack if episodes do not share a single directory
                 if not shared_directory:
-                    log.warning(f"[SONARR] Inconsistent parent directory for '{series["title"]}' (Season {season_number}), season pack will NOT be created")
+                    logger.channel("sonarr").warning(f"Inconsistent parent directory for '{series["title"]}' (Season {season_number}), season pack will NOT be created")
 
                 # build season pack for full seasons which share a single directory and all files are valid
                 if percent_of_episodes == 100 and missing_episode_count == 0 and shared_directory and episodes_valid:
                     aggregated_metadata = arr_formatter.aggregate_metadata(season_episodes, app_name="SONARR", extractors=VIDEO_EXTRACTORS, )
                     metadata_tags = arr_formatter.format_tags(aggregated_metadata)
                     title = f"{series["title"]} ({series["year"]}) - S{str(season_number).zfill(2)} {metadata_tags}"
-                    log.debug(f"[SONARR] Grouped season pack ({len(season_episodes)} episodes): {title}")
+                    logger.channel("sonarr").debug(f"Grouped season pack ({len(season_episodes)} episodes): {title}")
 
                     final_entries.append({"id": series_id, "title": title, "files": episode_paths, "season_pack": True, })
 
@@ -144,7 +144,7 @@ async def fetch_tv_library(tracked_root_folders: list[str]) -> list[dict]:
 
                         # skip invalid files
                         if not utils.valid_file(episode_path):
-                            log.warning(f"[SONARR] Invalid file path discovered: {episode_path}")
+                            logger.channel("sonarr").warning(f"Invalid file path discovered: {episode_path}")
                             continue
 
                         episode_number = season_episode["episodeNumber"]
@@ -153,7 +153,7 @@ async def fetch_tv_library(tracked_root_folders: list[str]) -> list[dict]:
                         metadata_tags = arr_formatter.format_tags(aggregated_metadata)
                         title = f"{series["title"]} ({series["year"]}) - S{str(season_number).zfill(2)}E{str(episode_number).zfill(2)} {episode_title} {metadata_tags}"
 
-                        log.debug(f"[SONARR] Found individual episode: {title}")
+                        logger.channel("sonarr").debug(f"Found individual episode: {title}")
                         final_entries.append({"id": series_id, "title": title, "files": [episode_path], "season_pack": False, })
 
         season_packs = 0
@@ -164,11 +164,11 @@ async def fetch_tv_library(tracked_root_folders: list[str]) -> list[dict]:
             else:
                 individual_episodes += 1
 
-        log.debug(f"[SONARR] Fetched TV library ({season_packs} season packs, {individual_episodes} individual episodes)")
+        logger.channel("sonarr").debug(f"Fetched TV library ({season_packs} season packs, {individual_episodes} individual episodes)")
 
         return final_entries
     except Exception as e:
-        log.error(f"[SONARR] Exception while fetching TV library: {e}")
+        logger.channel("sonarr").exception(f"Exception while fetching TV library: {e}")
         return []
 
 
@@ -182,7 +182,7 @@ async def fetch_series_episodes(series_id: str) -> list[dict]:
             episode_file_response = await client.get(f"{SONARR_URL}/api/v3/episodeFile", headers={"X-API-Key": SONARR_API_KEY}, params=params, timeout=30, )
 
             if episode_file_response.status_code != 200:
-                log.critical(f"[SONARR] Failed to fetch episode files: {episode_file_response.status_code}")
+                logger.channel("sonarr").critical(f"Failed to fetch episode files: {episode_file_response.status_code}")
                 return []
 
             episode_files = episode_file_response.json()
@@ -190,7 +190,7 @@ async def fetch_series_episodes(series_id: str) -> list[dict]:
             episode_response = await client.get(f"{SONARR_URL}/api/v3/episode", headers={"X-API-Key": SONARR_API_KEY}, params=params, timeout=30, )
 
             if episode_response.status_code != 200:
-                log.critical(f"[SONARR] Failed to fetch episodes data: {episode_response.status_code}")
+                logger.channel("sonarr").critical(f"Failed to fetch episodes data: {episode_response.status_code}")
                 return []
 
             episodes = episode_response.json()
@@ -206,11 +206,11 @@ async def fetch_series_episodes(series_id: str) -> list[dict]:
             merged_episode.update(files_by_id[episode_file_id])
             merged_response.append(merged_episode)
 
-        log.debug(f"[SONARR] Fetched episodes for series ID {series_id} ({len(merged_response)} episodes)")
+        logger.channel("sonarr").debug(f"Fetched episodes for series ID {series_id} ({len(merged_response)} episodes)")
 
         return merged_response
     except Exception as e:
-        log.error(f"[SONARR] Exception while fetching episode files for series ID {series_id}: {e}")
+        logger.channel("sonarr").exception(f"Exception while fetching episode files for series ID {series_id}: {e}")
         return []
 
 
@@ -223,12 +223,12 @@ async def fetch_series_metadata(series_id: str) -> dict:
             response = await client.get(f"{SONARR_URL}/api/v3/series/{series_id}", headers={"X-API-Key": SONARR_API_KEY}, timeout=30)
 
             if response.status_code != 200:
-                log.critical(f"[SONARR] Failed to fetch series metadata for series ID {series_id}: {response.status_code} - {response.text}")
+                logger.channel("sonarr").critical(f"Failed to fetch series metadata for series ID {series_id}: {response.status_code} - {response.text}")
                 return []
 
             series_response = response.json()
-            log.debug(f"[SONARR] Fetched metadata for series ID {series_id}")
+            logger.channel("sonarr").debug(f"Fetched metadata for series ID {series_id}")
             return series_response
     except Exception as e:
-        log.error(f"[SONARR] Exception while fetching series metadata for series ID {series_id}: {e}")
+        logger.channel("sonarr").exception(f"Exception while fetching series metadata for series ID {series_id}: {e}")
         return []

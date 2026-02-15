@@ -1,7 +1,7 @@
 from concurrent.futures.process import ProcessPoolExecutor
 
+from privateindexer_client.core import logger
 from privateindexer_client.core.config import MAX_THREADS
-from privateindexer_client.core.logger import log
 
 _fastresume_executor = None
 _creation_executor = None
@@ -17,7 +17,7 @@ def get_fastresume_executor(spawn_new: bool = True) -> ProcessPoolExecutor | Non
         if not spawn_new:
             return None
         _fastresume_executor = ProcessPoolExecutor(max_workers=MAX_THREADS)
-        log.debug("[EXECUTOR] Spawned new fastresume executor")
+        logger.channel("executor").debug("Spawned new fastresume executor")
     return _fastresume_executor
 
 
@@ -30,7 +30,7 @@ def get_creation_executor(spawn_new: bool = True) -> ProcessPoolExecutor | None:
         if not spawn_new:
             return None
         _creation_executor = ProcessPoolExecutor(max_workers=MAX_THREADS)
-        log.debug("[EXECUTOR] Spawned new creation executor")
+        logger.channel("executor").debug("Spawned new creation executor")
     return _creation_executor
 
 
@@ -43,5 +43,5 @@ def get_hash_executor(spawn_new: bool = True) -> ProcessPoolExecutor | None:
         if not spawn_new:
             return None
         _hash_executor = ProcessPoolExecutor(max_workers=MAX_THREADS)
-        log.debug("[EXECUTOR] Spawned new hash executor")
+        logger.channel("executor").debug("Spawned new hash executor")
     return _hash_executor

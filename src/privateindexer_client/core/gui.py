@@ -2,9 +2,9 @@ from fastapi import Request, APIRouter, HTTPException, Query, status
 from fastapi.responses import HTMLResponse, RedirectResponse, PlainTextResponse
 from fastapi.templating import Jinja2Templates
 
+from privateindexer_client.core import logger
 from privateindexer_client.core import torrent_client, scan, database, server_interface, torrent_helper, gui_helper
 from privateindexer_client.core.config import APP_VERSION
-from privateindexer_client.core.logger import log
 
 router = APIRouter()
 templates = Jinja2Templates(directory="/app/src/templates")
@@ -17,13 +17,13 @@ async def root():
 
 @router.get("/dashboard", response_class=HTMLResponse)
 async def dashboard(request: Request):
-    log.debug("[GUI] Dashboard loaded")
+    logger.channel("gui").debug("Dashboard loaded")
     return templates.TemplateResponse(name="dashboard.html", context={"APP_VERSION": APP_VERSION}, request=request)
 
 
 @router.get("/dashboard/maindata")
 async def dashboard_maindata():
-    log.debug("[GUI] Main data fetched")
+    logger.channel("gui").debug("Main data fetched")
     main_data = {}
 
     try:
@@ -31,7 +31,7 @@ async def dashboard_maindata():
 
         main_data["torrents"] = mapped
     except Exception as e:
-        log.error(f"[GUI] Exception while getting torrent list: {e}")
+        logger.channel("gui").exception(f"Exception while getting torrent list: {e}")
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to get torrent list")
 
     try:
@@ -40,13 +40,13 @@ async def dashboard_maindata():
 
         main_data["client_stats"] = gui_helper.format_client_stats(stats_now, time_now, stats_prev, time_prev, all_time_download, all_time_upload)
     except Exception as e:
-        log.error(f"[GUI] Exception while getting session info: {e}")
+        logger.channel("gui").exception(f"Exception while getting session info: {e}")
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to get session info")
 
     try:
         main_data["scanner_status"] = {"state": scan.SCAN_PROCESS_STATE, "total_items": scan.SCAN_TOTAL_ITEMS, "done_items": scan.SCAN_DONE_ITEMS}
     except Exception as e:
-        log.error(f"[GUI] Exception while getting scanner info: {e}")
+        logger.channel("gui").exception(f"Exception while getting scanner info: {e}")
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to get scanner info")
 
     return main_data
@@ -54,7 +54,7 @@ async def dashboard_maindata():
 
 @router.get("/dashboard/user")
 async def dashboard_user_stats():
-    log.debug("[GUI] User statistics fetched")
+    logger.channel("gui").debug("User statistics fetched")
     user_data = await server_interface.fetch_indexer_user_data()
     if not user_data:
         # we don't log the error to console here because fetch_indexer_user_data() does for us
@@ -64,13 +64,13 @@ async def dashboard_user_stats():
 
 @router.post("/dashboard/delete_torrent")
 async def delete_torrent(torrent_hash: str = Query(), remove_downloads: bool = Query()):
-    log.debug("[GUI] GUI request to delete torrent")
+    logger.channel("gui").debug("GUI request to delete torrent")
 
     # gather the info about the torrent
     result = await database.fetch_one("SELECT infohash, torrent_path FROM torrents WHERE infohash = ?", (torrent_hash,))
 
     if not result:
-        log.warning(f"[GUI] Torrent hash not found: {torrent_hash}")
+        logger.channel("gui").warning(f"Torrent hash not found: {torrent_hash}")
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Torrent hash not found")
 
     torrent_path = result["torrent_path"]
@@ -84,7 +84,7 @@ async def delete_torrent(torrent_hash: str = Query(), remove_downloads: bool = Q
         # remove from database and delete torrent file
         await torrent_helper.remove_torrent_from_database(infohash, torrent_file=torrent_path)
     except Exception as e:
-        log.error(f"[GUI] Exception while deleting torrent file: {e}")
+        logger.channel("gui").exception(f"Exception while deleting torrent file: {e}")
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to delete torrent file from disk")
 
     raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to remove torrent from client")
