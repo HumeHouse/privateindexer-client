@@ -102,8 +102,8 @@ def map_stats_to_qbit(stats_now: dict[str, int] | None, time_now: float | None, 
     # all-time totals
     mapped = {"alltime_dl": all_time_download, "alltime_ul": all_time_upload}
 
-    # global ratio is UL/DL if UL>0
-    if all_time_upload > 0:
+    # global ratio is UL/DL if UL>0 and DL>0
+    if all_time_upload > 0 and all_time_download > 0:
         mapped["global_ratio"] = round(all_time_upload / all_time_download, 2)
     else:
         mapped["global_ratio"] = 0.0
