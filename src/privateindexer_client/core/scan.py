@@ -113,6 +113,16 @@ async def scan_media_library(media_data_entries: list[MediaDataEntry], hash_exec
             SCAN_DONE_ITEMS += 1
             continue
 
+        # detect category from parent directory
+        category_id = media_helper.detect_torznab_category(parent_directory)
+
+        # ensure the category is valid
+        if category_id == 0:
+            log.warning(f"[SCAN] Category is not valid, skipped: {parent_directory}")
+            # increment global items counter
+            SCAN_DONE_ITEMS += 1
+            continue
+
         total_entries += 1
 
         # loop through all the files in this media entry and compare to database files
