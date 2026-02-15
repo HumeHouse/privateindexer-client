@@ -1,9 +1,9 @@
 import os
 
 from privateindexer_client.core import httpx_request, arr_formatter, utils
+from privateindexer_client.core import logger
 from privateindexer_client.core.arr_formatter import VIDEO_EXTRACTORS
 from privateindexer_client.core.config import RADARR_URL, RADARR_API_KEY
-from privateindexer_client.core.logger import log
 
 
 async def test_connection():
@@ -15,11 +15,11 @@ async def test_connection():
             response = await client.get(f"{RADARR_URL}/api", headers={"X-API-Key": RADARR_API_KEY}, timeout=30)
 
             if response.status_code == 200:
-                log.info(f"[RADARR] Connected to Radarr")
+                logger.channel("radarr").info(f"Connected to Radarr")
             else:
-                log.critical(f"[RADARR] Failed to connect to Radarr: {response.status_code} - {response.text}")
+                logger.channel("radarr").critical(f"Failed to connect to Radarr: {response.status_code} - {response.text}")
     except Exception as e:
-        log.error(f"[RADARR] Exception while testing Radarr connection: {e}")
+        logger.channel("radarr").exception(f"Exception while testing Radarr connection: {e}")
 
 
 async def fetch_root_folders() -> list[str]:
@@ -32,11 +32,11 @@ async def fetch_root_folders() -> list[str]:
             response = await client.get(f"{RADARR_URL}/api/v3/rootfolder", headers={"X-API-Key": RADARR_API_KEY}, timeout=30)
 
             if response.status_code != 200:
-                log.critical(f"[RADARR] Failed to fetch root folders: {response.status_code} - {response.text}")
+                logger.channel("radarr").critical(f"Failed to fetch root folders: {response.status_code} - {response.text}")
                 return []
 
             root_folders = response.json()
-            log.debug(f"[RADARR] Fetched root folders ({len(root_folders)} directories)")
+            logger.channel("radarr").debug(f"Fetched root folders ({len(root_folders)} directories)")
 
             tracked_root_folders = []
             # check each root folder for access and add to tracked paths
@@ -44,15 +44,15 @@ async def fetch_root_folders() -> list[str]:
                 root_folder_path = root_folder_entry["path"]
                 # skip if we can't access this directory
                 if not os.path.exists(root_folder_path):
-                    log.warning(f"[RADARR] Unable to access root folder: {root_folder_path}")
+                    logger.channel("radarr").warning(f"Unable to access root folder: {root_folder_path}")
                     continue
 
                 tracked_root_folders.append(root_folder_path)
-                log.debug(f"[RADARR] Tracking Radarr path: {root_folder_path}")
+                logger.channel("radarr").debug(f"Tracking Radarr path: {root_folder_path}")
 
             return tracked_root_folders
     except Exception as e:
-        log.error(f"[RADARR] Exception while fetching root folders: {e}")
+        logger.channel("radarr").exception(f"Exception while fetching root folders: {e}")
         return []
 
 
@@ -65,7 +65,7 @@ async def fetch_movie_library(tracked_root_folders: list[str]) -> list[dict]:
             response = await client.get(f"{RADARR_URL}/api/v3/movie", headers={"X-API-Key": RADARR_API_KEY}, timeout=30)
 
         if response.status_code != 200:
-            log.critical(f"[RADARR] Failed to fetch movie library: {response.status_code} - {response.text}")
+            logger.channel("radarr").critical(f"Failed to fetch movie library: {response.status_code} - {response.text}")
             return []
 
         movie_response = response.json()
@@ -86,21 +86,21 @@ async def fetch_movie_library(tracked_root_folders: list[str]) -> list[dict]:
 
             # skip invalid files
             if not utils.valid_file(movie_path):
-                log.warning(f"[RADARR] Invalid file path discovered: {movie_path}")
+                logger.channel("radarr").warning(f"Invalid file path discovered: {movie_path}")
                 continue
 
             aggregated_metadata = arr_formatter.aggregate_metadata([movie["movieFile"]], app_name="RADARR", extractors=VIDEO_EXTRACTORS, )
             metadata_tags = arr_formatter.format_tags(aggregated_metadata)
             title = f"{movie["title"]} ({movie["year"]}) {metadata_tags}"
 
-            log.debug(f"[RADARR] Found movie: {title}")
+            logger.channel("radarr").debug(f"Found movie: {title}")
             final_entries.append({"id": movie_id, "title": title, "files": [movie_path], })
 
-        log.debug(f"[RADARR] Fetched movie library ({len(final_entries)} movies)")
+        logger.channel("radarr").debug(f"Fetched movie library ({len(final_entries)} movies)")
 
         return final_entries
     except Exception as e:
-        log.error(f"[RADARR] Exception while fetching movie library: {e}")
+        logger.channel("radarr").exception(f"Exception while fetching movie library: {e}")
         return []
 
 
@@ -113,12 +113,12 @@ async def fetch_movie_metadata(movie_id: str) -> dict:
             response = await client.get(f"{RADARR_URL}/api/v3/movie/{movie_id}", headers={"X-API-Key": RADARR_API_KEY}, timeout=30)
 
             if response.status_code != 200:
-                log.critical(f"[RADARR] Failed to fetch movie metadata for movie ID {movie_id}: {response.status_code} - {response.text}")
+                logger.channel("radarr").critical(f"Failed to fetch movie metadata for movie ID {movie_id}: {response.status_code} - {response.text}")
                 return []
 
             movie_response = response.json()
-            log.debug(f"[RADARR] Fetched metadata for movie ID {movie_id}")
+            logger.channel("radarr").debug(f"Fetched metadata for movie ID {movie_id}")
             return movie_response
     except Exception as e:
-        log.error(f"[RADARR] Exception while fetching movie metadata for movie ID {movie_id}: {e}")
+        logger.channel("radarr").exception(f"Exception while fetching movie metadata for movie ID {movie_id}: {e}")
         return []

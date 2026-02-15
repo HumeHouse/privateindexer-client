@@ -2,7 +2,7 @@ from typing import Set, Callable, Any
 
 from pydantic import BaseModel, Field
 
-from privateindexer_client.core.logger import log
+from privateindexer_client.core import logger
 
 ExtractorMap = dict[str, Callable[[dict], Any]]
 
@@ -91,7 +91,7 @@ def aggregate_metadata(items: list[dict], app_name: str, extractors: ExtractorMa
                 # add the value to the set in the aggregated metadata
                 getattr(aggregated, field).add(value)
             except Exception as e:
-                log.error(f"[{app_name}] Exception while extracting field {field}: {e}")
+                logger.channel(app_name).exception(f"Exception while extracting field {field}: {e}", exc_info=True)
 
     return aggregated
 

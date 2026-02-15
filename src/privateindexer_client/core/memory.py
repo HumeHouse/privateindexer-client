@@ -2,8 +2,8 @@ import asyncio
 
 import psutil
 
+from privateindexer_client.core import logger
 from privateindexer_client.core.config import MEMORY_LOG_INTERVAL
-from privateindexer_client.core.logger import log
 from privateindexer_client.core.utils import format_bytes
 
 _max_memory = 0
@@ -15,7 +15,7 @@ async def periodic_memory_task():
     Periodically logs memory utilization of process to console
     """
     global _max_memory
-    log.debug("[MEMORY] Task loop started")
+    logger.channel("memory").debug("Task loop started")
     while True:
         await asyncio.sleep(MEMORY_LOG_INTERVAL)
         try:
@@ -40,10 +40,10 @@ async def periodic_memory_task():
             # keep track of max utilization
             _max_memory = max(_max_memory, mem_total)
 
-            log.info(f"[MEMORY] Main: {format_bytes(mem_main)} | "
-                     f"Children: {format_bytes(mem_children)} ({active_child_count} active processes) | "
-                     f"Total: {format_bytes(mem_total)} | "
-                     f"Peak: {format_bytes(_max_memory)}")
+            logger.channel("memory").info(f"Main: {format_bytes(mem_main)} | "
+                                          f"Children: {format_bytes(mem_children)} ({active_child_count} active processes) | "
+                                          f"Total: {format_bytes(mem_total)} | "
+                                          f"Peak: {format_bytes(_max_memory)}")
 
         except Exception as e:
-            log.error(f"[MEMORY] Exception during memory task: {e}")
+            logger.channel("memory").exception(f"Exception during memory task: {e}")

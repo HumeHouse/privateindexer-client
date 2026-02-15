@@ -6,10 +6,10 @@ from urllib.parse import urlparse
 
 import libtorrent as lt
 
+from privateindexer_client.core import logger
 from privateindexer_client.core import media_helper, database, utils
 from privateindexer_client.core.cache import Cache
 from privateindexer_client.core.config import TORRENTS_DIR, APP_VERSION, INDEXER_API_URL
-from privateindexer_client.core.logger import log
 
 
 def generate_media_hash(media_paths: list[str]) -> list[bytes]:
@@ -18,7 +18,7 @@ def generate_media_hash(media_paths: list[str]) -> list[bytes]:
     """
     before = datetime.datetime.now()
     parent_directory = os.path.dirname(media_paths[0])
-    log.debug(f"[TORRENT] Generating hashes for '{parent_directory}'")
+    logger.channel("torrent").debug(f"Generating hashes for '{parent_directory}'")
 
     try:
         # initialize a file storage and add the media to it
@@ -28,7 +28,7 @@ def generate_media_hash(media_paths: list[str]) -> list[bytes]:
         for media_path in media_paths:
             # check if file is valid
             if not utils.valid_file(media_path):
-                log.warning(f"[TORRENT] File invalid, it will not be hashed: {media_path}")
+                logger.channel("torrent").warning(f"File invalid, it will not be hashed: {media_path}")
                 continue
             file_size = os.path.getsize(media_path)
             fs.add_file(os.path.join(os.path.basename(parent_directory), os.path.basename(media_path)), file_size)
@@ -42,11 +42,11 @@ def generate_media_hash(media_paths: list[str]) -> list[bytes]:
         hashes = [torrent_info.hash_for_piece(i) for i in range(torrent_info.num_pieces())]
 
     except Exception as e:
-        log.error(f"[TORRENT] Exception while generating hashes for '{parent_directory}': {e}")
+        logger.channel("torrent").exception(f"Exception while generating hashes for '{parent_directory}': {e}")
         return []
 
     delta = datetime.datetime.now() - before
-    log.debug(f"[TORRENT] Hashed {len(hashes)} chunks from '{parent_directory}' in {delta}")
+    logger.channel("torrent").debug(f"Hashed {len(hashes)} chunks from '{parent_directory}' in {delta}")
 
     return hashes
 
@@ -97,7 +97,7 @@ def torrent_matches_media(torrent_path: str, media_paths: list[str]) -> bool:
 
         return file_hashes == torrent_hashes
     except Exception as e:
-        log.error(f"[TORRENT] Exception while comparing hashes for '{parent_directory}' to '{torrent_path}': {e}")
+        logger.channel("torrent").exception(f"Exception while comparing hashes for '{parent_directory}' to '{torrent_path}': {e}")
         return False
 
 
@@ -129,7 +129,7 @@ def create_torrent(media_paths: list[str], torrent_name: str, app_id: int, outpu
     if output_torrent_file and os.path.exists(output_torrent_file):
         is_new_torrent = False
         # skip generation if torrent exists
-        log.info(f"[TORRENT] Torrent file for '{torrent_name}' already exists, generation will be skipped")
+        logger.channel("torrent").info(f"Torrent file for '{torrent_name}' already exists, generation will be skipped")
 
         # attempt to pull the file size and hash information from the torrent file, otherwise fail and remove torrent file from disk
         try:
@@ -138,17 +138,17 @@ def create_torrent(media_paths: list[str], torrent_name: str, app_id: int, outpu
             torrent_infohash = str(hashes.v2)
             total_media_size = info.files().total_size()
         except Exception as e:
-            log.error(f"[TORRENT] Exception while reading hash for '{output_torrent_file}', it has been removed: {e}")
+            logger.channel("torrent").exception(f"Exception while reading hash for '{output_torrent_file}', it has been removed: {e}")
             try:
                 os.unlink(output_torrent_file)
             except Exception as e:
-                log.error(f"[TORRENT] Exception while removing torrent file '{output_torrent_file}': {e}")
+                logger.channel("torrent").exception(f"Exception while removing torrent file '{output_torrent_file}': {e}")
             return None, False
 
     else:
         is_new_torrent = True
 
-        log.info(f"[TORRENT] Creating torrent '{torrent_name}'")
+        logger.channel("torrent").info(f"Creating torrent '{torrent_name}'")
 
         # create the file storage object
         fs = lt.file_storage()
@@ -157,7 +157,7 @@ def create_torrent(media_paths: list[str], torrent_name: str, app_id: int, outpu
         for media_path in media_paths:
             # check if file is valid
             if not utils.valid_file(media_path):
-                log.warning(f"[TORRENT] File invalid, it will not be added to torrent: {media_path}")
+                logger.channel("torrent").warning(f"File invalid, it will not be added to torrent: {media_path}")
                 continue
 
             file_size = os.path.getsize(media_path)
@@ -216,7 +216,7 @@ def create_torrent_threadsafe(media_paths: list[str], torrent_name: str, app_id:
     try:
         return create_torrent(media_paths, torrent_name, app_id, output_torrent_file)
     except Exception as e:
-        log.error(f"[TORRENT] Exception while creating torrent for '{torrent_name}': {e}")
+        logger.channel("torrent").exception(f"Exception while creating torrent for '{torrent_name}': {e}")
         return None, False
 
 
@@ -226,7 +226,7 @@ def find_existing_torrent(torrents: list[dict[str, Any]], media_paths: list[str]
     Returns the existing torrent path if found, otherwise None
     """
     parent_directory = os.path.dirname(media_paths[0])
-    log.debug(f"[SCAN] Trying to locate torrent file for: {parent_directory}")
+    logger.channel("torrent").debug(f"Trying to locate torrent file for: {parent_directory}")
 
     # find a torrent whose file hashes match that of what we are looking for
     for torrent in torrents:
@@ -242,10 +242,10 @@ def find_existing_torrent(torrents: list[dict[str, Any]], media_paths: list[str]
             continue
 
         # if all checks pass, the torrent is a match
-        log.debug(f"[TORRENT] Matched '{parent_directory}' to '{torrent_path}' by hash")
+        logger.channel("torrent").debug(f"Matched '{parent_directory}' to '{torrent_path}' by hash")
         return torrent
 
-    log.debug(f"[TORRENT] Couldn't find torrent file for: {parent_directory}")
+    logger.channel("torrent").debug(f"Couldn't find torrent file for: {parent_directory}")
     return None
 
 
@@ -267,7 +267,7 @@ async def add_torrent_to_database(name: str, size: int, torrent_path: str, uploa
         for file_path in file_paths:
             # check if file exists and is actually a file
             if not utils.valid_file(file_path):
-                log.warning(f"[TORRENT] File path invalid, not added to database: {file_path}")
+                logger.channel("torrent").warning(f"File path invalid, not added to database: {file_path}")
                 continue
 
             # get file size and insert into media table
@@ -285,7 +285,7 @@ async def remove_torrent_from_database(torrent_hash: str, remove_torrent_file: b
     result = await database.fetch_one("SELECT id, torrent_path FROM torrents WHERE infohash = ?", (torrent_hash,))
     torrent_id = result.get("id")
     if torrent_id is None:
-        log.warning(f"[TORRENT] Torrent hash not in database during removal: {torrent_id}")
+        logger.channel("torrent").warning(f"Torrent hash not in database during removal: {torrent_id}")
 
     if remove_torrent_file:
         if torrent_file is None:
@@ -296,7 +296,7 @@ async def remove_torrent_from_database(torrent_hash: str, remove_torrent_file: b
                 try:
                     os.unlink(torrent_file)
                 except Exception as e:
-                    log.error(f"[TORRENT] Exception while removing torrent file '{torrent_file}': {e}")
+                    logger.channel("torrent").exception(f"Exception while removing torrent file '{torrent_file}': {e}")
 
     if torrent_id is not None:
         # purge media first, then torrent

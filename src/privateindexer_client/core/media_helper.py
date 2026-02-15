@@ -1,9 +1,9 @@
 import enum
 import os.path
 
+from privateindexer_client.core import logger
 from privateindexer_client.core import radarr, sonarr, lidarr
 from privateindexer_client.core.config import RADARR_URL, SONARR_URL, LIDARR_URL
-from privateindexer_client.core.logger import log
 
 _torznab_category_paths: list[dict[str, str]] = []
 RADARR_ROOT_CATEGORY = 2000
@@ -96,7 +96,7 @@ async def get_managed_media_data() -> list[MediaDataEntry]:
 
                 media_data.append(media_entry)
     except Exception as e:
-        log.error(f"[RADARR] Exception while gathering media data: {e}")
+        logger.channel("radarr").exception(f"Exception while gathering media data: {e}")
 
     try:
         # fetch all TV entries from Sonarr if configured
@@ -119,7 +119,7 @@ async def get_managed_media_data() -> list[MediaDataEntry]:
 
                 media_data.append(media_entry)
     except Exception as e:
-        log.error(f"[SONARR] Exception while gathering media data: {e}")
+        logger.channel("sonarr").exception(f"Exception while gathering media data: {e}")
 
     try:
         # fetch all music entries from Lidarr if configured
@@ -142,6 +142,6 @@ async def get_managed_media_data() -> list[MediaDataEntry]:
 
                 media_data.append(media_entry)
     except Exception as e:
-        log.error(f"[LIDARR] Exception while gathering media data: {e}")
+        logger.channel("lidarr").exception(f"Exception while gathering media data: {e}")
 
     return media_data

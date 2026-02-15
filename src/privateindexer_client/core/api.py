@@ -6,9 +6,8 @@ import libtorrent as lt
 from fastapi import Depends, HTTPException, Query, File, Request, Form, APIRouter, status, UploadFile
 from fastapi.responses import PlainTextResponse, JSONResponse
 
-from privateindexer_client.core import torrent_client, utils, httpx_request, database, qbit_translator, torrent_helper
+from privateindexer_client.core import torrent_client, utils, httpx_request, database, qbit_translator, torrent_helper, logger
 from privateindexer_client.core.config import API_KEY, DOWNLOADS_DIR, INDEXER_API_URL, API_USERNAME, API_PASSWORD
-from privateindexer_client.core.logger import log
 
 router = APIRouter(prefix="/api/v2")
 
@@ -72,16 +71,16 @@ async def auth_login(request: Request, username: str = Form(), password: str = F
     Returns a SID cookie for compatibility with the user's API_KEY
     """
     if not username or not password:
-        log.warning(f"[API] API login failed, missing username or password ({request.headers.get("user-agent")})")
+        logger.channel("api").warning(f"API login failed, missing username or password ({request.headers.get("user-agent")})")
         return PlainTextResponse("Fails.")
     if username != API_USERNAME or password != API_PASSWORD:
-        log.warning(f"[API] API login failed, wrong username or password: {username} ({request.headers.get("user-agent")})")
+        logger.channel("api").warning(f"API login failed, wrong username or password: {username} ({request.headers.get("user-agent")})")
         return PlainTextResponse("Fails.")
 
     sid = utils.generate_sid()
     SESSIONS[sid] = time.time() + SESSION_TTL
 
-    log.debug(f"[API] API login successful ({request.headers.get("user-agent")})")
+    logger.channel("api").debug(f"API login successful ({request.headers.get("user-agent")})")
 
     response = PlainTextResponse("Ok.")
     response.set_cookie(key="SID", value=sid, httponly=True, secure=False, path="/")
@@ -94,7 +93,7 @@ async def get_preferences(request: Request):
     Mimics qBittorrent endpoint /api/v2/app/preferences
     Returns static preferences to allow apps to connect properly
     """
-    log.debug(f"[API] Preferences requested ({request.headers.get("user-agent")})")
+    logger.channel("api").debug(f"Preferences requested ({request.headers.get("user-agent")})")
 
     preferences = {
         "save_path": DOWNLOADS_DIR,  # static directory to be mounted by user configuration
@@ -115,14 +114,14 @@ async def get_torrent_info(request: Request, category: str = Query(None)):
     """
     Mimics qBittorrent endpoint /api/v2/torrents/info
     """
-    log.debug(f"[API] Torrent list requested{f" (category: {category})" if category else ""} ({request.headers.get("user-agent")})")
+    logger.channel("api").debug(f"Torrent list requested{f" (category: {category})" if category else ""} ({request.headers.get("user-agent")})")
 
     try:
         mapped = await qbit_translator.map_torrents_to_qbit(torrent_client.get_all_torrents(), category_filter=category)
 
         return JSONResponse(mapped)
     except Exception as e:
-        log.error(f"[API] Exception while getting torrent status: {e}")
+        logger.channel("api").exception(f"Exception while getting torrent status: {e}")
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
@@ -131,7 +130,7 @@ async def get_main_data(request: Request):
     """
     Mimics qBittorrent endpoint /api/v2/sync/maindata
     """
-    log.debug(f"[API] Main data requested ({request.headers.get("user-agent")})")
+    logger.channel("api").debug(f"Main data requested ({request.headers.get("user-agent")})")
 
     main_data = {}
 
@@ -140,7 +139,7 @@ async def get_main_data(request: Request):
 
         main_data["torrents"] = mapped
     except Exception as e:
-        log.error(f"[API] Exception while getting torrent list: {e}")
+        logger.channel("api").exception(f"Exception while getting torrent list: {e}")
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
     try:
@@ -149,7 +148,7 @@ async def get_main_data(request: Request):
 
         main_data["server_state"] = qbit_translator.map_stats_to_qbit(stats_now, time_now, stats_prev, time_prev, all_time_download, all_time_upload)
     except Exception as e:
-        log.error(f"[API] Exception while getting session info: {e}")
+        logger.channel("api").exception(f"Exception while getting session info: {e}")
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR)
     return JSONResponse(main_data)
 
@@ -160,7 +159,7 @@ async def get_categories(request: Request):
     Mimics qBittorrent endpoint /api/v2/torrents/categories
     Returns a dict of the categories in config file
     """
-    log.debug(f"[API] Categories requested ({request.headers.get("user-agent")})")
+    logger.channel("api").debug(f"Categories requested ({request.headers.get("user-agent")})")
 
     categories = qbit_translator.get_torrent_categories()
 
@@ -173,17 +172,17 @@ async def create_category(request: Request, category: str = Form()):
     Mimics qBittorrent endpoint /api/v2/torrents/createCategory
     Adds a new category to the config file if it doesn't exist
     """
-    log.debug(f"[API] New category requested ({request.headers.get("user-agent")})")
+    logger.channel("api").debug(f"New category requested ({request.headers.get("user-agent")})")
 
     category = qbit_translator.validate_category_name(category)
     # validate category name before proceeding
     if category is None:
-        log.warning(f"[API] Refusing to create category due to invalid name: {category}")
+        logger.channel("api").warning(f"Refusing to create category due to invalid name: {category}")
         raise HTTPException(status_code=status.HTTP_409_CONFLICT)
 
     # don't store duplicate categories
     if category in qbit_translator.get_torrent_categories().keys():
-        log.warning(f"[API] Refusing to create duplicate category: {category}")
+        logger.channel("api").warning(f"Refusing to create duplicate category: {category}")
         raise HTTPException(status_code=status.HTTP_409_CONFLICT)
 
     save_dir = os.path.join(DOWNLOADS_DIR, category)
@@ -192,10 +191,10 @@ async def create_category(request: Request, category: str = Form()):
     try:
         qbit_translator.add_torrent_category(category, save_dir)
     except Exception as e:
-        log.error(f"[API] Exception while creating category directory {save_dir}: {e}")
+        logger.channel("api").exception(f"Exception while creating category directory {save_dir}: {e}")
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-    log.info(f"[API] Created new category '{category}' at {save_dir} ({request.headers.get("user-agent")})")
+    logger.channel("api").info(f"Created new category '{category}' at {save_dir} ({request.headers.get("user-agent")})")
 
     return PlainTextResponse("Ok.")
 
@@ -215,16 +214,16 @@ async def add_torrent(
     qBittorrent technically allows multiple URLs or files, but we don't
     Only torrents created from PrivateIndexer are allowed
     """
-    log.debug(f"[API] New torrent requested ({request.headers.get("user-agent")})")
+    logger.channel("api").debug(f"New torrent requested ({request.headers.get("user-agent")})")
 
     if not torrents and not urls:
-        log.warning(f"[API] No file upload or URL provided ({request.headers.get("user-agent")})")
+        logger.channel("api").warning(f"No file upload or URL provided ({request.headers.get("user-agent")})")
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST)
 
     if category:
         # ensure category exists before storing data in it
         if category not in qbit_translator.get_torrent_categories().keys():
-            log.warning(f"[API] Refusing to add torrent, category doesn't exist: {category}")
+            logger.channel("api").warning(f"Refusing to add torrent, category doesn't exist: {category}")
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST)
 
         save_dir = os.path.join(DOWNLOADS_DIR, category)
@@ -239,7 +238,7 @@ async def add_torrent(
     # save torrent data to a temporary file
     if torrents:
         filename = torrents.filename
-        log.debug(f"[API] Saving torrent file '{filename}' to temp directory")
+        logger.channel("api").debug(f"Saving torrent file '{filename}' to temp directory")
         # write the file stream to temporary file
         try:
             contents = await torrents.read()
@@ -247,7 +246,7 @@ async def add_torrent(
             with open(torrent_file, "wb") as f:
                 f.write(contents)
         except Exception as e:
-            log.error(f"[API] Exception while saving torrent '{filename}': {e}")
+            logger.channel("api").exception(f"Exception while saving torrent '{filename}': {e}")
             raise HTTPException(status_code=status.INTERNAL_SERVER_ERROR)
     else:
         # we only allow a single URL to be added at a time
@@ -256,7 +255,7 @@ async def add_torrent(
         # validate torrent URL
         torrent_url = torrent_helper.validate_torrent_url(torrent_url)
         if torrent_url is None:
-            log.critical(f"[API] URL is invalid, refusing to download: {torrent_url}")
+            logger.channel("api").critical(f"URL is invalid, refusing to download: {torrent_url}")
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST)
 
         # download torrent from URL
@@ -264,27 +263,27 @@ async def add_torrent(
             async with httpx_request.get_client() as client:
                 response = await client.get(torrent_url)
                 if response.status_code != 200:
-                    log.critical(f"[API] Failed to download new torrent file ({torrent_url}): {response.status_code} - {response.text}")
+                    logger.channel("api").critical(f"Failed to download new torrent file ({torrent_url}): {response.status_code} - {response.text}")
                     raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST)
                 torrent_file = os.path.join(tempfile.gettempdir(), os.path.basename(torrent_url))
                 with open(torrent_file, "wb") as f:
                     f.write(response.content)
         except Exception as e:
-            log.error(f"[API] Exception while downloading URL '{torrent_url}': {e}")
+            logger.channel("api").exception(f"Exception while downloading URL '{torrent_url}': {e}")
             raise HTTPException(status_code=status.INTERNAL_SERVER_ERROR)
 
-    log.debug(f"[API] Validating torrent: {torrent_file}")
+    logger.channel("api").debug(f"Validating torrent: {torrent_file}")
     info = lt.torrent_info(torrent_file)
 
     # make sure the torrent we're trying to download has v2 infohash
     hashes = info.info_hashes()
     if not hashes.has_v2():
-        log.warning(f"[API] Refusing to keep torrent, no v2 hash (not from PrivateIndexer?): {torrent_file}")
+        logger.channel("api").warning(f"Refusing to keep torrent, no v2 hash (not from PrivateIndexer?): {torrent_file}")
         try:
             if os.path.exists(torrent_file):
                 os.unlink(torrent_file)
         except Exception as e:
-            log.error(f"[API] Exception while removing torrent file '{torrent_file}': {e}")
+            logger.channel("api").exception(f"Exception while removing torrent file '{torrent_file}': {e}")
             raise HTTPException(status_code=status.INTERNAL_SERVER_ERROR)
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST)
     torrent_hash = str(hashes.v2)
@@ -297,10 +296,10 @@ async def add_torrent(
             # this means the torrent exists in the server database
             pass
         elif response.status_code == 404:
-            log.warning(f"[API] Refusing to keep torrent, hash not found on PrivateIndexer server: {torrent_hash}")
+            logger.channel("api").warning(f"Refusing to keep torrent, hash not found on PrivateIndexer server: {torrent_hash}")
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST)
         else:
-            log.critical(f"[API] Unknown error code occurred when validating hash '{torrent_hash}' with indexer: {response.status_code} - {response.text}")
+            logger.channel("api").critical(f"Unknown error code occurred when validating hash '{torrent_hash}' with indexer: {response.status_code} - {response.text}")
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST)
 
     # attempt to add the torrent to the download client and match qBittorrent return text
@@ -311,7 +310,7 @@ async def add_torrent(
         try:
             os.unlink(torrent_file)
         except Exception as e:
-            log.error(f"[API] Exception while removing torrent file '{torrent_file}': {e}")
+            logger.channel("api").exception(f"Exception while removing torrent file '{torrent_file}': {e}")
             raise HTTPException(status_code=status.INTERNAL_SERVER_ERROR)
 
     return PlainTextResponse(result)
@@ -328,7 +327,7 @@ async def delete_torrent(
     Accepts a string of torrent hashes, separated by a | for multiple hashes
     Also accepts an optional deleteFiles parameter to remove downloaded torrent data
     """
-    log.debug(f"[API] Torrent removal requested ({request.headers.get("user-agent")})")
+    logger.channel("api").debug(f"Torrent removal requested ({request.headers.get("user-agent")})")
 
     split_hashes = hashes.split("|")
 
@@ -339,7 +338,7 @@ async def delete_torrent(
         result = await database.fetch_one("SELECT infohash, torrent_path FROM torrents WHERE infohash = ?", (torrent_hash,))
 
         if not result:
-            log.warning(f"[API] Torrent hash not found during delete request: {torrent_hash}")
+            logger.channel("api").warning(f"Torrent hash not found during delete request: {torrent_hash}")
             failures += 1
             continue
 
@@ -348,14 +347,14 @@ async def delete_torrent(
 
         # remove from torrent client
         if not await torrent_client.remove_torrent_by_hash(infohash, deleteFiles):
-            log.critical(f"[API] Failed to remove torrent with hash '{torrent_hash}' from torrent client")
+            logger.channel("api").critical(f"Failed to remove torrent with hash '{torrent_hash}' from torrent client")
             failures += 1
 
         try:
             # remove from database and delete torrent file
             await torrent_helper.remove_torrent_from_database(infohash, torrent_file=torrent_path)
         except Exception as e:
-            log.error(f"[API] Exception while deleting torrent file with hash '{torrent_hash}': {e}")
+            logger.channel("api").exception(f"Exception while deleting torrent file with hash '{torrent_hash}': {e}")
             failures += 1
             continue
 
