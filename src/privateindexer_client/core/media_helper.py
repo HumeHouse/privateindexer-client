@@ -1,4 +1,5 @@
 import enum
+import os.path
 
 from privateindexer_client.core import radarr, sonarr, lidarr
 from privateindexer_client.core.config import RADARR_URL, SONARR_URL, LIDARR_URL
@@ -30,9 +31,11 @@ class MediaDataEntry:
 def detect_torznab_category(file_path: str) -> int:
     """
     Tries to match the file's path with the known torznab category directories and returns its ID
+    Returns 0 for invalid category
     """
     for cat_info in _torznab_category_paths:
-        if file_path.startswith(cat_info["path"]):
+        category_path = cat_info["path"]
+        if os.path.commonpath([file_path, category_path]) == category_path:
             return cat_info["id"]
     return 0
 
