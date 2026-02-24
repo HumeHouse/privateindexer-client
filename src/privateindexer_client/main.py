@@ -139,8 +139,8 @@ async def lifespan(_: FastAPI):
     for task in APP_TASKS:
         try:
             task.cancel()
-        except Exception:
-            pass
+        except Exception as e:
+            logger.channel("app").exception(f"Exception while cancelling {task.get_name()} task: {e}")
 
     logger.channel("app").info(f"Shutting down executor process pools")
 
