@@ -1,6 +1,7 @@
 import os
 import tempfile
 import time
+from secrets import compare_digest
 
 import libtorrent as lt
 from fastapi import Depends, HTTPException, Query, File, Request, Form, APIRouter, status, UploadFile
@@ -73,7 +74,7 @@ async def auth_login(request: Request, username: str = Form(), password: str = F
     if not username or not password:
         logger.channel("api").warning(f"API login failed, missing username or password ({request.headers.get("user-agent")})")
         return PlainTextResponse("Fails.")
-    if username != API_USERNAME or password != API_PASSWORD:
+    if username != API_USERNAME or compare_digest(password, API_PASSWORD):
         logger.channel("api").warning(f"API login failed, wrong username or password: {username} ({request.headers.get("user-agent")})")
         return PlainTextResponse("Fails.")
 
