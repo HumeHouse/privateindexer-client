@@ -4,7 +4,7 @@ import threading
 
 from privateindexer_client.core import logger
 
-APP_VERSION = "1.10.1"
+APP_VERSION = "1.10.2"
 
 DATA_DIR = "/app/data"
 
