@@ -178,32 +178,24 @@ async def fetch_series_episodes(series_id: str) -> list[dict]:
     """
     try:
         async with httpx_request.get_client() as client:
-            params = {"seriesID": series_id, }
-            episode_file_response = await client.get(f"{SONARR_URL}/api/v3/episodeFile", headers={"X-API-Key": SONARR_API_KEY}, params=params, timeout=30, )
+            params = {"seriesID": series_id, "includeEpisodeFile": True}
 
-            if episode_file_response.status_code != 200:
-                logger.channel("sonarr").critical(f"Failed to fetch episode files: {episode_file_response.status_code}")
+            response = await client.get(f"{SONARR_URL}/api/v3/episode", headers={"X-API-Key": SONARR_API_KEY}, params=params, timeout=30, )
+
+            if response.status_code != 200:
+                logger.channel("sonarr").critical(f"Failed to fetch episode data for series ID {series_id}: {response.status_code} - {response.text}")
                 return []
 
-            episode_files = episode_file_response.json()
+            episodes = response.json()
 
-            episode_response = await client.get(f"{SONARR_URL}/api/v3/episode", headers={"X-API-Key": SONARR_API_KEY}, params=params, timeout=30, )
-
-            if episode_response.status_code != 200:
-                logger.channel("sonarr").critical(f"Failed to fetch episodes data: {episode_response.status_code}")
-                return []
-
-            episodes = episode_response.json()
-
-        # merge episodes with episode files based on episodeFileId
-        files_by_id = {f["id"]: f for f in episode_files}
+        # merge episode data with with episode file data
         merged_response = []
         for episode in episodes:
             if not episode["hasFile"]:
                 continue
-            episode_file_id = episode.get("episodeFileId")
+            episode_file = episode.get("episodeFile")
             merged_episode = {**episode}
-            merged_episode.update(files_by_id[episode_file_id])
+            merged_episode.update(episode_file)
             merged_response.append(merged_episode)
 
         logger.channel("sonarr").debug(f"Fetched episodes for series ID {series_id} ({len(merged_response)} episodes)")
