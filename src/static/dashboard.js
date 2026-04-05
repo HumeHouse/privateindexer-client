@@ -279,6 +279,7 @@ function applySortingAndRender() {
     // sort data by actively sorted columns in sortConfig
     const sortExtractors = {
         name: row => row["name"].toLowerCase(),
+        category: row => row["category"],
         size: row => row["size"],
         progress: row => row["progress"],
         state: row => row["state"],
@@ -360,6 +361,19 @@ function formatRatio(ratio) {
     return ratio === -1 ? "∞" : ratio.toFixed(2);
 }
 
+function formatCategory(category) {
+    switch (category) {
+        case 2000:
+            return "Radarr";
+        case 3000:
+            return "Lidarr";
+        case 5000:
+            return "Sonarr";
+        default:
+            return "Unknown"
+    }
+}
+
 function renderTable(torrents) {
     const $tbody = $("#torrents-container");
     $tbody.empty();
@@ -396,6 +410,7 @@ function renderTable(torrents) {
 
         row.html(`
                 <td>${torrent["name"]}</td>
+                <td>${formatCategory(torrent["category"])}</td>
                 <td>${formatBytes(torrent["size"])}</td>
                 <td>
                     <div class="progress" style="height:1.5rem;">
