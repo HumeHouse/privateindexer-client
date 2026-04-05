@@ -135,7 +135,7 @@ async def fetch_music_library(tracked_root_folders: list[str]) -> list[dict]:
                     continue
 
                 # add all the track parent directories to a set to ensure none are unique
-                shared_directory = len({os.path.dirname(path) for path in album_tracks}) == 1
+                shared_directory = len({os.path.dirname(path) for path in track_paths}) == 1
 
                 # do not build album if tracks do not share a single directory
                 if not shared_directory:
