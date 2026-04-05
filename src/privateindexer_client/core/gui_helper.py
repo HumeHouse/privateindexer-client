@@ -74,8 +74,8 @@ async def format_torrents(client_torrents: list) -> dict:
     """
     Convert libtorrent session torrent status objects into a dict to be displayed in the dashboard
     """
-    torrents = await database.fetch_all("SELECT name, infohash FROM torrents")
-    name_hash_map = {torrent["infohash"]: torrent["name"] for torrent in torrents}
+    torrents = await database.fetch_all("SELECT name, infohash, category FROM torrents")
+    data_hash_map = {torrent["infohash"]: {"name": torrent["name"], "category": torrent["category"]} for torrent in torrents}
 
     formatted_torrents = []
 
@@ -89,14 +89,19 @@ async def format_torrents(client_torrents: list) -> dict:
         # normalize the infohash due to raw bytes out of the status
         torrent_hash = status.info_hashes.v2.to_bytes().hex()
 
+        torrent_data = data_hash_map.get(torrent_hash, {})
+
         # we want to show the name in the database, not the internal torrent name - it's usually ugly (we use the internal one as a fallback)
-        torrent_name = name_hash_map.get(torrent_hash, status.name)
+        torrent_name = torrent_data.get("name", status.name)
+
+        # use torrent category, or fall back to unknown (0)
+        torrent_category = torrent_data.get("category", 0)
 
         mapped = {"added_on": int(status.added_time or 0), "download_speed": status.download_payload_rate, "upload_speed": status.upload_payload_rate,
                   "session_download": status.total_payload_download, "session_upload": status.total_payload_upload, "eta": calculate_eta(status),
                   "infohash": torrent_hash, "name": torrent_name, "total_seeds": status.num_complete, "total_peers": status.num_incomplete,
                   "connected_peers": status.num_peers, "connected_seeds": status.num_seeds, "progress": round(status.progress, 3), "save_path": status.save_path,
-                  "size": status.total_wanted, "state": qbit_translator.map_state(status), }
+                  "size": status.total_wanted, "state": qbit_translator.map_state(status), "category": torrent_category}
 
         peers_list = []
         for p in torrent.get_peer_info():
