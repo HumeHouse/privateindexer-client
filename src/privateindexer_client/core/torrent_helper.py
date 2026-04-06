@@ -281,11 +281,14 @@ async def remove_torrent_from_database(torrent_hash: str, remove_torrent_file: b
     Delete torrent metadata from the database
     Optionally deletes torrent file
     """
+    torrent_id = None
     # fetch the torrent ID for this hash
     result = await database.fetch_one("SELECT id, torrent_path FROM torrents WHERE infohash = ?", (torrent_hash,))
-    torrent_id = result.get("id")
-    if torrent_id is None:
-        logger.channel("torrent").warning(f"Torrent hash not in database during removal: {torrent_id}")
+
+    if result:
+        torrent_id = result.get("id")
+        if torrent_id is None:
+            logger.channel("torrent").warning(f"Torrent hash not in database during removal: {torrent_id}")
 
     if remove_torrent_file:
         if torrent_file is None:
