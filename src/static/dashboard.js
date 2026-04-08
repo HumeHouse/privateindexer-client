@@ -394,7 +394,8 @@ function renderTable(torrents) {
     const pageItems = filtered.slice(start, end);
 
     pageItems.forEach(torrent => {
-        const rowClass = "state-" + torrent["state"];
+        const categoryClass = "category-" + torrent["category"];
+        const stateClass = "state-" + torrent["state"];
         const progress = (torrent["progress"] * 100).toFixed(1);
 
         const selectedClass = torrent["infohash"] === selectedTorrentId ? "selected-row" : "";
@@ -410,14 +411,14 @@ function renderTable(torrents) {
 
         row.html(`
                 <td>${torrent["name"]}</td>
-                <td>${formatCategory(torrent["category"])}</td>
+                <td class="${categoryClass}">${formatCategory(torrent["category"])}</td>
                 <td>${formatBytes(torrent["size"])}</td>
                 <td>
                     <div class="progress" style="height:1.5rem;">
                         <div class="progress-bar ${barClass} overflow-visible" role="progressbar" style="width: ${progress}%">${progress}%</div>
                     </div>
                 </td>
-                <td class="${rowClass}">${formatState(torrent["state"])}</td>
+                <td class="${stateClass}">${formatState(torrent["state"])}</td>
                 <td>${torrent["connected_seeds"]} (${torrent["total_seeds"]})</td>
                 <td>${torrent["connected_peers"]} (${torrent["total_peers"]})</td>
                 <td>${formatSpeed(torrent["download_speed"])}</td>
