@@ -137,3 +137,23 @@ body {
     background-color: rgba(108, 117, 125, 0.05) !important;
     color: #c5c5c5 !important;
 }
+
+.category-0 {
+    background-color: rgba(220, 53, 69, 0.2) !important;
+    color: #dc3545 !important;
+}
+
+.category-2000 {
+    background-color: rgba(255, 194, 48, 0.2) !important;
+    color: #ffc230 !important;
+}
+
+.category-3000 {
+    background-color: rgba(0, 146, 82, 0.2) !important;
+    color: #009252 !important;
+}
+
+.category-5000 {
+    background-color: rgba(0, 204, 255, 0.2) !important;
+    color: #00ccff !important;
+}
