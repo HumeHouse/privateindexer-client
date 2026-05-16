@@ -285,13 +285,13 @@ async def remove_torrent_from_database(torrent_hash: str, remove_torrent_file: b
     # fetch the torrent ID for this hash
     result = await database.fetch_one("SELECT id, torrent_path FROM torrents WHERE infohash = ?", (torrent_hash,))
 
-    if result:
+    if result is not None:
         torrent_id = result.get("id")
         if torrent_id is None:
             logger.channel("torrent").warning(f"Torrent hash not in database during removal: {torrent_id}")
 
     if remove_torrent_file:
-        if torrent_file is None:
+        if torrent_file is None and result is not None:
             torrent_file = result.get("torrent_path")
 
         if torrent_file is not None:
