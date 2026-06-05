@@ -6,10 +6,10 @@ from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
 from privateindexer_client.core import torrent_client, scan, api, gui, database, utils, sync, radarr, sonarr, cache, lidarr, memory, thread_executor, stats_manager, \
-    httpx_request, config, logger
+    config, logger, server_interface
 from privateindexer_client.core.cache import Cache
 from privateindexer_client.core.config import SCAN_INTERVAL, TORRENTING_PORT, APP_VERSION, MAX_THREADS, FASTRESUME_INTERVAL, RADARR_URL, SONARR_URL, SYNC_INTERVAL, \
-    CACHE_CLEAN_INTERVAL, LEW_MEMORY_MODE, LIDARR_URL, MEMORY_LOG_INTERVAL, ANNOUNCE_IP, TAG_SEARCH_RESULTS, INDEXER_API_URL, API_KEY
+    CACHE_CLEAN_INTERVAL, LEW_MEMORY_MODE, LIDARR_URL, MEMORY_LOG_INTERVAL
 
 APP_TASKS: list[Task] = []
 
@@ -83,29 +83,7 @@ async def lifespan(_: FastAPI):
     # attempt to authenticate with the API to validate the API key and check our external IP/port accessibility, otherwise warn console
     logger.channel("app").debug(f"Trying to connect to PrivateIndexer server")
     try:
-        async with httpx_request.get_client() as client:
-            params = {"v": APP_VERSION, "port": TORRENTING_PORT, "public_uploads": TAG_SEARCH_RESULTS}
-            if ANNOUNCE_IP:
-                params["announce_ip"] = ANNOUNCE_IP
-            indexer_response = await client.get(f"{INDEXER_API_URL}/user", headers={"X-API-Key": API_KEY}, params=params, timeout=10)
-            status_code = indexer_response.status_code
-            if status_code == 200:
-                response_json = indexer_response.json()
-                user_label = response_json["user_label"]
-                announce_ip = response_json["announce_ip"]
-                logger.channel("app").info(f"Connected to PrivateIndexer server as '{user_label}'")
-                is_reachable = response_json["is_reachable"]
-                if is_reachable:
-                    logger.channel("app").info(f"PrivateIndexer server successfully verified we are REACHABLE at {announce_ip}:{TORRENTING_PORT}")
-                else:
-                    logger.channel("app").critical(
-                        f"PrivateIndexer server is UNABLE TO REACH US at {announce_ip}:{TORRENTING_PORT} - check your port forwarding settings")
-                    exit(1)
-            elif status_code == 403:
-                logger.channel("app").critical("API key rejected by PrivateIndexer server")
-                exit(1)
-            else:
-                logger.channel("app").warning(f"Unable to validate API key and port status with PrivateIndexer server - server could be down (status {status_code})")
+        await server_interface.test_indexer_connection()
     except Exception as e:
         logger.channel("app").exception(f"Exception while validating API key: {e}")
         exit(1)

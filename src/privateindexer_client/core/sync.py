@@ -2,9 +2,9 @@ import asyncio
 import datetime
 import os
 
-from privateindexer_client.core import database, httpx_request, server_interface
+from privateindexer_client.core import database, server_interface
 from privateindexer_client.core import logger
-from privateindexer_client.core.config import SYNC_INTERVAL, INDEXER_API_URL, API_KEY
+from privateindexer_client.core.config import SYNC_INTERVAL
 
 
 async def periodic_sync_task():
@@ -22,17 +22,12 @@ async def periodic_sync_task():
             total = len(local_torrents)
             logger.channel("sync").info(f"Syncing {total} torrents with indexer")
 
-            # call the sync endpoint to get the list of existing and missing torrents on the server
-            async with httpx_request.get_client() as client:
-                response = await client.post(f"{INDEXER_API_URL}/sync", headers={"X-API-Key": API_KEY}, json=local_torrents)
+            synced_torrents = await server_interface.sync_torrents_with_indexer(local_torrents)
 
-                # make sure the sync was successful on the server
-                if response.status_code != 200:
-                    logger.channel("sync").warning(f"Failed to sync torrents with server, will retry later: {response.status_code} - {response.text}")
-                    await asyncio.sleep(SYNC_INTERVAL)
-                    continue
+            if not synced_torrents:
+                await asyncio.sleep(SYNC_INTERVAL)
+                continue
 
-            synced_torrents = response.json()
             missing_ids = synced_torrents["missing_ids"]
             existing = total - len(missing_ids)
             uploaded = 0
