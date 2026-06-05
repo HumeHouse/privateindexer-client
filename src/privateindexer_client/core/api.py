@@ -7,8 +7,8 @@ import libtorrent as lt
 from fastapi import Depends, HTTPException, Query, File, Request, Form, APIRouter, status, UploadFile
 from fastapi.responses import PlainTextResponse, JSONResponse
 
-from privateindexer_client.core import torrent_client, utils, httpx_request, database, qbit_translator, torrent_helper, logger
-from privateindexer_client.core.config import API_KEY, DOWNLOADS_DIR, INDEXER_API_URL, API_USERNAME, API_PASSWORD
+from privateindexer_client.core import torrent_client, utils, httpx_request, database, qbit_translator, torrent_helper, logger, server_interface
+from privateindexer_client.core.config import DOWNLOADS_DIR, API_USERNAME, API_PASSWORD
 
 router = APIRouter(prefix="/api/v2")
 
@@ -290,18 +290,11 @@ async def add_torrent(
     torrent_hash = str(hashes.v2)
 
     # check with the server to validate that this is a torrent from PrivateIndexer
-    async with httpx_request.get_client() as client:
-        response = await client.get(f"{INDEXER_API_URL}/validate?infohash={torrent_hash}", headers={"X-API-Key": API_KEY})
-        # based on the response from API, we will know if torrent exists on server
-        if response.status_code == 200:
-            # this means the torrent exists in the server database
-            pass
-        elif response.status_code == 404:
-            logger.channel("api").warning(f"Refusing to keep torrent, hash not found on PrivateIndexer server: {torrent_hash}")
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST)
-        else:
-            logger.channel("api").critical(f"Unknown error code occurred when validating hash '{torrent_hash}' with indexer: {response.status_code} - {response.text}")
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST)
+    validated = await server_interface.validate_torrent_with_indexer(torrent_hash)
+
+    if not validated:
+        logger.channel("api").critical(f"Unknown error code occurred when validating hash '{torrent_hash}' with indexer")
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST)
 
     # attempt to add the torrent to the download client and match qBittorrent return text
     result = "Ok." if await torrent_client.add_torrent_for_download(torrent_file, save_dir) else "Fails."
