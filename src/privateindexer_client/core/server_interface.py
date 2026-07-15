@@ -28,7 +28,7 @@ async def fetch_indexer_user_data():
         return None
 
 
-async def send_torrent_to_indexer(torrent_path: str, category: int, torrent_name: str, app_id: int = None):
+async def send_torrent_to_indexer(torrent_path: str, category: int, torrent_name: str, app_id: int = None) -> tuple[bool, bool]:
     """
     Attempt to upload the torrent file along with the category and name to the PrivateIndexer server
     Will mark a file as uploaded in the database if the server API returns a 409 status code
@@ -86,21 +86,24 @@ async def send_torrent_to_indexer(torrent_path: str, category: int, torrent_name
                     response = await client.post(f"{INDEXER_API_URL}/upload", headers={"X-API-Key": API_KEY}, data=data, files=files)
                 except Exception as e:
                     logger.channel("indexer").warning(f"Unable to connect to PrivateIndexer server - server could be down ({e})")
-                    return False
+                    return False, False
                 else:
                     # based on the response from API, we will know status of upload
                     if response.status_code == 200:
                         logger.channel("indexer").info(f"Successfully sent '{torrent_name}' to indexer")
-                        return True
+                        return True, False
                     elif response.status_code == 409:
                         logger.channel("indexer").info(f"Torrent '{torrent_name}' already exists on indexer, marking as uploaded")
-                        return True
+                        return True, False
+                    elif response.status_code == 422:
+                        logger.channel("indexer").error(f"Server failed to process torrent '{torrent_name}'")
+                        return False, True
                     else:
                         logger.channel("indexer").warning(f"Failed to send '{torrent_name}' to indexer, will retry later: {response.status_code} - {response.text}")
-                        return False
+                        return False, False
     except Exception as e:
         logger.channel("indexer").exception(f"Exception while sending '{torrent_name}' to indexer, will retry later: {e}")
-        return False
+        return False, False
 
 
 async def sync_torrents_with_indexer(local_torrents: dict) -> dict | None:

@@ -2,7 +2,7 @@ import asyncio
 import datetime
 import os
 
-from privateindexer_client.core import database, server_interface
+from privateindexer_client.core import database, server_interface, torrent_helper, torrent_client
 from privateindexer_client.core import logger
 from privateindexer_client.core.config import SYNC_INTERVAL
 
@@ -42,7 +42,7 @@ async def periodic_sync_task():
                 torrents_to_upload.extend(missing_torrent_data)
 
             # fetch torrents which need to be uploaded to server
-            not_uploaded = await database.fetch_all("SELECT id, name, category, torrent_path, app_id FROM torrents WHERE uploaded = FALSE")
+            not_uploaded = await database.fetch_all("SELECT id, infohash, name, category, torrent_path, app_id FROM torrents WHERE uploaded = FALSE")
             # add these to the metadata lookup map
             torrents_to_upload.extend(not_uploaded)
 
@@ -54,7 +54,19 @@ async def periodic_sync_task():
                 # make sure the torrent and either the media or the download files exist before uploading to the server
                 if os.path.exists(torrent_path):
                     logger.channel("sync").debug(f"Attempting to resend torrent to indexer: {torrent_name}")
-                    if await server_interface.send_torrent_to_indexer(torrent_path, torrent_data["category"], torrent_name, torrent_data["app_id"]):
+
+                    # attempt to send torrent file to indexer server
+                    uploaded, do_remove = await server_interface.send_torrent_to_indexer(torrent_path, torrent_data["category"], torrent_name, torrent_data["app_id"])
+
+                    if do_remove:
+                        infohash = torrent_data["infohash"]
+
+                        await torrent_helper.remove_torrent_from_database(infohash, torrent_file=torrent_path)
+                        await torrent_client.remove_torrent_by_hash(infohash)
+                        logger.channel("sync").warning(f"Server rejected file during sync, file was purged: {torrent_name}")
+                        continue
+
+                    if uploaded:
                         await database.execute("UPDATE torrents SET uploaded = TRUE WHERE id = ?", (torrent_data["id"],))
                         uploaded += 1
                     else:
