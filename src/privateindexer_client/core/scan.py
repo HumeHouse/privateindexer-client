@@ -272,7 +272,14 @@ async def scan_media_library(media_data_entries: list[MediaDataEntry], hash_exec
                 if metadata:
 
                     # attempt to send torrent file to indexer server
-                    uploaded = await server_interface.send_torrent_to_indexer(metadata.torrent_path, metadata.torznab_category, metadata.name, app_id=metadata.app_id)
+                    uploaded, do_remove = await server_interface.send_torrent_to_indexer(metadata.torrent_path, metadata.torznab_category, metadata.name,
+                                                                                         app_id=metadata.app_id)
+
+                    # ensure torrent was not flagged for removal
+                    if do_remove:
+                        os.unlink(metadata.torrent_path)
+                        logger.channel("scan").warning(f"Created torrent, but server rejected file so it was purged: {metadata.name}")
+                        continue
 
                     # add the data for the torrent to the database
                     await torrent_helper.add_torrent_to_database(metadata.name, metadata.size, metadata.torrent_path, uploaded, metadata.torznab_category,
