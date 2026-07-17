@@ -277,8 +277,13 @@ async def scan_media_library(media_data_entries: list[MediaDataEntry], hash_exec
 
                     # ensure torrent was not flagged for removal
                     if do_remove:
-                        os.unlink(metadata.torrent_path)
-                        logger.channel("scan").warning(f"Created torrent, but server rejected file so it was purged: {metadata.name}")
+                        # attempt removal of file if deemed invalid
+                        try:
+                            os.unlink(metadata.torrent_path)
+                            logger.channel("scan").warning(f"Server rejected created torrent, file purged: {metadata.name}")
+                        except Exception as e:
+                            logger.channel("scan").error(f"Server rejected created torrent, file failed to purge: {metadata.name}")
+
                         continue
 
                     # add the data for the torrent to the database
