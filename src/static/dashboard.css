@@ -6,6 +6,8 @@ body {
 
 #torrents-table-container table {
     width: 100%;
+    margin-bottom: 0;
+    font-variant-numeric: tabular-nums;
 }
 
 #torrents-table-container thead {
@@ -36,12 +38,16 @@ body {
 
 #torrents-table-container {
     flex-grow: 1;
+    overflow: auto;
+    min-height: 0;
 }
 
 #info-panel {
-    min-height: 28%;
     max-height: 28%;
     resize: vertical;
+    flex: 0 0 28%;
+    min-height: 180px;
+    overflow: hidden;
 }
 
 #info-panel .nav-tabs {
@@ -52,7 +58,8 @@ body {
 }
 
 #info-panel .tab-content {
-    max-height: calc(50vh - 50px);
+    height: calc(100% - 52px);
+    max-height: none;
 }
 
 .state-downloading {
@@ -157,3 +164,85 @@ body {
     background-color: rgba(0, 204, 255, 0.2) !important;
     color: #00ccff !important;
 }
+
+body {
+    overflow: hidden;
+}
+
+#dashboard-header {
+    min-height: 68px;
+    background: var(--bs-body-bg);
+}
+
+#dashboard-header h4 {
+    margin: 0;
+    font-weight: 600;
+    letter-spacing: .01em;
+}
+
+#client-stats, #user-stats {
+    white-space: nowrap;
+}
+
+#client-stats > div, #user-stats > div {
+    min-width: 62px;
+}
+
+#scanner-status {
+    min-width: 130px;
+}
+
+#table-toolbar {
+    background: var(--bs-tertiary-bg);
+}
+
+#filter-name {
+    max-width: 420px;
+}
+
+#torrents-table-container th {
+    white-space: nowrap;
+    user-select: none;
+}
+
+#torrents-table-container th.sortable .sort-label:hover {
+    color: var(--bs-info);
+}
+
+#torrents-table-container td,
+#torrents-table-container th {
+    vertical-align: middle;
+}
+
+#torrents-table-container tbody tr {
+    cursor: pointer;
+}
+
+#torrents-table-container .progress {
+    min-width: 92px;
+    background-color: rgba(255, 255, 255, .08);
+}
+
+#general-content, #peers-content {
+    height: 100%;
+}
+
+#delete-button {
+    align-self: center;
+    margin-left: .75rem;
+}
+
+#pagination-controls {
+    flex-wrap: nowrap;
+}
+
+@media (max-width: 1200px) {
+    #dashboard-header {
+        flex-wrap: wrap;
+    }
+
+    #client-stats, #user-stats {
+        gap: .75rem !important;
+    }
+}
+

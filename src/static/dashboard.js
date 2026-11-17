@@ -2,6 +2,16 @@ let selectedTorrentId = null;
 let sortConfig = {column: "added_on", direction: "desc"};
 let torrentsCache = [];
 let currentPage = 1;
+
+function normalizeText(value) {
+    return value == null ? "" : String(value).toLowerCase();
+}
+
+function getNameFilter() {
+    const element = document.getElementById("filter-name");
+    return normalizeText(element ? element.value : "").trim();
+}
+
 let rowsPerPage = 500;
 let filterDebounceTimeout = null;
 
@@ -12,7 +22,7 @@ $(document).ready(() => {
     fetchUserStats();
 
     // listen on the filter box for user input
-    $('#filter-name').on('input', function () {
+    $(document).on('input', '#filter-name', function () {
         clearTimeout(filterDebounceTimeout);
 
         // 1 second debounce
@@ -84,20 +94,24 @@ function fetchMainData() {
             }
         })
         .then(data => {
-            // keep the data stored in variable for later use
-            torrentsCache = data["torrents"];
+            if (!data || !Array.isArray(data["torrents"])) {
+                throw new Error("Invalid client API response: expected a torrents array");
+            }
+
+            // drop malformed array entries and let field-level renderers use safe defaults.
+            torrentsCache = data["torrents"].filter(torrent => torrent && typeof torrent === "object");
 
             // sort then display the torrent data in the page
             applySortingAndRender();
 
             // update selected torrent info panel
             if (selectedTorrentId) {
-                const updatedTorrent = data["torrents"].find(t => t["infohash"] === selectedTorrentId);
+                const updatedTorrent = torrentsCache.find(t => t["infohash"] === selectedTorrentId);
                 if (updatedTorrent) populateInfoPanel(updatedTorrent);
             }
 
             // update client-visible stats
-            updateClientStats(data["torrents"], data["client_stats"]);
+            updateClientStats(torrentsCache, data["client_stats"] || {});
 
             // update the scanner progress
             updateScannerStats(data["scanner_status"]);
@@ -278,7 +292,7 @@ function applySortingAndRender() {
 
     // sort data by actively sorted columns in sortConfig
     const sortExtractors = {
-        name: row => row["name"].toLowerCase(),
+        name: row => normalizeText(row?.["name"]),
         category: row => row["category"],
         size: row => row["size"],
         progress: row => row["progress"],
@@ -376,13 +390,21 @@ function formatCategory(category) {
 
 function renderTable(torrents) {
     const $tbody = $("#torrents-container");
+    const $pagination = $("#pagination-controls");
     $tbody.empty();
 
-    const filter = $('#filter-name').val().toLowerCase() || '';
-    let filtered = torrents.filter(t => t["name"].toLowerCase().includes(filter));
-
-    if (!torrents || torrents.length === 0) {
+    if (!Array.isArray(torrents) || torrents.length === 0) {
         $tbody.append(`<tr><td colspan="11" class="text-center">No torrents</td></tr>`);
+        $pagination.empty();
+        return;
+    }
+
+    const filter = getNameFilter();
+    const filtered = torrents.filter(t => normalizeText(t?.["name"]).includes(filter));
+
+    if (filtered.length === 0) {
+        $tbody.append(`<tr><td colspan="11" class="text-center">No torrents match the current filter</td></tr>`);
+        $pagination.empty();
         return;
     }
 
@@ -402,7 +424,7 @@ function renderTable(torrents) {
 
         const row = $(`<tr class="${selectedClass}" data-infohash="${torrent["infohash"]}"></tr>`);
 
-        row.toggleClass("d-none", !torrent["name"].toLowerCase().includes(filter));
+        row.toggleClass("d-none", !normalizeText(torrent?.["name"]).includes(filter));
 
         let barClass = "bg-success";
         if (progress < 100) {
@@ -439,7 +461,6 @@ function renderTable(torrents) {
     });
 
     // update pagination controls
-    const $pagination = $("#pagination-controls");
     $pagination.empty();
 
     if (totalPages > 1) {
