@@ -5,7 +5,11 @@ const tableBody = $('torrents-container');
 const pagination = $('pagination-controls');
 const headers = [...document.querySelectorAll('th[data-column]')];
 const deleteDialog = $('delete-modal');
-const tabs = [$('general-tab'), $('peers-tab')];
+const tabPanes = new Map([
+    [document.getElementById('general-tab'), document.getElementById('tab-general')],
+    [document.getElementById('peers-tab'), document.getElementById('tab-peers')],
+]);
+const tabs = [...tabPanes.keys()];
 const seedStates = new Set(['uploading', 'stalledUP']);
 const serverStats = {
     'torrents-added': 'torrents_added_total', 'currently-seeding': 'currently_seeding',
@@ -398,11 +402,11 @@ function renderDetails() {
 }
 
 function activateTab(tab) {
-    for (const current of tabs) {
+    for (const [current, pane] of tabPanes) {
         const active = current === tab;
         current.setAttribute('aria-selected', String(active));
         current.tabIndex = active ? 0 : -1;
-        $(current.getAttribute('aria-controls')).hidden = !active;
+        pane.hidden = !active;
     }
 }
 
