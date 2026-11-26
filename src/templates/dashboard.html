@@ -1,210 +1,166 @@
-<!DOCTYPE html>
-<html lang="en" data-bs-theme="dark">
-
+<!doctype html>
+<html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <title>PrivateIndexer Dash v{{ APP_VERSION }}</title>
-    <link rel="icon" type="image/x-icon" href="/static/favicon.ico">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/css/bootstrap.min.css"
-          integrity="sha256-2FMn2Zx6PuH5tdBQDRNwrOo60ts5wWPC9R8jK67b3t4=" crossorigin="anonymous">
-    <link rel="stylesheet" href="/static/dashboard.css?v={{ APP_VERSION }}">
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>PrivateIndexer Client v{{ APP_VERSION }}</title>
+    <link rel="icon" href="/static/favicon.ico">
+    <link rel="stylesheet" href="/static/dashboard.css?v={{ APP_VERSION }}&amp;ui=2">
+    <script defer src="/static/dashboard.js?v={{ APP_VERSION }}&amp;ui=2"></script>
 </head>
-
-<body class="bg-body">
-<div id="main-container" class="container-fluid d-flex flex-column g-0">
-    <div id="toaster" class="toast-container top-0 start-50 translate-middle-x mt-5 pt-5"></div>
-    <div class="d-flex justify-content-between align-items-center my-1">
-        <div class="d-flex align-items-center">
-            <img class="logo" src="/static/logo.png" alt="logo">
-            <h4 class="ms-2">PrivateIndexer</h4>
-        </div>
-
-        <div id="scanner-status"></div>
-
-        <!-- Client-visible stats -->
-        <div id="client-stats" class="d-flex gap-3 align-items-center my-2">
-            <div class="text-center text-primary">
-                <span class="fw-bold" id="client-leeching">0</span><br><small>Downloading</small>
-            </div>
-            <div class="text-center text-primary">
-                <span class="fw-bold" id="total-dl">0</span> (<span class="fw-bold" id="dl-rate">0 B/s</span>)
-                <br><small>DL (Rate)</small>
-            </div>
-            <div class="text-center text-success">
-                <span class="fw-bold" id="client-seeding">0</span><br><small>Seeding</small>
-            </div>
-            <div class="text-center text-success">
-                <span class="fw-bold" id="total-ul">0</span> (<span class="fw-bold" id="ul-rate">0 B/s</span>)
-                <br><small>UL (Rate)</small>
-            </div>
-            <div class="text-center">
-                <span class="fw-bold" id="global-ratio">0.00</span><br><small>Ratio</small>
-            </div>
-            <div class="text-center">
-                <span class="fw-bold" id="client-total">0</span><br><small>Torrents</small>
-            </div>
-            <div class="text-center">
-                <span class="fw-bold" id="client-peers">0</span><br><small>Peers</small>
-            </div>
-        </div>
-
-        <!-- Global user stats -->
-        <div id="user-stats" class="d-flex gap-3 align-items-center me-2">
-            <div class="text-center">
-                <small class="text-muted d-block">Server Stats</small>
-            </div>
-            <div class="text-center text-info">
-                <span class="fw-bold" id="torrents-added">0</span><br><small>Uploads</small>
-            </div>
-            <div class="text-center text-primary">
-                <span class="fw-bold" id="total-download">0</span> (<span class="fw-bold"
-                                                                          id="currently-leeching">0</span>)
-                <br><small>DL</small> (<small>L</small>)
-            </div>
-            <div class="text-center text-success">
-                <span class="fw-bold" id="total-upload">0</span> (<span class="fw-bold"
-                                                                        id="currently-seeding">0</span>)
-                <br><small>UL</small> (<small>S</small>)
-            </div>
-            <div class="text-center">
-                <span class="fw-bold" id="server-ratio">0.00</span><br><small>Ratio</small>
-            </div>
-            <div class="text-center">
-                <span class="fw-bold" id="grabs-total">0</span><br><small>Grabs</small>
-            </div>
-            <div class="text-center">
-                <span class="fw-bold" id="popularity">0</span><br><small>Popularity</small>
-            </div>
-        </div>
+<body>
+<a class="skip" href="#torrents">Skip to torrents</a>
+<header class="topbar">
+    <div class="shell brand-line">
+        <img class="logo" src="/static/logo.png" width="36" height="36" alt="">
+        <span class="brand">PrivateIndexer</span>
+        <span class="version">Client &middot; v{{ APP_VERSION }}</span>
     </div>
-
-    <div id="torrents-table-container" class="table-responsive flex-grow-1">
-        <table class="table table-striped table-bordered table-hover table-sm">
-            <thead class="bg-body">
-            <tr>
-                <th data-column="name" class="sortable d-flex align-items-center">
-                    <span class="sort-label flex-grow-1">Name</span>
-                    <input type="search" id="filter-name" class="ms-1 form-control form-control-sm flex-grow-0"
-                           style="width: 50%; min-width: 120px;" placeholder="Filter name..." autocomplete="off"
-                           aria-label="Filter torrents by name">
-                </th>
-                <th data-column="category" class="sortable">
-                    <span class="sort-label flex-grow-1">Category</span>
-                </th>
-                <th data-column="size" class="sortable">
-                    <span class="sort-label flex-grow-1">Size</span>
-                </th>
-                <th data-column="progress" class="sortable">
-                    <span class="sort-label flex-grow-1">Progress</span>
-                </th>
-                <th data-column="state" class="sortable">
-                    <span class="sort-label flex-grow-1">State</span>
-                </th>
-                <th data-column="seeds" class="sortable">
-                    <span class="sort-label flex-grow-1">Seeds</span>
-                </th>
-                <th data-column="peers" class="sortable">
-                    <span class="sort-label flex-grow-1">Peers</span>
-                </th>
-                <th data-column="download_speed" class="sortable">
-                    <span class="sort-label flex-grow-1">DL Speed</span>
-                </th>
-                <th data-column="upload_speed" class="sortable">
-                    <span class="sort-label flex-grow-1">UL Speed</span>
-                </th>
-                <th data-column="eta" class="sortable">
-                    <span class="sort-label flex-grow-1">ETA</span>
-                </th>
-                <th data-column="added_on" class="sortable">
-                    <span class="sort-label flex-grow-1">Added</span>
-                </th>
-            </tr>
-            </thead>
-            <tbody id="torrents-container">
-            <tr>
-                <td colspan="11" class="text-center">Loading...</td>
-            </tr>
-            </tbody>
-        </table>
+</header>
+<main class="shell" id="main-container">
+    <section class="hero">
+        <div><p class="eyebrow">Client dashboard</p>
+            <h1>Transfer activity</h1></div>
+        <div class="scanner" id="scanner-status"><p class="eyebrow">Library scanner</p>
+            <p id="scan-state">Waiting for status</p>
+            <p id="scan-summary" class="muted" hidden></p>
+            <progress id="scan-progress" max="100" aria-label="Library scan progress" hidden></progress>
+        </div>
+    </section>
+    <div class="stats">
+        <section class="panel stats-card" aria-labelledby="client-heading">
+            <h2 id="client-heading">Client stats</h2>
+            <dl class="metrics" id="client-stats">
+                <div>
+                    <dt>Downloading</dt>
+                    <dd id="client-leeching" class="blue">0</dd>
+                </div>
+                <div>
+                    <dt>Seeding</dt>
+                    <dd id="client-seeding" class="good">0</dd>
+                </div>
+                <div>
+                    <dt>Torrents</dt>
+                    <dd id="client-total">0</dd>
+                </div>
+                <div>
+                    <dt>Connected peers</dt>
+                    <dd id="client-peers">0</dd>
+                </div>
+                <div>
+                    <dt>Ratio</dt>
+                    <dd id="global-ratio">0.00</dd>
+                </div>
+                <div class="rate">
+                    <dt>Downloaded</dt>
+                    <dd><span id="total-dl">0</span><small id="dl-rate">0 bps</small></dd>
+                </div>
+                <div class="rate">
+                    <dt>Uploaded</dt>
+                    <dd><span id="total-ul">0</span><small id="ul-rate">0 bps</small></dd>
+                </div>
+            </dl>
+        </section>
+        <section class="panel stats-card" aria-labelledby="server-heading">
+            <h2 id="server-heading">Server stats</h2>
+            <dl class="metrics" id="user-stats">
+                <div>
+                    <dt>Torrents added</dt>
+                    <dd id="torrents-added">0</dd>
+                </div>
+                <div>
+                    <dt>Ratio</dt>
+                    <dd id="server-ratio">0.00</dd>
+                </div>
+                <div>
+                    <dt>Grabs</dt>
+                    <dd id="grabs-total">0</dd>
+                </div>
+                <div>
+                    <dt>Popularity</dt>
+                    <dd id="popularity">0</dd>
+                </div>
+                <div class="rate">
+                    <dt>Downloaded</dt>
+                    <dd><span id="total-download">0</span><small><span id="currently-leeching">0</span> leeching</small>
+                    </dd>
+                </div>
+                <div class="rate">
+                    <dt>Uploaded</dt>
+                    <dd><span id="total-upload">0</span><small><span id="currently-seeding">0</span> seeding</small>
+                    </dd>
+                </div>
+            </dl>
+        </section>
     </div>
-
-    <div id="info-panel" class="bg-dark text-white border-top">
-        <div class="d-flex justify-content-between align-items-center p-2">
-            <div class="d-flex">
-                <ul class="nav nav-tabs p-2" id="sidebarTabs" role="tablist">
-                    <li class="nav-item" role="presentation">
-                        <button class="nav-link active" id="general-tab" data-bs-toggle="tab"
-                                data-bs-target="#tab-general"
-                                type="button">General
-                        </button>
-                    </li>
-                    <li class="nav-item" role="presentation">
-                        <button class="nav-link" id="peers-tab" data-bs-toggle="tab" data-bs-target="#tab-peers"
-                                type="button">
-                            Peers
-                        </button>
-                    </li>
-                </ul>
-                <button class="btn btn-danger btn-sm d-none" type="button" id="delete-button" data-bs-toggle="modal"
-                        data-bs-target="#delete-modal">
-                    Delete
-                </button>
-            </div>
-            <!-- Pagination -->
-            <div class="d-flex align-items-center">
-                <select id="rows-per-page" class="form-select form-select-sm me-2" style="width: auto;">
-                    <option value="250">Show 250 torrents</option>
-                    <option value="500" selected>Show 500 torrents</option>
-                    <option value="1000">Show 1000 torrents</option>
-                    <option value="5000">Show 5000 torrents</option>
+    <section id="torrents" class="panel torrents" aria-labelledby="torrents-heading" tabindex="-1">
+        <div class="toolbar">
+            <div><h2 id="torrents-heading">Torrents</h2>
+                <p id="table-summary" class="muted">Loading torrents...</p></div>
+            <div class="controls">
+                <input type="search" id="filter-name" placeholder="Filter by name" autocomplete="off"
+                       aria-label="Filter torrents by name">
+                <select id="rows-per-page" aria-label="Torrents per page">
+                    {% for size in [250, 500, 1000, 5000] %}
+                        <option value="{{ size }}"{% if size == 500 %} selected{% endif %}>{{ size }} per page
+                        </option>{% endfor %}
                 </select>
-                <nav>
-                    <ul class="pagination pagination-sm mb-0" id="pagination-controls"></ul>
-                </nav>
             </div>
         </div>
-
-        <div class="tab-content pt-2 px-2 overflow-hidden">
-            <div class="tab-pane fade show active" id="tab-general" role="tabpanel">
-                <div id="general-content" class="overflow-auto">Select a torrent to view details</div>
-            </div>
-            <div class="tab-pane fade" id="tab-peers" role="tabpanel">
-                <div id="peers-content" class="overflow-auto">Select a torrent to view peers</div>
-            </div>
+        <div id="torrents-table-container" class="table-scroll" role="region" aria-label="Scrollable torrent table"
+             tabindex="0">
+            <table aria-labelledby="torrents-heading">
+                <thead>
+                <tr>
+                    {% for key, label in [('name','Name'),('category','Category'),('size','Size'),('progress','Progress'),('state','State'),('seeds','Seeds'),('peers','Peers'),('download_speed','DL Speed'),('upload_speed','UL Speed'),('eta','ETA'),('added_on','Added')] %}
+                        <th scope="col" data-column="{{ key }}">
+                            <button class="sort-label" type="button">{{ label }}</button>
+                        </th>
+                    {% endfor %}
+                </tr>
+                </thead>
+                <tbody id="torrents-container">
+                <tr>
+                    <td class="empty" colspan="11">Loading...</td>
+                </tr>
+                </tbody>
+            </table>
         </div>
-    </div>
-    <div class="modal fade" id="delete-modal" tabindex="-1">
-        <div class="modal-dialog modal-dialog-centered">
-            <div class="modal-content bg-dark text-white">
-                <div class="modal-header">
-                    <h5 class="modal-title">Confirm Delete</h5>
-                </div>
-                <div class="modal-body">
-                    <p>Are you sure you want to delete this torrent?</p>
-                    <div class="form-check mt-3">
-                        <input class="form-check-input" type="checkbox" id="delete-file-checkbox" checked>
-                        <label class="form-check-label" for="delete-file-checkbox">
-                            Remove downloaded files
-                        </label>
-                    </div>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                    <button type="button" class="btn btn-danger" data-bs-dismiss="modal" id="confirm-delete-button">
-                        Delete
-                    </button>
-                </div>
-            </div>
+        <nav class="pagination" aria-label="Torrent pages" id="pagination-controls" hidden></nav>
+    </section>
+    <section id="info-panel" class="panel" aria-labelledby="detail-heading">
+        <div class="toolbar">
+            <div class="detail-heading"><h2 id="detail-heading">Torrent details</h2>
+                <p class="muted" id="selected-name">Select a torrent to inspect its details.</p></div>
+            <button type="button" class="button danger" id="delete-button" hidden>Delete torrent</button>
         </div>
-    </div>
-</div>
-<script src="https://cdn.jsdelivr.net/npm/jquery@3.7.1/dist/jquery.min.js"
-        integrity="sha256-/JqT3SQfawRcv/BIHPThkBvs0OEvtFFmqPF/lYI/Cxo=" crossorigin="anonymous"></script>
-<script src="https://cdn.jsdelivr.net/npm/popper.js@1.16.1/dist/umd/popper.min.js"
-        integrity="sha256-/ijcOLwFf26xEYAjW75FizKVo5tnTYiQddPZoLUHHZ8=" crossorigin="anonymous"></script>
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/js/bootstrap.min.js"
-        integrity="sha256-ew8UiV1pJH/YjpOEBInP1HxVvT/SfrCmwSoUzF9JIgc=" crossorigin="anonymous"></script>
-<script src="/static/dashboard.js?v={{ APP_VERSION }}"></script>
+        <div class="tabs" role="tablist" aria-label="Torrent details">
+            <button role="tab" type="button" id="general-tab" aria-selected="true" aria-controls="tab-general">General
+            </button>
+            <button role="tab" type="button" id="peers-tab" aria-selected="false" aria-controls="tab-peers"
+                    tabindex="-1">Peers
+            </button>
+        </div>
+        <div class="detail-pane" id="tab-general" role="tabpanel" aria-labelledby="general-tab" tabindex="0">
+            <div id="general-content" class="muted">Select a torrent to view details.</div>
+        </div>
+        <div class="detail-pane" id="tab-peers" role="tabpanel" aria-labelledby="peers-tab" tabindex="0" hidden>
+            <div id="peers-content" class="muted">Select a torrent to view peers.</div>
+        </div>
+    </section>
+</main>
+<dialog id="delete-modal" aria-labelledby="delete-title">
+    <form method="dialog" id="delete-form">
+        <p class="eyebrow">Torrent management</p>
+        <h2 id="delete-title">Delete torrent?</h2>
+        <p class="muted" id="delete-name"></p>
+        <label class="check"><input type="checkbox" id="delete-file-checkbox" checked> Remove downloaded files</label>
+        <div class="dialog-actions">
+            <button type="button" class="button" id="cancel-delete" autofocus>Cancel</button>
+            <button type="submit" class="button danger solid" id="confirm-delete-button">Delete torrent</button>
+        </div>
+    </form>
+</dialog>
+<div id="toaster" class="toast-stack" role="status" aria-live="polite"></div>
 </body>
-
 </html>

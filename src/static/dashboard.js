@@ -1,329 +1,153 @@
-let selectedTorrentId = null;
-let sortConfig = {column: "added_on", direction: "desc"};
-let torrentsCache = [];
-let currentPage = 1;
+'use strict';
 
-function normalizeText(value) {
-    return value == null ? "" : String(value).toLowerCase();
+const $ = id => document.getElementById(id);
+const tableBody = $('torrents-container');
+const pagination = $('pagination-controls');
+const headers = [...document.querySelectorAll('th[data-column]')];
+const deleteDialog = $('delete-modal');
+const tabPanes = new Map([
+    [document.getElementById('general-tab'), document.getElementById('tab-general')],
+    [document.getElementById('peers-tab'), document.getElementById('tab-peers')],
+]);
+const tabs = [...tabPanes.keys()];
+const seedStates = new Set(['uploading', 'stalledUP']);
+const serverStats = {
+    'torrents-added': 'torrents_added_total', 'currently-seeding': 'currently_seeding',
+    'total-upload': 'total_upload', 'currently-leeching': 'currently_leeching',
+    'total-download': 'total_download', 'server-ratio': 'server_ratio',
+    'grabs-total': 'grabs_total', popularity: 'popularity',
+};
+let torrents = [];
+let selected = null;
+let page = 1;
+let rowsPerPage = Number($('rows-per-page').value);
+let filterTimer;
+let sort = {column: 'added_on', direction: 'desc'};
+let pendingRemoval = false;
+
+function element(tag, text, className) {
+    const node = document.createElement(tag);
+    if (text != null) node.textContent = text;
+    if (className) node.className = className;
+    return node;
 }
 
-function getNameFilter() {
-    const element = document.getElementById("filter-name");
-    return normalizeText(element ? element.value : "").trim();
+function cell(row, value, className) {
+    const td = row.insertCell();
+    if (value instanceof Node) td.append(value);
+    else td.textContent = value ?? '';
+    if (className) td.className = className;
+    return td;
 }
 
-let rowsPerPage = 500;
-let filterDebounceTimeout = null;
-
-// catch ready event on document
-$(document).ready(() => {
-    // start loops
-    fetchMainData();
-    fetchUserStats();
-
-    // listen on the filter box for user input
-    $(document).on('input', '#filter-name', function () {
-        clearTimeout(filterDebounceTimeout);
-
-        // 1 second debounce
-        filterDebounceTimeout = setTimeout(() => {
-            // reset pagination to first page
-            currentPage = 1;
-            applySortingAndRender();
-        }, 1000);
-    });
-
-    // listen for clicks on the delete button and call delete function
-    $('#confirm-delete-button').on("click", deleteTorrent);
-
-    // listen for rows count dropdown change
-    $("#rows-per-page").on("change", updateRowsPerPage);
-
-    // listen for header clicks to trigger sorting
-    $(".sortable .sort-label").css("cursor", "pointer").click(function (e) {
-        e.stopPropagation();
-        const column = $(this).closest("th").data("column");
-
-        if (sortConfig.column === column) {
-            if (sortConfig.direction === "asc") {
-                sortConfig.direction = "desc";
-            } else if (sortConfig.direction === "desc") {
-                sortConfig.column = null;
-                sortConfig.direction = null;
-            } else {
-                sortConfig.direction = "asc";
-            }
-        } else {
-            sortConfig.column = column;
-            sortConfig.direction = "asc";
-        }
-
-        // sort then display the torrent data in the page
-        applySortingAndRender();
-    });
-});
-
-function toast(message, color, duration = 5) {
-    const toastID = "toast-" + Math.random().toString(36).substring(3, 9);
-    let toastContent;
-    toastContent = `
-        <div id="${toastID}" class="toast align-items-center border-0 text-bg-${color}" role="alert">
-          <div class="d-flex">
-            <div class="toast-body fw-bold">${message}</div>
-          </div>
-        </div>
-    `;
-    $("#toaster").append(toastContent);
-    const toastObject = new bootstrap.Toast($(`#${toastID}`), {"delay": duration * 1000});
-    toastObject.show();
+function button(text, label) {
+    const node = element('button', text, 'button');
+    node.type = 'button';
+    if (label) node.setAttribute('aria-label', label);
+    return node;
 }
 
-function updateRowsPerPage() {
-    rowsPerPage = parseInt($(this).val());
-    currentPage = 1;
-    applySortingAndRender();
-}
+function toast(message, error = false) {
+    const item = element('div', null, `toast${error ? ' bad' : ''}`);
+    const dismiss = button('Dismiss', 'Dismiss notification');
+    item.append(element('p', message), dismiss);
+    $('toaster').append(item);
+    let timer;
 
-function fetchMainData() {
-    fetch("/dashboard/maindata")
-        .then(response => {
-            if (response.ok) {
-                return response.json();
-            } else {
-                throw new Error(`PrivateIndexer client API error: ${response.status}`);
-            }
-        })
-        .then(data => {
-            if (!data || !Array.isArray(data["torrents"])) {
-                throw new Error("Invalid client API response: expected a torrents array");
-            }
-
-            // drop malformed array entries and let field-level renderers use safe defaults.
-            torrentsCache = data["torrents"].filter(torrent => torrent && typeof torrent === "object");
-
-            // sort then display the torrent data in the page
-            applySortingAndRender();
-
-            // update selected torrent info panel
-            if (selectedTorrentId) {
-                const updatedTorrent = torrentsCache.find(t => t["infohash"] === selectedTorrentId);
-                if (updatedTorrent) populateInfoPanel(updatedTorrent);
-            }
-
-            // update client-visible stats
-            updateClientStats(torrentsCache, data["client_stats"] || {});
-
-            // update the scanner progress
-            updateScannerStats(data["scanner_status"]);
-
-            // 5 second interval
-            setTimeout(fetchMainData, 5000);
-        })
-        .catch(e => {
-            console.error("Error fetching data from client API, delayed 30s:", e);
-            toast("Error fetching data from client API", "danger");
-
-            // delay next interval 30 seconds
-            setTimeout(fetchMainData, 30000);
-        });
-}
-
-function fetchUserStats() {
-    fetch("/dashboard/user")
-        .then(response => {
-            if (response.ok) {
-                return response.json();
-            } else {
-                throw new Error(`PrivateIndexer server error: ${response.status}`);
-            }
-        })
-        .then(data => {
-            // update user stats elements
-            $("#torrents-added").text(data["torrents_added_total"]);
-            $("#currently-seeding").text(data["currently_seeding"]);
-            $("#total-upload").text(formatBytes(data["total_upload"]));
-            $("#currently-leeching").text(data["currently_leeching"]);
-            $("#total-download").text(formatBytes(data["total_download"]));
-            $("#server-ratio").text(formatRatio(data["server_ratio"]));
-            $("#grabs-total").text(data["grabs_total"]);
-            $("#popularity").text(data["popularity"]);
-
-            // 30 second interval
-            setTimeout(fetchUserStats, 30000);
-        })
-        .catch(e => {
-            console.error("Error fetching user stats from server, delayed 60s:", e);
-            toast("Error fetching user stats from server", "danger");
-
-            // reset all displayed values to "?"
-            $("#torrents-added, #currently-seeding, #total-upload, #currently-leeching, #total-download, #server-ratio, #grabs-total, #popularity")
-                .text("?");
-
-            // delay next interval 60 seconds
-            setTimeout(fetchUserStats, 60000);
-        });
-}
-
-function deleteTorrent() {
-    if (selectedTorrentId === null) {
-        return;
-    }
-    fetch("/dashboard/delete_torrent?" + new URLSearchParams({
-        "torrent_hash": selectedTorrentId, "remove_downloads": $("#delete-file-checkbox").is(":checked")
-    }).toString(), {
-        method: "POST"
-    })
-        .then(response => {
-            if (response.ok) {
-                toast("Torrent deleted successfully", "success");
-                selectedTorrentId = null;
-            } else {
-                toast("Failed to delete torrent, check logs", "danger");
-            }
-        })
-        .catch(e => {
-            console.error("Error deleting torrent:", e);
-            toast("Error while trying to delete torrent, check logs", "danger");
-        });
-}
-
-// adds up/down arrows to columns when sorting
-function updateSortIndicators() {
-    $("table thead th.sortable").each(function () {
-        const $label = $(this).find(".sort-label");
-        let text = $label.text().trim().replace(/ ▲| ▼/, "  ");
-        if (sortConfig.column === $(this).data("column")) {
-            if (sortConfig.direction === "asc") text += " ▲"; else if (sortConfig.direction === "desc") text += " ▼";
-        }
-        $label.text(text);
-    });
-}
-
-function updateScannerStats(scanner_status) {
-    let state = scanner_status["state"];
-    let total = scanner_status["total_items"];
-    let done = scanner_status["done_items"];
-
-    let scannerStatus;
-
-    if (state === 1) {
-        // scan task is in the pre-processing state
-        scannerStatus = `
-                <div>
-                    <span class="fw-bold text-warning">
-                        Scan: Pre-scan
-                        <div class="spinner-border spinner-border-sm text-warning ms-2" role="status"></div>
-                    </span>
-                </div>
-            `;
-    } else if (state === 2) {
-        // scan task is in the scanning state
-        let percent = ((done / total) * 100).toFixed(1);
-        scannerStatus = `
-                <div>
-                    <span class="fw-bold text-info">
-                        Scan: Scanning
-                        <div class="spinner-border spinner-border-sm text-info ms-2" role="status"></div>
-                    </span><br>
-                    <span class="fw-bold">${done} / ${total}</span>
-                    <span class="text-muted">(${percent}%)</span>
-                    <div class="progress mt-1" style="height: 10px;">
-                        <div class="progress-bar bg-info" role="progressbar" style="width: ${percent}%;">
-                        </div>
-                    </div>
-                </div>
-            `;
-    } else if (state === 3) {
-        // scan task is in the scanning state
-        let percent = ((done / total) * 100).toFixed(1);
-        scannerStatus = `
-                <div>
-                    <span class="fw-bold text-primary">
-                        Scan: Processing
-                        <div class="spinner-border spinner-border-sm text-primary ms-2" role="status"></div>
-                    </span><br>
-                    <span class="fw-bold">${done} / ${total}</span>
-                    <span class="text-muted">(${percent}%)</span>
-                    <div class="progress mt-1" style="height: 10px;">
-                        <div class="progress-bar bg-primary" role="progressbar" style="width: ${percent}%;">
-                        </div>
-                    </div>
-                </div>
-            `;
-    } else if (state === 4) {
-        // scan task is in the post-scan state
-        scannerStatus = `
-                <div>
-                    <span class="fw-bold text-success">
-                        Scan: Post-processing
-                        <div class="spinner-border spinner-border-sm text-success ms-2" role="status"></div>
-                    </span>
-                </div>
-            `;
-    } else {
-        // nothing is scanning, just show idle
-        scannerStatus = `
-                <div>
-                    <span class="fw-bold text-secondary">Scan: Idle</span>
-                </div>
-            `;
+    function remove() {
+        clearTimeout(timer);
+        if (item.contains(document.activeElement)) $('torrents').focus({preventScroll: true});
+        item.remove();
     }
 
-    $("#scanner-status").html(scannerStatus);
+    function resume() {
+        clearTimeout(timer);
+        if (!item.matches(':hover, :focus-within')) timer = setTimeout(remove, 5000);
+    }
+
+    for (const event of ['pointerenter', 'focusin']) item.addEventListener(event, () => clearTimeout(timer));
+    for (const event of ['pointerleave', 'focusout']) item.addEventListener(event, () => queueMicrotask(resume));
+    dismiss.addEventListener('click', remove);
+    resume();
 }
 
-function updateClientStats(torrents, stats) {
-    // update torrent counts
-    $("#client-seeding").text(stats["seeding_torrents"]);
-    $("#client-leeching").text(stats["downloading_torrents"]);
-    $("#client-total").text(torrents.length);
-    $("#client-peers").text(stats["peers_connected"]);
-
-    // update session stats
-    $("#total-dl").text(formatBytes(stats["total_download"]));
-    $("#dl-rate").text(formatSpeed(stats["download_speed"]));
-    $("#total-ul").text(formatBytes(stats["total_upload"]));
-    $("#ul-rate").text(formatSpeed(stats["upload_speed"]));
-    $("#global-ratio").text(formatRatio(stats["client_ratio"]));
+async function json(path) {
+    const response = await fetch(path);
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    return response.json();
 }
 
-function applySortingAndRender() {
-    let data = [...torrentsCache];
+async function fetchMainData() {
+    let next = 5000;
+    try {
+        const data = await json('/dashboard/maindata');
+        if (!Array.isArray(data?.torrents)) throw new Error('Expected a torrent list');
+        torrents = data.torrents.filter(item => item && typeof item === 'object');
+        if (selected !== null) {
+            const current = torrents.find(item => item.infohash === selected.infohash);
+            if (current) selected = current;
+            else if (!pendingRemoval && !deleteDialog.open) selected = null;
+        }
+        renderTable();
+        renderDetails();
+        updateClientStats(data.client_stats ?? {});
+        updateScanner(data.scanner_status);
+    } catch (error) {
+        next = 30000;
+        console.error('Error fetching client data:', error);
+        toast('Error fetching data from client API', true);
+        if ($('table-summary').textContent === 'Loading torrents...') $('table-summary').textContent = 'Could not load torrents. Retrying automatically.';
+    } finally {
+        setTimeout(fetchMainData, next);
+    }
+}
 
-    // sort data by actively sorted columns in sortConfig
-    const sortExtractors = {
-        name: row => normalizeText(row?.["name"]),
-        category: row => row["category"],
-        size: row => row["size"],
-        progress: row => row["progress"],
-        state: row => row["state"],
-        seeds: row => row["connected_seeds"] + row["total_seeds"],
-        peers: row => row["connected_peers"] + row["total_peers"],
-        download_speed: row => row["download_speed"],
-        upload_speed: row => row["upload_speed"],
-        eta: row => row["eta"],
-        added_on: row => row["added_on"]
+async function fetchUserStats() {
+    let next = 30000;
+    try {
+        const data = await json('/dashboard/user');
+        for (const [id, key] of Object.entries(serverStats)) {
+            const value = data[key];
+            $(id).textContent = value == null ? '?' : id === 'server-ratio' ? formatRatio(value) :
+                id === 'total-upload' || id === 'total-download' ? formatBytes(value) : value;
+        }
+    } catch (error) {
+        next = 60000;
+        console.error('Error fetching server statistics:', error);
+        for (const id of Object.keys(serverStats)) $(id).textContent = '?';
+        toast('Error fetching user stats from server', true);
+    } finally {
+        setTimeout(fetchUserStats, next);
+    }
+}
+
+function updateClientStats(stats) {
+    const values = {
+        'client-leeching': stats.downloading_torrents,
+        'client-seeding': stats.seeding_torrents,
+        'client-total': torrents.length,
+        'client-peers': stats.peers_connected,
+        'total-dl': formatBytes(stats.total_download),
+        'total-ul': formatBytes(stats.total_upload),
+        'dl-rate': formatSpeed(stats.download_speed),
+        'ul-rate': formatSpeed(stats.upload_speed),
+        'global-ratio': formatRatio(stats.client_ratio ?? 0)
     };
-
-    if (sortConfig.column && sortConfig.direction) {
-        const extractor = sortExtractors[sortConfig.column];
-        if (extractor) {
-            data.sort((a, b) => {
-                const valA = extractor(a);
-                const valB = extractor(b);
-
-                if (valA < valB) return sortConfig.direction === "asc" ? -1 : 1;
-                if (valA > valB) return sortConfig.direction === "asc" ? 1 : -1;
-                return 0;
-            });
-        }
-    }
-
-    // add data to table and update the arrows in headers
-    updateSortIndicators();
-    renderTable(data);
+    for (const [id, value] of Object.entries(values)) $(id).textContent = value ?? '0';
 }
 
+function updateScanner(scanner) {
+    const state = scanner?.state;
+    const total = Number(scanner?.total_items) || 0;
+    const done = Number(scanner?.done_items) || 0;
+    const percent = total > 0 ? (done / total) * 100 : 0;
+    const inProgress = state === 2 || state === 3;
+    $('scan-state').textContent = ['Idle', 'Pre-scan', 'Scanning', 'Processing', 'Post-processing'][state] ?? 'Status unavailable';
+    $('scan-state').classList.toggle('blue', state >= 1 && state <= 4);
+    $('scan-summary').hidden = $('scan-progress').hidden = !inProgress;
+    $('scan-summary').textContent = `${done} / ${total} (${percent.toFixed(1)}%)`;
+    $('scan-progress').value = percent;
+}
 function formatState(state) {
     const mapping = {
         "error": "Error",
@@ -388,221 +212,275 @@ function formatCategory(category) {
     }
 }
 
-function renderTable(torrents) {
-    const $tbody = $("#torrents-container");
-    const $pagination = $("#pagination-controls");
-    $tbody.empty();
+const normalized = value => String(value ?? '').toLowerCase();
+const pairs = (connected, total) => `${connected ?? 0} (${total ?? 0})`;
+const date = seconds => new Date((seconds ?? 0) * 1000).toLocaleString();
+const sortValue = {
+    name: row => normalized(row.name),
+    seeds: row => row.connected_seeds + row.total_seeds,
+    peers: row => row.connected_peers + row.total_peers,
+};
 
-    if (!Array.isArray(torrents) || torrents.length === 0) {
-        $tbody.append(`<tr><td colspan="11" class="text-center">No torrents</td></tr>`);
-        $pagination.empty();
-        return;
+function progressCell(value, label) {
+    const percent = (Number(value) || 0) * 100;
+    const wrapper = element('div', null, 'progress');
+    const bar = element('progress', null, percent >= 100 ? 'complete' : null);
+    bar.max = 100;
+    bar.value = percent;
+    bar.setAttribute('aria-label', label);
+    wrapper.append(bar, element('span', `${percent.toFixed(1)}%`));
+    return wrapper;
+}
+
+function renderTable(resetScroll = false) {
+    const focusedRow = document.activeElement?.closest('#torrents-container tr');
+    const focusedHash = focusedRow?.dataset.infohash;
+    const activePage = document.activeElement?.dataset.pageAction;
+    const query = normalized($('filter-name').value).trim();
+    const filtered = torrents.filter(item => normalized(item.name).includes(query));
+    if (sort.column) {
+        const get = sortValue[sort.column] ?? (row => row[sort.column]);
+        const sign = sort.direction === 'asc' ? 1 : -1;
+        filtered.sort((a, b) => get(a) < get(b) ? -sign : get(a) > get(b) ? sign : 0);
+    }
+    for (const header of headers) {
+        const label = header.firstElementChild;
+        const direction = header.dataset.column === sort.column ? sort.direction : null;
+        if (direction) header.setAttribute('aria-sort', direction === 'asc' ? 'ascending' : 'descending');
+        else header.removeAttribute('aria-sort');
+        label.textContent = label.dataset.label + (direction ? (direction === 'asc' ? ' ▲' : ' ▼') : '');
+    }
+    const pages = Math.ceil(filtered.length / rowsPerPage);
+    page = Math.min(page, pages || 1);
+    const start = (page - 1) * rowsPerPage;
+    const end = Math.min(start + rowsPerPage, filtered.length);
+    $('table-summary').textContent = filtered.length ? `Showing ${start + 1}–${end} of ${filtered.length}${query ? ` matching (${torrents.length} total)` : ''}` :
+        torrents.length ? 'No torrents match the current filter.' : 'No torrents.';
+    const fragment = document.createDocumentFragment();
+    let focusTarget;
+    for (let i = start; i < end; i++) {
+        const item = filtered[i];
+        const row = element('tr');
+        row.dataset.infohash = item.infohash ?? '';
+        const isSelected = selected !== null && selected.infohash === item.infohash;
+        row.classList.toggle('selected-row', isSelected);
+        const name = element('button', item.name ?? 'Unnamed torrent');
+        name.type = 'button';
+        name.title = name.textContent;
+        name.setAttribute('aria-pressed', String(isSelected));
+        if (focusedHash && row.dataset.infohash === focusedHash) focusTarget = name;
+        cell(row, name, 'name');
+        cell(row, element('span', formatCategory(item.category), `badge category-${Number(item.category) || 0}`));
+        cell(row, formatBytes(item.size));
+        cell(row, progressCell(item.progress, 'Torrent progress'));
+        const state = /^[A-Za-z]+$/.test(item.state) ? item.state : 'unknown';
+        cell(row, element('span', formatState(item.state), `badge state-${state}`));
+        cell(row, pairs(item.connected_seeds, item.total_seeds));
+        cell(row, pairs(item.connected_peers, item.total_peers));
+        cell(row, formatSpeed(item.download_speed));
+        cell(row, formatSpeed(item.upload_speed));
+        cell(row, formatTime(item.eta ?? -1));
+        cell(row, date(item.added_on));
+        row.addEventListener('click', () => {
+            selected = item;
+            const previous = tableBody.querySelector('.selected-row');
+            if (previous) {
+                previous.classList.remove('selected-row');
+                previous.querySelector('button').setAttribute('aria-pressed', 'false');
+            }
+            row.classList.add('selected-row');
+            name.setAttribute('aria-pressed', 'true');
+            renderDetails();
+        });
+        fragment.append(row);
+    }
+    if (!filtered.length) cell(fragment.appendChild(element('tr')), $('table-summary').textContent, 'empty').colSpan = 11;
+    tableBody.replaceChildren(fragment);
+    renderPagination(pages, activePage);
+    if (focusTarget) focusTarget.focus({preventScroll: true});
+    else if (focusedRow) $('torrents-table-container').focus({preventScroll: true});
+    if (resetScroll) $('torrents-table-container').scrollTop = 0;
+}
+
+function renderPagination(pages, activePage) {
+    pagination.hidden = pages < 2;
+    const links = document.createDocumentFragment();
+    let focusTarget;
+
+    function add(text, label, action, target, disabled = false) {
+        const link = button(text, label);
+        link.dataset.pageAction = action;
+        link.disabled = disabled;
+        if (action === String(page)) link.setAttribute('aria-current', 'page');
+        if (action === activePage && !disabled) focusTarget = link;
+        link.addEventListener('click', () => {
+            page = target;
+            renderTable(true);
+        });
+        links.append(link);
     }
 
-    const filter = getNameFilter();
-    const filtered = torrents.filter(t => normalizeText(t?.["name"]).includes(filter));
+    if (pages >= 2) {
+        add('‹', 'Previous page', 'previous', page - 1, page === 1);
+        for (let i = 1; i <= pages; i++) add(String(i), `Page ${i}`, String(i), i);
+        add('›', 'Next page', 'next', page + 1, page === pages);
+    }
+    pagination.replaceChildren(links);
+    if (activePage) (focusTarget ?? pagination.querySelector('[aria-current]') ?? $('rows-per-page')).focus({preventScroll: true});
+}
 
-    if (filtered.length === 0) {
-        $tbody.append(`<tr><td colspan="11" class="text-center">No torrents match the current filter</td></tr>`);
-        $pagination.empty();
+function detailsGroup(entries) {
+    const list = element('dl');
+    for (const [label, value, className] of entries) {
+        const line = element('div');
+        const detail = element('dd', null, className);
+        detail.append(value instanceof Node ? value : String(value ?? 'N/A'));
+        line.append(element('dt', label), detail);
+        list.append(line);
+    }
+    return list;
+}
+
+const flags = {
+    D: 'downloading', d: 'interested-choked', U: 'uploading', u: 'not-uploading', S: 'snubbed',
+    K: 'not-interested', '?': 'not-interested', E: 'encrypted', e: 'encrypted'
+};
+
+function renderDetails() {
+    const general = $('general-content');
+    const peers = $('peers-content');
+    $('delete-button').hidden = !selected || seedStates.has(selected.state);
+    $('delete-button').disabled = pendingRemoval;
+    if (!selected) {
+        $('selected-name').textContent = 'Select a torrent to inspect its details.';
+        general.textContent = 'Select a torrent to view details.';
+        peers.textContent = 'Select a torrent to view peers.';
         return;
     }
-
-    const totalItems = filtered.length;
-    const totalPages = Math.ceil(totalItems / rowsPerPage);
-    if (currentPage > totalPages) currentPage = totalPages;
-    const start = (currentPage - 1) * rowsPerPage;
-    const end = start + rowsPerPage;
-    const pageItems = filtered.slice(start, end);
-
-    pageItems.forEach(torrent => {
-        const categoryClass = "category-" + torrent["category"];
-        const stateClass = "state-" + torrent["state"];
-        const progress = (torrent["progress"] * 100).toFixed(1);
-
-        const selectedClass = torrent["infohash"] === selectedTorrentId ? "selected-row" : "";
-
-        const row = $(`<tr class="${selectedClass}" data-infohash="${torrent["infohash"]}"></tr>`);
-
-        row.toggleClass("d-none", !normalizeText(torrent?.["name"]).includes(filter));
-
-        let barClass = "bg-success";
-        if (progress < 100) {
-            barClass = "bg-notice";
+    const item = selected;
+    $('selected-name').textContent = item.name ?? 'Unnamed torrent';
+    const tracker = item.tracker ?? {};
+    const next = tracker.next_announce ? formatTime(tracker.next_announce - Math.floor(Date.now() / 1000)) : 'N/A';
+    const trackerStatus = element('span');
+    trackerStatus.append(element('strong', tracker.verified ? 'Working' : 'Not Working', tracker.verified ? 'good' : 'bad'), ` (Next announce ${next})`);
+    const grid = element('div', null, 'detail-grid');
+    grid.append(detailsGroup([['Session download', formatBytes(item.session_download)], ['Download speed', formatSpeed(item.download_speed)],
+            ['Progress', `${((Number(item.progress) || 0) * 100).toFixed(1)}%`], ['Info hash', item.infohash || 'N/A', 'mono']]),
+        detailsGroup([['Session upload', formatBytes(item.session_upload)], ['Upload speed', formatSpeed(item.upload_speed)],
+            ['Seeds (total)', pairs(item.connected_seeds, item.total_seeds)], ['Peers (total)', pairs(item.connected_peers, item.total_peers)]]),
+        detailsGroup([['Tracker status', trackerStatus], ['Added on', date(item.added_on)], ['Save path', item.save_path, 'mono']]));
+    general.replaceChildren(grid);
+    if (!Array.isArray(item.peers) || !item.peers.length) {
+        peers.textContent = 'No connected peers.';
+        return;
+    }
+    const table = element('table');
+    table.setAttribute('aria-label', 'Connected peers');
+    const head = table.createTHead().insertRow();
+    for (const text of ['IP', 'Port', 'Client', 'Flags', 'Down speed', 'Up speed', 'Progress']) {
+        const th = element('th', text);
+        th.scope = 'col';
+        head.append(th);
+    }
+    const body = table.createTBody();
+    for (const peer of item.peers) {
+        const row = body.insertRow();
+        cell(row, peer.ip);
+        cell(row, peer.port);
+        cell(row, peer.client);
+        const flagCell = cell(row, '', 'flags');
+        for (const [flag, meaning] of peer.flags ?? []) {
+            const badge = element('span', flag, `badge flag-${Object.hasOwn(flags, flag) ? flags[flag] : 'general'}`);
+            badge.title = meaning;
+            flagCell.append(badge);
         }
+        cell(row, formatSpeed(peer.download_speed));
+        cell(row, formatSpeed(peer.upload_speed));
+        cell(row, progressCell(peer.progress, 'Peer progress'));
+    }
+    peers.replaceChildren(table);
+}
 
-        row.html(`
-                <td>${torrent["name"]}</td>
-                <td class="${categoryClass}">${formatCategory(torrent["category"])}</td>
-                <td>${formatBytes(torrent["size"])}</td>
-                <td>
-                    <div class="progress" style="height:1.5rem;">
-                        <div class="progress-bar ${barClass} overflow-visible" role="progressbar" style="width: ${progress}%">${progress}%</div>
-                    </div>
-                </td>
-                <td class="${stateClass}">${formatState(torrent["state"])}</td>
-                <td>${torrent["connected_seeds"]} (${torrent["total_seeds"]})</td>
-                <td>${torrent["connected_peers"]} (${torrent["total_peers"]})</td>
-                <td>${formatSpeed(torrent["download_speed"])}</td>
-                <td>${formatSpeed(torrent["upload_speed"])}</td>
-                <td>${formatTime(torrent["eta"])}</td>
-                <td>${new Date(torrent["added_on"] * 1000).toLocaleString()}</td>
-            `);
-
-        $tbody.append(row);
-
-        // click handler
-        $tbody.find("tr").last().click(() => {
-            selectedTorrentId = torrent["infohash"];
-            $tbody.find("tr").removeClass("selected-row");
-            $tbody.find(`tr[data-infohash='${selectedTorrentId}']`).addClass("selected-row");
-            populateInfoPanel(torrent);
-        });
-    });
-
-    // update pagination controls
-    $pagination.empty();
-
-    if (totalPages > 1) {
-        // previous page button
-        $pagination.append(`
-                <li class="page-item ${currentPage === 1 ? "disabled" : ""}">
-                    <a class="page-link" href="#">«</a>
-                </li>
-            `);
-
-        // page number buttons
-        for (let i = 1; i <= totalPages; i++) {
-            $pagination.append(`
-                <li class="page-item ${i === currentPage ? "active" : ""}">
-                    <a class="page-link" href="#">${i}</a>
-                </li>
-            `);
-        }
-
-        // next page button
-        $pagination.append(`
-                <li class="page-item ${currentPage === totalPages ? "disabled" : ""}">
-                    <a class="page-link" href="#">»</a>
-                </li>
-            `);
-
-        // add event listener
-        $pagination.find(".page-link").on("click", function (e) {
-            e.preventDefault();
-            const text = $(this).text();
-            if (text === "«" && currentPage > 1) currentPage--; else if (text === "»" && currentPage < totalPages) currentPage++; else if (!isNaN(parseInt(text))) currentPage = parseInt(text);
-            applySortingAndRender();
-        });
+function activateTab(tab) {
+    for (const [current, pane] of tabPanes) {
+        const active = current === tab;
+        current.setAttribute('aria-selected', String(active));
+        current.tabIndex = active ? 0 : -1;
+        pane.hidden = !active;
     }
 }
 
-// populate bottom panel
-function populateInfoPanel(torrent) {
-    // show delete button if torrent is not seeding
-    $("#delete-button").toggleClass("d-none", ["uploading", "stalledUP"].includes(torrent["state"]));
-
-    let trackerData = torrent["tracker"];
-    let trackerWorking = !!trackerData["verified"];
-    let nextAnnounce = "N/A";
-    if (trackerData["next_announce"]) {
-        const now = Math.floor(Date.now() / 1000);
-        const delta = trackerData["next_announce"] - now;
-        nextAnnounce = formatTime(delta);
-    }
-
-    // general info
-    const generalHtml = `
-        <div class="row g-0 mb-0">
-            <div class="col-md-4">
-                <dl class="row g-0 mb-0">
-                    <dt class="col-4 text-end">Session Download:</dt><dd class="ms-2 col-7">${formatBytes(torrent["session_download"])}</dd>
-                    <dt class="col-4 text-end">Download Speed:</dt><dd class="ms-2 col-7">${formatSpeed(torrent["download_speed"])}</dd>
-                    <dt class="col-4 text-end">Progress:</dt><dd class="ms-2 col-7">${(torrent["progress"] * 100).toFixed(1)}%</dd>
-                    <dt class="col-4 text-end">Info Hash:</dt><dd class="ms-2 col-7 text-wrap text-break">${torrent["infohash"] || "N/A"}</dd>
-                </dl>
-            </div>
-            <div class="col-md-4">
-                <dl class="row g-0 mb-0">
-                    <dt class="col-4 text-end">Session Upload:</dt><dd class="ms-2 col-7">${formatBytes(torrent["session_upload"])}</dd>
-                    <dt class="col-4 text-end">Upload Speed:</dt><dd class="ms-2 col-7">${formatSpeed(torrent["upload_speed"])}</dd>
-                    <dt class="col-4 text-end">Seeds (Total):</dt><dd class="ms-2 col-7">${torrent["connected_seeds"]} (${torrent["total_seeds"]})</dd>
-                    <dt class="col-4 text-end">Peers (Total):</dt><dd class="ms-2 col-7">${torrent["connected_peers"]} (${torrent["total_peers"]})</dd>
-                </dl>
-            </div>
-            <div class="col-md-4">
-                <dl class="row g-0 mb-0">
-                    <dt class="col-4 text-end">Tracker Status:</dt><dd class="ms-2 col-7"><span class="fw-bold ${trackerWorking ? "text-success" : "text-danger"}">${trackerWorking ? 'Working' : 'Not Working'}</span> (Next announce ${nextAnnounce})</dd>
-                    <dt class="col-4 text-end">Added On:</dt><dd class="ms-2 col-7">${new Date(torrent["added_on"] * 1000).toLocaleString()}</dd>
-                    <dt class="col-4 text-end">Save Path:</dt><dd class="ms-2 col-7 text-wrap text-break">${torrent["save_path"]}</dd>
-                </dl>
-            </div>
-        </div>`;
-
-    $("#general-content").html(generalHtml);
-
-    // peers table
-    let peersHtml = `<table class="table table-sm table-striped">
-        <thead><tr><th>IP</th><th>Port</th><th>Client</th><th>Flags</th><th>Down Speed</th><th>Up Speed</th><th>Progress</th></tr></thead>
-        <tbody>`;
-    torrent["peers"].forEach(peer => {
-        const progress = (peer["progress"] * 100).toFixed(1);
-        let flagsList = "";
-        let peerFlags = peer["flags"];
-        if (peerFlags && peerFlags.length > 0) {
-            peerFlags.forEach(flag => {
-                let className;
-                switch (flag[0]) {
-                    case "D":
-                        className = "flag-downloading";
-                        break;
-                    case "d":
-                        className = "flag-interested-choked";
-                        break;
-                    case "U":
-                        className = "flag-uploading";
-                        break;
-                    case "u":
-                        className = "flag-not-uploading";
-                        break;
-                    case "S":
-                        className = "flag-snubbed";
-                        break;
-                    case "K":
-                    case "?":
-                        className = "flag-not-interested";
-                        break;
-                    case "E":
-                    case "e":
-                        className = "flag-encrypted";
-                        break;
-                    default:
-                        className = "flag-general";
-                        break;
-                }
-                flagsList += `<span style="cursor:help;" class="badge me-1 ${className}" title="${flag[1]}">${flag[0]}</span>`;
-            });
-        }
-
-        let barClass = "bg-success";
-        if (progress < 100) {
-            barClass = "bg-notice";
-        }
-
-        peersHtml += `<tr>
-                <td>${peer["ip"]}</td>
-                <td>${peer["port"]}</td>
-                <td>${peer["client"]}</td>
-                <td>${flagsList}</td>
-                <td>${formatSpeed(peer["download_speed"])}</td>
-                <td>${formatSpeed(peer["upload_speed"])}</td>
-                <td>
-                    <div class="progress" style="height:1.5rem;">
-                    <div class="progress-bar ${barClass} overflow-visible" role="progressbar" style="width: ${progress}%">${progress}%</div>
-                    </div>
-                </td>
-            </tr>`;
+for (const tab of tabs) {
+    tab.addEventListener('click', () => activateTab(tab));
+    tab.addEventListener('keydown', event => {
+        if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+        event.preventDefault();
+        const next = event.key === 'Home' ? tabs[0] : event.key === 'End' ? tabs.at(-1) : tabs.find(item => item !== tab);
+        activateTab(next);
+        next.focus();
     });
-    peersHtml += `</tbody></table>`;
-    $("#peers-content").html(peersHtml);
 }
+
+$('delete-button').addEventListener('click', () => {
+    if (!selected?.infohash || seedStates.has(selected.state) || pendingRemoval) return;
+    $('delete-name').textContent = selected.name ?? 'Unnamed torrent';
+    deleteDialog.showModal();
+});
+$('cancel-delete').addEventListener('click', () => deleteDialog.close());
+$('delete-form').addEventListener('submit', async event => {
+    event.preventDefault();
+    if (pendingRemoval || !selected?.infohash) return;
+    if (seedStates.has(selected.state)) {
+        deleteDialog.close();
+        toast('This torrent is now seeding and cannot be deleted here.', true);
+        return;
+    }
+    const hash = selected.infohash;
+    const params = new URLSearchParams({torrent_hash: hash, remove_downloads: $('delete-file-checkbox').checked});
+    pendingRemoval = true;
+    deleteDialog.close();
+    $('torrents').focus({preventScroll: true});
+    renderDetails();
+    try {
+        const response = await fetch(`/dashboard/delete_torrent?${params}`, {method: 'POST'});
+        if (!response.ok) {
+            toast('Failed to delete torrent, check logs', true);
+            return;
+        }
+        torrents = torrents.filter(item => item.infohash !== hash);
+        if (selected?.infohash === hash) selected = null;
+        renderTable();
+        toast('Torrent deleted successfully');
+    } catch (error) {
+        console.error('Error deleting torrent:', error);
+        toast('Error while trying to delete torrent, check logs', true);
+    } finally {
+        pendingRemoval = false;
+        renderDetails();
+    }
+});
+
+$('filter-name').addEventListener('input', () => {
+    clearTimeout(filterTimer);
+    filterTimer = setTimeout(() => {
+        page = 1;
+        renderTable(true);
+    }, 1000);
+});
+$('rows-per-page').addEventListener('change', event => {
+    rowsPerPage = Number(event.target.value);
+    page = 1;
+    renderTable(true);
+});
+for (const header of headers) {
+    const label = header.firstElementChild;
+    label.dataset.label = label.textContent;
+    label.addEventListener('click', () => {
+        const column = header.dataset.column;
+        sort = sort.column !== column ? {column, direction: 'asc'} : sort.direction === 'asc' ?
+            {column, direction: 'desc'} : {column: null, direction: null};
+        renderTable();
+    });
+}
+void fetchMainData();
+void fetchUserStats();
